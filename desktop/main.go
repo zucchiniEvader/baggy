@@ -53,10 +53,11 @@ func main() {
 
 	mygo.App.WhenReady(func() {
 		win := mygo.NewWindow(mygo.WindowOptions{
-			Title:   "gobot",
-			Width:   1040,
-			Height:  700,
-			Content: ui.View(a.root),
+			Title:    "gobot",
+			Width:    1040,
+			Height:   700,
+			StateKey: "main", // size, position, maximized: back where they were
+			Content:  ui.View(a.root),
 		})
 		a.post = win.Update
 		a.openFolder = func(p string) { go mygo.Shell.OpenPath(p) }

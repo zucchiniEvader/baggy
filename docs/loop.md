@@ -27,12 +27,21 @@
 
 `agent.Queue` (`NewQueue(mode)`, `Push`, `Drain`, `Len`, `Clear`) is safe for concurrent use. Keep a pointer where input arrives and put it in `Options.Steering` or `Options.FollowUp`.
 
-- Steering: a message for the model's next call. It is read before the first call and after each batch of tool results. It waits for the step under way (the reply and its tool calls); interrupting a step is not built yet.
+- Steering: a message for the model's next call. It is read before the first call and after each batch of tool results. It waits for the step under way (the reply and its tool calls), unless the step is interrupted (below).
 - Follow-up: a message for when the model would otherwise stop.
 - `QueueOneAtATime` (the zero value) drains the oldest message per read, `QueueAll` everything.
 - A queue outlives runs: a message pushed while no run is active is taken by the next one.
 
 Cancel a run with its `ctx`; the call in flight ends with `StopAborted`.
+
+## Interrupting a step
+
+`Options.Interrupt` takes an `agent.NewInterrupt()`; after queueing a steering message, `Interrupt()` cuts the step under way short and reports whether there was one (false between steps, where the queue is read anyway). Each step (a model call and the tools it asks for) runs under a child of the run's context, and only that one is cancelled:
+
+- A reply interrupted while it streams keeps its text as said, as a `StopEnd` message without its thinking or tool calls (one with no text is ended as `StopAborted` and not kept). The loop reads steering and calls the model again, or ends when nothing is queued.
+- Running tools get the cancelled context; a call that returns nothing then reads `Interrupted`. The results go in as usual and the loop goes on.
+
+Cancelling the run's context still ends the run.
 
 ## Token estimates
 
@@ -40,4 +49,4 @@ Cancel a run with its `ctx`; the call in flight ends with `StopAborted`.
 
 ## Not yet
 
-Interrupting a step for a steering message, retry of a failed call, an `Agent` that owns the transcript.
+Retry of a failed call, an `Agent` that owns the transcript.

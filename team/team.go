@@ -80,13 +80,14 @@ type Team struct {
 
 // run is one chat at work.
 type run struct {
-	cancel   context.CancelFunc
-	steering *agent.Queue          // DM: user messages for the bot's next call
-	pending  map[string]store.Meta // DM: queued messages by id, with who sent them
-	authors  map[string]string
-	restart  bool     // group: a new user message arrived
-	mentions []string // group: its mentions
-	hops     int
+	cancel    context.CancelFunc
+	steering  *agent.Queue // DM: user messages for the bot's next call
+	interrupt *agent.Interrupt
+	pending   map[string]store.Meta // DM: queued messages by id, with who sent them
+	authors   map[string]string
+	restart   bool     // group: a new user message arrived
+	mentions  []string // group: its mentions
+	hops      int
 }
 
 func (t *Team) emit(e Event) {
@@ -111,6 +112,15 @@ func (t *Team) Stop(chatID string) {
 		r.steering.Clear()
 		r.restart = false
 	}
+}
+
+// Interrupt cuts the step under way in a chat short, so what was just sent
+// is read at once; it reports whether a step was under way.
+func (t *Team) Interrupt(chatID string) bool {
+	t.mu.Lock()
+	r := t.runs[chatID]
+	t.mu.Unlock()
+	return r != nil && r.interrupt.Interrupt()
 }
 
 // Wait blocks until no chat is working (tests).
@@ -168,7 +178,7 @@ func (t *Team) deliver(chatID, author string, meta store.Meta, msg agent.Message
 		return nil
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	r = &run{cancel: cancel, steering: agent.NewQueue(agent.QueueAll), pending: map[string]store.Meta{}, authors: map[string]string{}, mentions: meta.Mentions, hops: meta.Hops}
+	r = &run{cancel: cancel, steering: agent.NewQueue(agent.QueueAll), interrupt: agent.NewInterrupt(), pending: map[string]store.Meta{}, authors: map[string]string{}, mentions: meta.Mentions, hops: meta.Hops}
 	t.runs[chatID] = r
 	t.emit(Event{Kind: EventRunStart, ChatID: chatID})
 	t.active.Add(1)
@@ -277,11 +287,12 @@ func (t *Team) turn(ctx context.Context, chat store.Chat, botID string, r *run, 
 	var stored []store.Entry
 	var storeErr error
 	out := agent.Run(ctx, model, msgs, agent.Options{
-		System:   system,
-		Tools:    tools,
-		Compact:  compact,
-		Hooks:    t.hooks(ctx, b, chat),
-		Steering: r.steering,
+		System:    system,
+		Tools:     tools,
+		Compact:   compact,
+		Hooks:     t.hooks(ctx, b, chat),
+		Steering:  r.steering,
+		Interrupt: r.interrupt,
 		Emit: func(e agent.Event) {
 			t.emit(Event{Kind: EventAgent, ChatID: chat.ID, BotID: botID, Turn: turnID, Agent: e})
 			if e.Kind != agent.EventMessageEnd || storeErr != nil {

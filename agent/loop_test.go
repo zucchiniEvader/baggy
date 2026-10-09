@@ -240,3 +240,72 @@ type modelFunc func(msgs []Message) Message
 func (f modelFunc) Call(_ context.Context, _ string, msgs []Message, _ []tool.Tool, _ func(Event)) Message {
 	return f(append([]Message(nil), msgs...))
 }
+
+func TestInterruptCutsTheReplyAndReadsSteering(t *testing.T) {
+	steer, intr := NewQueue(QueueAll), NewInterrupt()
+	entered := make(chan struct{})
+	var second []Message
+	n := 0
+	m := ctxModel(func(ctx context.Context, msgs []Message) Message {
+		n++
+		if n == 1 {
+			close(entered)
+			<-ctx.Done()
+			return Message{Role: RoleAssistant, StopReason: StopAborted, Parts: []Part{{Kind: PartThinking, Text: "hm"}, {Kind: PartText, Text: "partial"}}}
+		}
+		second = msgs
+		return Message{Role: RoleAssistant, StopReason: StopEnd, Parts: []Part{{Kind: PartText, Text: "ok"}}}
+	})
+	go func() {
+		<-entered
+		steer.Push(userText("actually, stop that"))
+		if !intr.Interrupt() {
+			t.Error("no step to interrupt")
+		}
+	}()
+	out := Run(context.Background(), m, []Message{userText("go")}, Options{Steering: steer, Interrupt: intr})
+	if len(second) != 3 || second[1].StopReason != StopEnd || len(second[1].Parts) != 1 || second[1].Parts[0].Text != "partial" || lastText(second) != "actually, stop that" {
+		t.Fatalf("second call saw %+v", second)
+	}
+	if len(out) != 3 || lastText(out) != "ok" {
+		t.Fatalf("out %+v", out)
+	}
+	if intr.Interrupt() {
+		t.Fatal("an interrupt between runs reported a step")
+	}
+}
+
+func TestInterruptCancelsRunningTools(t *testing.T) {
+	intr := NewInterrupt()
+	started := make(chan struct{})
+	n := 0
+	m := ctxModel(func(ctx context.Context, msgs []Message) Message {
+		n++
+		if n == 1 {
+			return Message{Role: RoleAssistant, StopReason: StopToolUse, Parts: []Part{{Kind: PartToolCall, CallID: "c", Name: "wait", Args: []byte(`{}`)}}}
+		}
+		return Message{Role: RoleAssistant, StopReason: StopEnd, Parts: []Part{{Kind: PartText, Text: "after " + msgs[len(msgs)-1].Parts[0].Text}}}
+	})
+	go func() { <-started; intr.Interrupt() }()
+	out := Run(context.Background(), m, []Message{userText("go")}, Options{Tools: []tool.Tool{waiter{started}}, Interrupt: intr})
+	if lastText(out) != "after "+Interrupted {
+		t.Fatalf("out %+v", out)
+	}
+}
+
+type ctxModel func(ctx context.Context, msgs []Message) Message
+
+func (f ctxModel) Call(ctx context.Context, _ string, msgs []Message, _ []tool.Tool, _ func(Event)) Message {
+	return f(ctx, append([]Message(nil), msgs...))
+}
+
+type waiter struct{ started chan struct{} }
+
+func (waiter) Name() string            { return "wait" }
+func (waiter) Description() string     { return "waits" }
+func (waiter) Schema() json.RawMessage { return json.RawMessage(`{"type":"object"}`) }
+func (w waiter) Execute(ctx context.Context, _ json.RawMessage) tool.Result {
+	close(w.started)
+	<-ctx.Done()
+	return tool.Result{}
+}

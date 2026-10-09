@@ -63,6 +63,12 @@ type Options struct {
 	// would send; when it returns ok, the call and the rest of the run use
 	// its replacement (a summary and what was kept) instead.
 	Compact func(ctx context.Context, msgs []Message) (replacement []Message, ok bool)
+
+	// Interrupt, when set, can cut the step under way short: a reply
+	// streaming keeps its text as said (no thinking, no calls), running tools
+	// get a cancelled context, and the run reads steering and goes on (or
+	// ends, when a cut reply leaves nothing queued).
+	Interrupt *Interrupt
 }
 
 // Run appends to msgs until the model stops asking for tools and no queued
@@ -103,12 +109,29 @@ func Run(ctx context.Context, m Model, msgs []Message, o Options) []Message {
 				base, since, all = rep, len(out), rep
 			}
 		}
+		sctx, done := o.Interrupt.step(ctx)
 		emit(Event{Kind: EventMessageStart})
-		reply := m.Call(ctx, o.System, all, o.Tools, emit)
+		reply := m.Call(sctx, o.System, all, o.Tools, emit)
+		if sctx.Err() != nil && ctx.Err() == nil { // interrupted while it streamed
+			done()
+			if cut, ok := cutShort(reply); ok {
+				out = append(out, cut)
+				emit(Event{Kind: EventMessageEnd, Message: &cut})
+			} else {
+				emit(Event{Kind: EventMessageEnd, Message: &Message{Role: RoleAssistant, StopReason: StopAborted}})
+			}
+			next := o.Steering.Drain()
+			if len(next) == 0 {
+				break
+			}
+			add(next...)
+			continue
+		}
 		out = append(out, reply)
 		emit(Event{Kind: EventMessageEnd, Message: &reply})
 
 		if reply.StopReason == StopError || reply.StopReason == StopAborted || ctx.Err() != nil {
+			done()
 			break
 		}
 		if reply.StopReason == StopToolUse {
@@ -125,12 +148,16 @@ func Run(ctx context.Context, m Model, msgs []Message, o Options) []Message {
 				go func() {
 					defer wg.Done()
 					emit(Event{Kind: EventToolStart, Call: &c})
-					r := execute(ctx, byName, o.Hooks, c)
+					r := execute(sctx, byName, o.Hooks, c)
+					if sctx.Err() != nil && ctx.Err() == nil && !r.IsError && r.Text == "" {
+						r = tool.Result{Text: Interrupted, IsError: true}
+					}
 					results[i] = Part{Kind: PartToolResult, CallID: c.CallID, Name: c.Name, Text: r.Text, IsError: r.IsError}
 					emit(Event{Kind: EventToolEnd, Call: &c, Result: &r})
 				}()
 			}
 			wg.Wait()
+			done()
 			add(Message{Role: RoleTool, Parts: results})
 			if ctx.Err() != nil {
 				break
@@ -138,6 +165,7 @@ func Run(ctx context.Context, m Model, msgs []Message, o Options) []Message {
 			add(o.Steering.Drain()...)
 			continue
 		}
+		done()
 		next := o.Steering.Drain()
 		if len(next) == 0 {
 			next = o.FollowUp.Drain()

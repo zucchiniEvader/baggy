@@ -129,4 +129,7 @@ var zh = map[string]string{
 	"Overwrite": "覆盖",
 	"The bot changed its memory while you edited. Reload to see it, or Overwrite.": "你编辑期间 bot 改了它的记忆。重新载入查看,或者覆盖。",
 	"Spent in this chat: %s": "本聊天花费:%s",
+	"Interrupt":              "打断",
+	"Send now, cutting the current step short (Cmd+Enter)": "立即发送,打断当前这一步(Cmd+Enter)",
+	"Steer waits for the current step":                     "引导会等当前这一步做完",
 }

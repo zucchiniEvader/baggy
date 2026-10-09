@@ -246,7 +246,13 @@ func (v *chatView) remove(seq int64) {
 // ---- actions ----
 
 // send sends the draft of the chat shown.
-func (a *app) send() {
+func (a *app) send() { a.sendDraft(false) }
+
+// interruptSend sends the draft and cuts the bot's step short, so it reads
+// the message at once.
+func (a *app) interruptSend() { a.sendDraft(true) }
+
+func (a *app) sendDraft(interrupt bool) {
 	v := a.views[a.sel]
 	if v == nil {
 		return
@@ -268,6 +274,10 @@ func (a *app) send() {
 	}
 	v.draft, v.mentions, v.reply, v.images, v.atOpen = "", nil, nil, nil, false
 	v.focus = true
+	if interrupt {
+		a.approvals.denyAll(a.sel)
+		a.team.Interrupt(a.sel)
+	}
 }
 
 // typedMentions are the bots named @Name in text that only one bot answers

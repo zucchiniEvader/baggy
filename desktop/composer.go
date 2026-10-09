@@ -151,6 +151,9 @@ func (a *app) composer(c *ui.Context, ch store.Chat, v *chatView) {
 				case ev.Key == ui.KeyEnter && ev.Mods == 0:
 					a.send() // Shift+Enter starts a line
 					return true
+				case ev.Key == ui.KeyEnter && ev.Mods == ui.Cmd && a.busy[ch.ID] && ch.Kind == store.DM:
+					a.interruptSend()
+					return true
 				case ev.Key == ui.KeyEscape && v.reply != nil:
 					v.reply = nil
 					return true
@@ -195,10 +198,14 @@ func (a *app) composer(c *ui.Context, ch store.Chat, v *chatView) {
 				}
 			}
 			label := L("Send")
+			empty := strings.TrimSpace(v.draft) == "" && len(v.images) == 0
 			if a.busy[ch.ID] && ch.Kind == store.DM {
 				label = L("Steer")
+				if ui.Button(c.Key("interrupt"), L("Interrupt")).Tooltip(L("Send now, cutting the current step short (Cmd+Enter)")).Disabled(empty).Clicked() {
+					a.interruptSend()
+				}
 			}
-			if ui.PrimaryButton(c.Key("send"), label).Disabled(strings.TrimSpace(v.draft) == "" && len(v.images) == 0).Clicked() {
+			if ui.PrimaryButton(c.Key("send"), label).Tooltip(L("Steer waits for the current step")).Disabled(empty).Clicked() {
 				a.send()
 			}
 		})

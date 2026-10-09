@@ -319,3 +319,36 @@ func TestSystemPromptGroup(t *testing.T) {
 		}
 	}
 }
+
+func TestInterruptReadsSteeringAtOnce(t *testing.T) {
+	entered := make(chan struct{}, 1)
+	f := setup(t, nil)
+	f.team.Model = func(store.Bot) (agent.Model, error) {
+		return ctxScript(func(ctx context.Context, msgs []agent.Message) agent.Message {
+			if last(msgs) == "long task" {
+				entered <- struct{}{}
+				<-ctx.Done()
+				return agent.Message{Role: agent.RoleAssistant, StopReason: agent.StopAborted, Parts: []agent.Part{{Kind: agent.PartText, Text: "working on it"}}}
+			}
+			return agent.Message{Role: agent.RoleAssistant, StopReason: agent.StopEnd, Parts: []agent.Part{{Kind: agent.PartText, Text: "re: " + last(msgs)}}}
+		}), nil
+	}
+	a := f.bot(t, "A")
+	dm, _ := f.st.DMOf(a.ID)
+	f.team.Send(dm.ID, "long task", nil, nil)
+	<-entered
+	f.team.Send(dm.ID, "never mind", nil, nil)
+	if !f.team.Interrupt(dm.ID) {
+		t.Fatal("nothing to interrupt")
+	}
+	f.team.Wait()
+	if got := strings.Join(f.texts(t, dm.ID), " | "); got != "user: long task | A: working on it | user: never mind | A: re: never mind" {
+		t.Fatalf("transcript: %s", got)
+	}
+}
+
+type ctxScript func(ctx context.Context, msgs []agent.Message) agent.Message
+
+func (f ctxScript) Call(ctx context.Context, _ string, msgs []agent.Message, _ []tool.Tool, _ func(agent.Event)) agent.Message {
+	return f(ctx, msgs)
+}

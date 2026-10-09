@@ -23,7 +23,7 @@ Read these in `../lorca` before designing the part they cover.
 ## Layout
 
 ```
-agent/      transcript types (Message, Part, Usage) and the loop (Run, Hooks, Event)
+agent/      transcript types, the loop (Run, Hooks, Event, Interrupt, Compact), Transform
 provider/   Provider interface, Request, stream Events; one adapter per wire protocol
   anthropic/  the Messages API adapter (docs/providers.md)
   openai/     the Chat Completions and Responses adapters

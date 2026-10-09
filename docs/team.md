@@ -33,7 +33,7 @@ Every message a turn produces is stored on its `message_end`, with the turn id; 
 
 ## DM
 
-Its bot answers. A message sent while it works goes to the run's steering queue and reaches the bot at its next model call; it is stored when the loop injects it (with its author and meta kept by message id), and one that arrives after the last read starts the next turn.
+Its bot answers. A message sent while it works goes to the run's steering queue and reaches the bot at its next model call; it is stored when the loop injects it (with its author and meta kept by message id), and one that arrives after the last read starts the next turn. `Interrupt(chat)` after a send cuts the bot's step short so it reads the message at once.
 
 ## Group: the room
 
