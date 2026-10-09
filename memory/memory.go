@@ -42,13 +42,13 @@ func (m *Memory) lock() func() {
 	return mu.Unlock
 }
 
-func (m *Memory) Index() string   { return filepath.Join(m.Dir, "MEMORY.md") }
-func (m *Memory) Topics() string  { return filepath.Join(m.Dir, "memory") }
-func (m *Memory) LogDir() string  { return filepath.Join(m.Dir, "memory", "log") }
-func (m *Memory) now() time.Time  { return m.Now() }
-func (m *Memory) today() string   { return m.now().Format("2006-01-02") }
-func readFile(p string) string    { b, _ := os.ReadFile(p); return string(b) }
-func (m *Memory) Read() string    { return readFile(m.Index()) }
+func (m *Memory) Index() string  { return filepath.Join(m.Dir, "MEMORY.md") }
+func (m *Memory) Topics() string { return filepath.Join(m.Dir, "memory") }
+func (m *Memory) LogDir() string { return filepath.Join(m.Dir, "memory", "log") }
+func (m *Memory) now() time.Time { return m.Now() }
+func (m *Memory) today() string  { return m.now().Format("2006-01-02") }
+func readFile(p string) string   { b, _ := os.ReadFile(p); return string(b) }
+func (m *Memory) Read() string   { return readFile(m.Index()) }
 
 // write replaces a file atomically, after scrubbing credentials.
 func write(path, text string) error {
