@@ -25,6 +25,7 @@ Read these in `../lorca` before designing the part they cover.
 ```
 agent/      transcript types (Message, Part, Usage) and the loop (Run, Hooks, Event)
 provider/   Provider interface, Request, stream Events; one adapter per wire protocol
+  anthropic/  the Messages API adapter (docs/providers.md)
 tool/       Tool interface and Result
 docs/       one doc per subject, written as the system is
 ```
@@ -39,7 +40,7 @@ docs/       one doc per subject, written as the system is
 
 ## Next
 
-1. `provider/anthropic` and `provider/openaicompat` adapters, streaming, with a shared transcript transform (`../lorca/crates/agent/src/transform.rs`).
+1. `provider/openaicompat` adapter, and a shared transcript transform (`../lorca/crates/agent/src/transform.rs`) for both adapters.
 2. A `Model` implementation over `provider.Provider` (the loop's `Model` is its only dependency).
 3. Tools: shell, read/write file. Schema validation.
 4. SQLite store; bots and DMs; then group chat and handoff.
