@@ -17,7 +17,7 @@ type Model interface {
 
 // Event is what a UI or store observes while a turn runs.
 type Event struct {
-	Kind    string // turn_start, text_delta, tool_start, tool_end, message_end, turn_end
+	Kind    string // turn_start, text_delta, thinking_delta, tool_start, tool_end, message_end, turn_end
 	Delta   string
 	Message *Message
 }

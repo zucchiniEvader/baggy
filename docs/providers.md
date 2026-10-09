@@ -30,6 +30,12 @@ From the stream: `text_delta` and `thinking_delta` become events; `signature_del
 
 A request that fails before it streams (connection error, 408, 409, 429, 5xx) is retried twice, waiting `retry-after` or a backoff from `Backoff` (500 ms) doubling to 8 s; a wait above `MaxRetryDelay` (60 s) fails instead. Tests run against `httptest` servers.
 
+## Model bridge (`provider.Model`)
+
+`provider.Model{Provider, MaxTokens, Thinking}` implements `agent.Model`, so `agent.Run` drives any provider. Each call builds a `Request` from the system prompt, transcript and tools (`tool.Tool` becomes a `ToolSpec` with its schema), and marks the whole transcript as a cache point, since the loop's next call sends it again. `text_delta` and `thinking_delta` stream events are forwarded as `agent.Event`s of the same kinds; `tool_call` events are not (the final message carries the calls); the `done` message is returned. A stream that ends without `done` yields a `StopError` message, or `StopAborted` when the context is cancelled.
+
+`go run ./cmd/smoke [model]` runs one tool round trip against the real API (`ANTHROPIC_API_KEY`, optional `ANTHROPIC_BASE_URL`). It has not been run yet.
+
 ## Not yet
 
 The shared transcript transform (another model's thinking as text, failed turns left out, a result for every call), thinking bound to the system prompt and tools on newer models (`drop_bound_thinking` in `../lorca`), tool result images, the model catalog and cost.
