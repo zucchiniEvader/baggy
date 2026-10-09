@@ -334,61 +334,65 @@ func (a *app) providerSheetView(c *ui.Context) {
 func (a *app) settingsView(c *ui.Context) {
 	t := c.Theme()
 	ui.Modal(c, &a.settings, func() {
-		ui.Column(c).Width(520).Gap(14).Children(func() {
-			ui.Text(c, L("Settings")).Bold().FontSize(16)
-			ui.Text(c, L("Providers")).Bold()
-			ps, _ := a.st.Providers()
-			def := a.st.Setting(team.SettingDefaultProvider)
-			if len(ps) == 0 {
-				note := L("No provider yet: bots run on the environment's (GOBOT_API_KEY or ANTHROPIC_API_KEY).")
-				if a.fallback.APIKey == "" {
-					note = L("No provider yet. Add one to start chatting.")
+		ui.Scroll(c).MaxHeight(620).Children(func() {
+			ui.Column(c).Width(520).Gap(14).Padding(0, 12, 0, 0).Children(func() {
+				ui.Text(c, L("Settings")).Bold().FontSize(16)
+				ui.Text(c, L("Providers")).Bold()
+				ps, _ := a.st.Providers()
+				def := a.st.Setting(team.SettingDefaultProvider)
+				if len(ps) == 0 {
+					note := L("No provider yet: bots run on the environment's (GOBOT_API_KEY or ANTHROPIC_API_KEY).")
+					if a.fallback.APIKey == "" {
+						note = L("No provider yet. Add one to start chatting.")
+					}
+					ui.Text(c, note).FontSize(12).TextColor(t.TextMuted)
 				}
-				ui.Text(c, note).FontSize(12).TextColor(t.TextMuted)
-			}
-			ui.Column(c).Gap(6).Children(func() {
-				for _, p := range ps {
-					ui.Row(c.Key(p.ID)).Gap(8).AlignItems(ui.Center).Padding(6, 10).Radius(8).Background(t.Surface).Children(func() {
-						ui.Column(c).Grow(1).MinWidth(0).Children(func() {
-							name := p.Name
-							if p.ID == def || (def == "" && p.ID == ps[0].ID) {
-								name += " · " + L("default")
-							}
-							ui.Text(c, name).Bold().SingleLine()
-							ui.Text(c, apiLabel(p.API)+" · "+strings.Join(p.Models, ", ")).FontSize(11).TextColor(t.TextMuted).SingleLine()
-						})
-						if p.ID != def {
-							if ui.Button(c, L("Make Default")).Clicked() {
-								a.st.SetSetting(team.SettingDefaultProvider, p.ID)
-							}
-						}
-						if ui.Button(c, L("Edit…")).Clicked() {
-							a.settings = false
-							a.editProvider(p)
-						}
-						if ui.Button(c, L("Delete")).Clicked() {
-							id := p.ID
-							a.settings = false
-							a.ask(L("Delete %s?", p.Name), L("Bots on it move to the default provider."), L("Delete"), func() {
-								a.do(a.st.DeleteProvider(id))
-								if a.st.Setting(team.SettingDefaultProvider) == id {
-									a.st.SetSetting(team.SettingDefaultProvider, "")
+				ui.Column(c).Gap(6).Children(func() {
+					for _, p := range ps {
+						ui.Row(c.Key(p.ID)).Gap(8).AlignItems(ui.Center).Padding(6, 10).Radius(8).Background(t.Surface).Children(func() {
+							ui.Column(c).Grow(1).MinWidth(0).Children(func() {
+								name := p.Name
+								if p.ID == def || (def == "" && p.ID == ps[0].ID) {
+									name += " · " + L("default")
 								}
+								ui.Text(c, name).Bold().SingleLine()
+								ui.Text(c, apiLabel(p.API)+" · "+strings.Join(p.Models, ", ")).FontSize(11).TextColor(t.TextMuted).SingleLine()
 							})
-						}
-					})
-				}
-			})
-			if ui.Button(c, L("Add Provider…")).Clicked() {
-				a.settings = false
-				a.provSheet = &providerForm{open: true, api: apiLabels[0], web: true}
-			}
-			ui.Divider(c)
-			a.prefsView(c)
-			ui.Row(c).Justify(ui.End).Children(func() {
-				if ui.PrimaryButton(c, L("Done")).Clicked() {
+							if p.ID != def {
+								if ui.Button(c, L("Make Default")).Clicked() {
+									a.st.SetSetting(team.SettingDefaultProvider, p.ID)
+								}
+							}
+							if ui.Button(c, L("Edit…")).Clicked() {
+								a.settings = false
+								a.editProvider(p)
+							}
+							if ui.Button(c, L("Delete")).Clicked() {
+								id := p.ID
+								a.settings = false
+								a.ask(L("Delete %s?", p.Name), L("Bots on it move to the default provider."), L("Delete"), func() {
+									a.do(a.st.DeleteProvider(id))
+									if a.st.Setting(team.SettingDefaultProvider) == id {
+										a.st.SetSetting(team.SettingDefaultProvider, "")
+									}
+								})
+							}
+						})
+					}
+				})
+				if ui.Button(c, L("Add Provider…")).Clicked() {
 					a.settings = false
+					a.provSheet = &providerForm{open: true, api: apiLabels[0], web: true}
 				}
+				ui.Divider(c)
+				a.pluginsView(c)
+				ui.Divider(c)
+				a.prefsView(c)
+				ui.Row(c).Justify(ui.End).Children(func() {
+					if ui.PrimaryButton(c, L("Done")).Clicked() {
+						a.settings = false
+					}
+				})
 			})
 		})
 	})

@@ -18,7 +18,7 @@ When the user has not written in any chat for seven days (`AwayAfter`), due rout
 
 A run is a message from `store.System` in the bot's DM, with the routine in its `Meta`. The bot reads it as `[Routine "Name" is running on its schedule; nobody is typing. …] Task: …` and, once it has answered, as `[Routine "Name" ran on its schedule.] Task: …`. A reply that `IsPass` is taken out, leaving the marker; the outcome is kept on the routine. `RunRoutine` runs one now; asked for during a turn in that DM, it runs after it.
 
-**Checks.** With `Team.Checks` set (codemode, milestone 8), a routine with a `check` runs it first at each due time: nothing returned is a quiet check and no turn; what it returns starts the run, read after the task as data from its tools and not instructions; a failing script starts the run with its error so the bot fixes it.
+**Checks.** With `Team.Checks` set (the desktop sets `Team.RunCheck`, see `plugins.md`), a routine with a `check` runs it first at each due time: nothing returned is a quiet check and no turn; what it returns starts the run, read after the task as data from its tools and not instructions; a failing script starts the run with its error so the bot fixes it.
 
 ## The tool
 

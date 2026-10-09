@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/spike/gobot/agent"
+	"github.com/spike/gobot/mcp"
 	"github.com/spike/gobot/store"
 	"github.com/spike/gobot/tool"
 )
@@ -62,6 +63,11 @@ type Team struct {
 	// Retry asks a failed model call again (agent.DefaultRetry is a fair
 	// choice); nil tries once.
 	Retry *agent.Retry
+	// Plugins, when set, are the user's MCP servers, reached from the
+	// codemode tool, which every turn then has.
+	Plugins *mcp.Manager
+	// Codemode gives every turn the codemode tool, with or without plugins.
+	Codemode bool
 	// Checks, when set, runs a routine's check (a script) and returns what
 	// it found; "" means nothing new, so no turn runs. Codemode sets it.
 	Checks func(ctx context.Context, r store.Routine) (string, error)
@@ -286,12 +292,23 @@ func (t *Team) turn(ctx context.Context, chat store.Chat, botID string, r *run, 
 	}
 	tools = append(tools, t.teamTools(b, chat, r)...)
 	tools = append(tools, t.routinesTool(b))
+	if t.Memory {
+		tools = append(tools, t.MemoryTools(b, chat)...)
+	}
+	hooks := t.hooks(ctx, b, chat)
+	var plugins []mcp.Status
+	if t.Codemode || t.Plugins != nil {
+		plugins = t.plugins(ctx)
+		tools = append(tools, t.codemodeTool(b, chat, tools, hooks, plugins))
+	}
 	system := SystemPrompt(b, chat, bots, ws)
 	if rs, err := t.Store.Routines(b.ID); err == nil {
 		system += "\n\n" + RoutinesPrompt(rs, t.now())
 	}
+	if p := PluginsPrompt(plugins); p != "" {
+		system += "\n\n" + p
+	}
 	if t.Memory {
-		tools = append(tools, t.MemoryTools(b, chat)...)
 		system += "\n\n" + t.memoryOf(b).Prompt()
 	}
 	var compact func(context.Context, []agent.Message, bool) ([]agent.Message, bool)

@@ -167,4 +167,13 @@ var zh = map[string]string{
 	"Pause":                    "暂停",
 	"Resume":                   "恢复",
 	"Run Now":                  "立即运行",
+	"MCP Servers":              "MCP 服务器",
+	"Servers in mcp.json (the format Claude Desktop and Cursor use) give every bot their tools, which it calls from codemode scripts.": "mcp.json(Claude Desktop 和 Cursor 用的格式)里的服务器把工具提供给每个 bot,bot 在 codemode 脚本里调用它们。",
+	"Not connected yet": "尚未连接",
+	"%d tools":          "%d 个工具",
+	"Off":               "关闭",
+	"No servers yet.":   "还没有服务器。",
+	"Open mcp.json":     "打开 mcp.json",
+	"Reconnect":         "重新连接",
+	"Connecting…":       "连接中…",
 }

@@ -64,6 +64,10 @@ With `Memory` on, a turn gets `MemoryTools` (`memory_update`, `memory_log`, `rec
 
 `StartRoutines` runs the bots' scheduled tasks in their DMs, and every turn has the `routines` tool and a Routines section in its system prompt: see `routines.md`.
 
+## Plugins
+
+With `Plugins` (an `mcp.Manager`) or `Codemode` set, every turn has the `codemode` tool and a Plugins section in its system prompt: see `plugins.md`.
+
 ## Team tools
 
 - `message_bot(bot, text)`: by id or a name only one bot has; delivers into that bot's DM, where it answers. It refuses the bot itself and a member of the current group (talk there). Each delivery carries `Hops`, one more than the message that started the sender's turn (a user message resets it); past `MaxHops` (eight) it refuses, so two bots cannot loop.

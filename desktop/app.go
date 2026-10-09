@@ -5,6 +5,7 @@ import (
 
 	"github.com/egoist/mygo/ui"
 	"github.com/spike/gobot/agent"
+	"github.com/spike/gobot/mcp"
 	"github.com/spike/gobot/provider/connect"
 	"github.com/spike/gobot/store"
 	"github.com/spike/gobot/team"
@@ -45,6 +46,9 @@ type app struct {
 	readImage  func() []byte   // the clipboard's image as PNG, or nil
 	pickImage  func() []string // asks for image files
 	openFolder func(path string)
+	mcpPath    string       // the user's mcp.json
+	servers    []mcp.Status // as the last check left them
+	checking   bool
 }
 
 // chatView is one chat's transcript as drawn and its composer.

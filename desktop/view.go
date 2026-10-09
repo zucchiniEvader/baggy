@@ -1,10 +1,12 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 
 	"github.com/egoist/mygo/ui"
+	"github.com/spike/gobot/agent"
 	"github.com/spike/gobot/store"
 )
 
@@ -370,7 +372,13 @@ func (a *app) drawTool(c *ui.Context, ch store.Chat, r row) {
 			ui.Text(c, r.call.Name).Bold().FontSize(12)
 			ui.Text(c, toolStatus(r)).FontSize(12).TextColor(color)
 		})
-		ui.Text(c, oneLine(string(r.call.Args), 200)).Selectable().FontSize(12).TextColor(t.TextMuted)
+		if code, ok := scriptOf(r.call); ok {
+			ui.Column(c).Padding(6, 8).Radius(6).Background(t.Background).Children(func() {
+				ui.Text(c, tail(code, 12)).Font(monoFont).FontSize(11).Selectable()
+			})
+		} else {
+			ui.Text(c, oneLine(string(r.call.Args), 200)).Selectable().FontSize(12).TextColor(t.TextMuted)
+		}
 		if r.pending {
 			a.approvalButtons(c, ch.ID, r.call.CallID)
 		}
@@ -395,4 +403,16 @@ func tail(s string, n int) string {
 		return strings.Join(lines, "\n")
 	}
 	return fmt.Sprintf("… %d lines above\n%s", len(lines)-n, strings.Join(lines[len(lines)-n:], "\n"))
+}
+
+// scriptOf is a codemode call's script.
+func scriptOf(call agent.Part) (string, bool) {
+	if call.Name != "codemode" {
+		return "", false
+	}
+	var a struct{ Code string }
+	if json.Unmarshal(call.Args, &a) != nil || a.Code == "" {
+		return "", false
+	}
+	return strings.TrimSpace(a.Code), true
 }

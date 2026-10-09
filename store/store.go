@@ -98,6 +98,11 @@ CREATE TABLE routines (
 	last_check TEXT NOT NULL DEFAULT '',
 	created INTEGER NOT NULL, enabled_at INTEGER NOT NULL
 );
+`, `
+CREATE TABLE script_store (
+	chat_id TEXT NOT NULL, bot_id TEXT NOT NULL, key TEXT NOT NULL, value TEXT NOT NULL,
+	PRIMARY KEY (chat_id, bot_id, key)
+);
 `}
 
 func (s *Store) migrate() error {
@@ -383,4 +388,17 @@ func (s *Store) Seed() (bool, error) {
 		return false, err
 	}
 	return true, s.SetSetting("seeded", "1")
+}
+
+// ScriptLoad and ScriptSave keep codemode's values per chat and bot.
+func (s *Store) ScriptLoad(chatID, botID, key string) (string, bool) {
+	var v string
+	err := s.db.QueryRow(`SELECT value FROM script_store WHERE chat_id = ? AND bot_id = ? AND key = ?`, chatID, botID, key).Scan(&v)
+	return v, err == nil
+}
+
+func (s *Store) ScriptSave(chatID, botID, key, value string) error {
+	_, err := s.db.Exec(`INSERT INTO script_store(chat_id, bot_id, key, value) VALUES(?,?,?,?)
+		ON CONFLICT(chat_id, bot_id, key) DO UPDATE SET value = excluded.value`, chatID, botID, key, value)
+	return err
 }

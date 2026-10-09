@@ -30,6 +30,10 @@ Each opened chat has a `chatView`: rows built from its stored entries (`buildRow
 
 The app starts the routine scheduler with the window; a bot's inspector lists its routines and opens a routine's sheet (`routines.md`).
 
+## Plugins
+
+The app keeps an `mcp.Manager` over `mcp.json` in its data folder, turns codemode on, and runs routine checks through it; Settings has the MCP Servers section (`plugins.md`).
+
 ## Memory
 
 Bots run with memory and compaction on (`GOBOT_MEMORY=0` turns memory off, `GOBOT_MEMORY_FLUSH=0` the flush). The bot inspector's Memory rows show how much of `MEMORY.md` loads against the budget, Edit… opens it in an editor (saved through `memory.Save`, so a change the bot made meanwhile stops the save with Reload and Overwrite), and Show Folder opens the workspace. A compaction shows in the transcript as a note.

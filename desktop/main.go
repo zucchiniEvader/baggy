@@ -16,6 +16,7 @@ import (
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
 	"github.com/spike/gobot/agent"
+	"github.com/spike/gobot/mcp"
 	"github.com/spike/gobot/provider/connect"
 	"github.com/spike/gobot/store"
 	"github.com/spike/gobot/team"
@@ -45,6 +46,10 @@ func main() {
 	fallback := connect.FromEnv("claude-sonnet-5-5")
 	var a *app
 	tm := newTeam(st, fallback, func(e team.Event) { a.post(func() { a.apply(e) }) })
+	tm.Plugins = mcp.NewManager(filepath.Join(dataDir(), "mcp.json"))
+	defer tm.Plugins.Close()
+	tm.Codemode = true
+	tm.Checks = tm.RunCheck
 	pending := make(chan func(), 1024) // events before the window is up
 	a = newApp(st, tm, func(fn func()) { pending <- fn })
 	a.fallback = fallback
@@ -64,6 +69,7 @@ func main() {
 		})
 		a.post = win.Update
 		a.openFolder = func(p string) { go mygo.Shell.OpenPath(p) }
+		a.mcpPath = filepath.Join(dataDir(), "mcp.json")
 		a.pickImage = func() []string {
 			paths, _ := mygo.Dialog.Open(mygo.OpenDialogOptions{Parent: win, Title: L("Attach Images"), Multiple: true,
 				Filters: []mygo.FileFilter{{Name: L("Images"), Extensions: []string{"png", "jpg", "jpeg", "gif", "webp"}}}})
