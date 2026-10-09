@@ -2,53 +2,148 @@ package main
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
+	"sort"
+	"strings"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/egoist/mygo/ui"
 	"github.com/spike/gobot/agent"
 	"github.com/spike/gobot/store"
+	"github.com/spike/gobot/team"
 	"github.com/spike/gobot/tool"
 )
 
-// Declined is the result a bot reads for a command the user did not allow.
+// Declined is the result a bot reads for an action the user did not allow.
 const Declined = "The user declined to run this command."
 
-// approvals holds the shell commands waiting for the user. While on, every
-// shell call waits for Allow or Deny on its card; Stop denies them.
+// Commands modes: what happens before a shell command or a plugin call that
+// does not only read.
+const (
+	ModeRun    = "run"    // it runs
+	ModeAsk    = "ask"    // it waits for Allow or Deny
+	ModeReview = "review" // the bot's model reviews it; only what it doubts waits
+)
+
+// approvals holds the actions waiting for the user; Stop denies them.
 type approvals struct {
-	a  *app
-	on atomic.Bool
+	a    *app
+	mode atomic.Value // string
 
 	mu      sync.Mutex
-	waiting map[string]chan bool // call id to its answer
-	chatOf  map[string]string
+	waiting map[string]*waiting // by call id
+}
+
+// waiting is an action on hold.
+type waiting struct {
+	id, chat, bot string
+	call          agent.Part
+	reason        string // why a review asked
+	since         time.Time
+	answer        chan bool
 }
 
 func newApprovals(a *app) *approvals {
-	return &approvals{a: a, waiting: map[string]chan bool{}, chatOf: map[string]string{}}
+	p := &approvals{a: a, waiting: map[string]*waiting{}}
+	p.mode.Store(ModeRun)
+	return p
+}
+
+func (p *approvals) setMode(m string) { p.mode.Store(m) }
+
+// gated reports whether an action goes through approval: a shell command,
+// or a plugin tool its server does not mark read-only.
+func (p *approvals) gated(call agent.Part) bool {
+	if call.Name == "shell" {
+		return true
+	}
+	if !strings.Contains(call.Name, "__") || p.a.team.Plugins == nil {
+		return false
+	}
+	t, ok := p.a.team.Plugins.Lookup(call.Name)
+	return !ok || !t.Annotations.ReadOnlyHint
+}
+
+// rule is what Always Allow saves for an action: the exact command, or the
+// plugin tool.
+func rule(call agent.Part) string {
+	if call.Name == "shell" {
+		return "shell:" + commandOf(call)
+	}
+	return "tool:" + call.Name
+}
+
+func (p *approvals) rules() []string {
+	var out []string
+	for _, r := range strings.Split(p.a.st.Setting("allow_rules"), "\n") {
+		if r != "" {
+			out = append(out, r)
+		}
+	}
+	return out
+}
+
+func (p *approvals) allowed(call agent.Part) bool {
+	want := rule(call)
+	for _, r := range p.rules() {
+		if r == want {
+			return true
+		}
+	}
+	return false
+}
+
+func (p *approvals) alwaysAllow(call agent.Part) {
+	rs := append(p.rules(), rule(call))
+	sort.Strings(rs)
+	p.a.st.SetSetting("allow_rules", strings.Join(rs, "\n"))
+}
+
+// describe is an action as a review and a card read it.
+func describe(call agent.Part) string {
+	if call.Name == "shell" {
+		return "the shell command: " + commandOf(call)
+	}
+	return fmt.Sprintf("the plugin tool %s with %s", call.Name, oneLine(string(call.Args), 600))
 }
 
 // approve is team.Team's Approve hook; it runs on a turn's goroutine.
 func (p *approvals) approve(ctx context.Context, b store.Bot, chat store.Chat, call agent.Part) *tool.Result {
-	if call.Name != "shell" || !p.on.Load() {
+	mode, _ := p.mode.Load().(string)
+	if mode == ModeRun || !p.gated(call) || p.allowed(call) {
 		return nil
 	}
-	answer := make(chan bool, 1)
+	reason := ""
+	if mode == ModeReview {
+		if m, err := p.a.team.Model(b); err == nil {
+			ok, why := team.Review(ctx, m, b, p.a.team.LastRequest(chat.ID), describe(call), p.a.st.Workspace(b.ID))
+			if ok {
+				return nil
+			}
+			reason = why
+		}
+	}
+	w := &waiting{id: call.CallID, chat: chat.ID, bot: b.ID, call: call, reason: reason, since: time.Now(), answer: make(chan bool, 1)}
 	p.mu.Lock()
-	p.waiting[call.CallID] = answer
-	p.chatOf[call.CallID] = chat.ID
+	p.waiting[w.id] = w
 	p.mu.Unlock()
-	p.a.post(func() { p.a.markPending(chat.ID, call.CallID, true) })
+	p.a.post(func() {
+		p.a.markPending(chat.ID, call.CallID, true)
+		if p.a.notify != nil && !p.a.watching(chat.ID) {
+			p.a.notify(b.Name, L("wants to run a command"), oneLine(describe(call), 200), chat.ID)
+		}
+	})
 	defer func() {
 		p.mu.Lock()
-		delete(p.waiting, call.CallID)
-		delete(p.chatOf, call.CallID)
+		delete(p.waiting, w.id)
 		p.mu.Unlock()
 		p.a.post(func() { p.a.markPending(chat.ID, call.CallID, false) })
 	}()
 	select {
-	case ok := <-answer:
+	case ok := <-w.answer:
 		if ok {
 			return nil
 		}
@@ -57,31 +152,37 @@ func (p *approvals) approve(ctx context.Context, b store.Bot, chat store.Chat, c
 	return &tool.Result{Text: Declined, IsError: true}
 }
 
-// decide answers a waiting call.
-func (p *approvals) decide(callID string, ok bool) {
+// decide answers a waiting action.
+func (p *approvals) decide(id string, ok bool) {
 	p.mu.Lock()
-	ch := p.waiting[callID]
+	w := p.waiting[id]
 	p.mu.Unlock()
-	if ch != nil {
+	if w != nil {
 		select {
-		case ch <- ok:
+		case w.answer <- ok:
 		default:
 		}
 	}
 }
 
-// denyAll denies what a chat has waiting.
-func (p *approvals) denyAll(chatID string) {
+// in lists a chat's waiting actions, oldest first.
+func (p *approvals) in(chatID string) []*waiting {
 	p.mu.Lock()
-	var ids []string
-	for id, c := range p.chatOf {
-		if c == chatID {
-			ids = append(ids, id)
+	defer p.mu.Unlock()
+	var out []*waiting
+	for _, w := range p.waiting {
+		if w.chat == chatID {
+			out = append(out, w)
 		}
 	}
-	p.mu.Unlock()
-	for _, id := range ids {
-		p.decide(id, false)
+	sort.Slice(out, func(i, j int) bool { return out[i].since.Before(out[j].since) })
+	return out
+}
+
+// denyAll denies what a chat has waiting.
+func (p *approvals) denyAll(chatID string) {
+	for _, w := range p.in(chatID) {
+		p.decide(w.id, false)
 	}
 }
 
@@ -98,13 +199,50 @@ func (a *app) markPending(chatID, callID string, on bool) {
 	}
 }
 
+// approvalButtons are Allow, Always Allow and Deny for a waiting action.
 func (a *app) approvalButtons(c *ui.Context, chatID, callID string) {
 	ui.Row(c).Gap(8).Children(func() {
 		if ui.PrimaryButton(c.Key("allow-"+callID), L("Allow")).Clicked() {
+			a.approvals.decide(callID, true)
+		}
+		if ui.Button(c.Key("always-"+callID), L("Always Allow")).Tooltip(L("Allow this exact command (or this plugin tool) from now on")).Clicked() {
+			a.approvals.mu.Lock()
+			w := a.approvals.waiting[callID]
+			a.approvals.mu.Unlock()
+			if w != nil {
+				a.approvals.alwaysAllow(w.call)
+			}
 			a.approvals.decide(callID, true)
 		}
 		if ui.Button(c.Key("deny-"+callID), L("Deny")).Clicked() {
 			a.approvals.decide(callID, false)
 		}
 	})
+}
+
+// approvalBar is the chat's waiting actions above the composer: the ones a
+// script asked for have no card of their own.
+func (a *app) approvalBar(c *ui.Context, ch store.Chat) {
+	ws := a.approvals.in(ch.ID)
+	if len(ws) == 0 {
+		return
+	}
+	t := c.Theme()
+	ui.Column(c).Padding(10, 16).Gap(8).Background(t.Surface).BorderWidth(1, 0, 0, 0).BorderColor(t.Border).Children(func() {
+		for _, w := range ws {
+			ui.Column(c.Key("wait-" + w.id)).Gap(4).Children(func() {
+				ui.Text(c, L("%s wants to run %s", a.name(w.bot), describe(w.call))).FontSize(12).Bold().Selectable()
+				if w.reason != "" {
+					ui.Text(c, L("Auto-review: %s", w.reason)).FontSize(12).TextColor(t.Warning)
+				}
+				a.approvalButtons(c, ch.ID, w.id)
+			})
+		}
+	})
+}
+
+func commandOf(call agent.Part) string {
+	var a struct{ Command string }
+	json.Unmarshal(call.Args, &a)
+	return oneLine(a.Command, 400)
 }

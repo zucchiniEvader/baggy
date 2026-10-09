@@ -11,7 +11,7 @@ import (
 type prefs struct {
 	st           *store.Store
 	showThinking bool
-	approveShell bool
+	commands     string // ModeRun, ModeAsk, ModeReview
 	keepRunning  bool   // closing the window hides it; the tray brings it back
 	language     string // "Auto", "English", "中文"
 	sideWidth    float32
@@ -32,7 +32,13 @@ func loadPrefs(st *store.Store) *prefs {
 		return def
 	}
 	p.showThinking = get("pref.show_thinking", true)
-	p.approveShell = get("pref.approve_shell", false)
+	p.commands = st.Setting("pref.commands")
+	if p.commands == "" {
+		p.commands = ModeRun
+		if get("pref.approve_shell", false) { // the switch it replaces
+			p.commands = ModeAsk
+		}
+	}
 	p.keepRunning = get("pref.keep_running", true)
 	p.inspector = get("pref.inspector", false)
 	if l := st.Setting("pref.language"); l != "" {
@@ -52,7 +58,7 @@ func (p *prefs) save() {
 		return "0"
 	}
 	p.st.SetSetting("pref.show_thinking", b(p.showThinking))
-	p.st.SetSetting("pref.approve_shell", b(p.approveShell))
+	p.st.SetSetting("pref.commands", p.commands)
 	p.st.SetSetting("pref.keep_running", b(p.keepRunning))
 	p.st.SetSetting("pref.inspector", b(p.inspector))
 	p.st.SetSetting("pref.language", p.language)
@@ -61,7 +67,7 @@ func (p *prefs) save() {
 
 // apply puts the preferences into effect.
 func (a *app) applyPrefs() {
-	a.approvals.on.Store(a.prefs.approveShell)
+	a.approvals.setMode(a.prefs.commands)
 	setLanguage(a.prefs.language, a.locale)
 }
 
@@ -71,8 +77,12 @@ func (a *app) prefsView(c *ui.Context) {
 	ui.Text(c, L("Preferences")).Bold()
 	ui.Form(c, func() {
 		ui.Field(c, L("Show thinking"), func() { changed = ui.Switch(c, &p.showThinking).Changed() || changed })
-		ui.Field(c, L("Ask before shell commands"), func() { changed = ui.Switch(c, &p.approveShell).Changed() || changed }).
-			Description(L("Each command waits on its card for Allow or Deny."))
+		ui.Field(c, L("Commands"), func() {
+			choice := modeLabel(p.commands)
+			if ui.Select(c, &choice, modeLabels()).Changed() {
+				p.commands, changed = modeOf(choice), true
+			}
+		}).Description(L("Before a shell command or a plugin action that changes something: run it, ask every time, or let the bot's model review it and ask only when in doubt. Always Allow keeps an exact command."))
 		ui.Field(c, L("Keep running when closed"), func() { changed = ui.Switch(c, &p.keepRunning).Changed() || changed }).
 			Description(L("Bots keep working; the tray icon opens the window again."))
 		ui.Field(c, L("Language"), func() { changed = ui.Select(c, &p.language, languages).Changed() || changed })
@@ -89,4 +99,33 @@ func (a *app) layoutChanged() {
 		a.prefs.sideWidth, a.prefs.inspector = a.sideWidth, a.inspector
 		a.prefs.save()
 	}
+}
+
+var modes = []string{ModeRun, ModeAsk, ModeReview}
+
+func modeLabel(m string) string {
+	switch m {
+	case ModeAsk:
+		return L("Ask every time")
+	case ModeReview:
+		return L("Auto-review")
+	}
+	return L("Run")
+}
+
+func modeLabels() []string {
+	var out []string
+	for _, m := range modes {
+		out = append(out, modeLabel(m))
+	}
+	return out
+}
+
+func modeOf(label string) string {
+	for _, m := range modes {
+		if modeLabel(m) == label {
+			return m
+		}
+	}
+	return ModeRun
 }

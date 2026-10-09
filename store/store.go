@@ -99,10 +99,14 @@ CREATE TABLE routines (
 	created INTEGER NOT NULL, enabled_at INTEGER NOT NULL
 );
 `, `
-CREATE TABLE script_store (
+CREATE TABLE IF NOT EXISTS script_store (
 	chat_id TEXT NOT NULL, bot_id TEXT NOT NULL, key TEXT NOT NULL, value TEXT NOT NULL,
 	PRIMARY KEY (chat_id, bot_id, key)
 );
+`, `
+ALTER TABLE bots ADD COLUMN emoji TEXT NOT NULL DEFAULT '';
+ALTER TABLE bots ADD COLUMN color TEXT NOT NULL DEFAULT '';
+ALTER TABLE chats ADD COLUMN read_seq INTEGER NOT NULL DEFAULT 0;
 `}
 
 func (s *Store) migrate() error {
@@ -238,14 +242,16 @@ type Bot struct {
 	Provider    string `json:"provider"` // a Provider id; "" is the default provider
 	Model       string `json:"model"`    // "" is the provider's first model
 	Thinking    string `json:"thinking"` // a provider.ThinkingLevel
+	Emoji       string `json:"emoji"`    // its look: an emoji on a color, else its initials
+	Color       string `json:"color"`    // #rrggbb
 	Created     int64  `json:"created"`
 }
 
-const botCols = `id, name, description, provider, model, thinking, created`
+const botCols = `id, name, description, provider, model, thinking, emoji, color, created`
 
 func scanBot(sc interface{ Scan(...any) error }) (Bot, error) {
 	var b Bot
-	err := sc.Scan(&b.ID, &b.Name, &b.Description, &b.Provider, &b.Model, &b.Thinking, &b.Created)
+	err := sc.Scan(&b.ID, &b.Name, &b.Description, &b.Provider, &b.Model, &b.Thinking, &b.Emoji, &b.Color, &b.Created)
 	if errors.Is(err, sql.ErrNoRows) {
 		err = ErrNotFound
 	}
@@ -270,8 +276,8 @@ func (s *Store) CreateBot(b Bot) (Bot, error) {
 		return Bot{}, err
 	}
 	defer tx.Rollback()
-	if _, err := tx.Exec(`INSERT INTO bots(`+botCols+`) VALUES(?,?,?,?,?,?,?)`,
-		b.ID, b.Name, b.Description, b.Provider, b.Model, b.Thinking, b.Created); err != nil {
+	if _, err := tx.Exec(`INSERT INTO bots(`+botCols+`) VALUES(?,?,?,?,?,?,?,?,?)`,
+		b.ID, b.Name, b.Description, b.Provider, b.Model, b.Thinking, b.Emoji, b.Color, b.Created); err != nil {
 		return Bot{}, err
 	}
 	chat := NewID("chat")
@@ -289,8 +295,8 @@ func (s *Store) UpdateBot(b Bot) error {
 	if strings.TrimSpace(b.Name) == "" {
 		return errors.New("a bot needs a name")
 	}
-	res, err := s.db.Exec(`UPDATE bots SET name=?, description=?, provider=?, model=?, thinking=? WHERE id=?`,
-		strings.TrimSpace(b.Name), b.Description, b.Provider, b.Model, b.Thinking, b.ID)
+	res, err := s.db.Exec(`UPDATE bots SET name=?, description=?, provider=?, model=?, thinking=?, emoji=?, color=? WHERE id=?`,
+		strings.TrimSpace(b.Name), b.Description, b.Provider, b.Model, b.Thinking, b.Emoji, b.Color, b.ID)
 	return notFound(res, err)
 }
 

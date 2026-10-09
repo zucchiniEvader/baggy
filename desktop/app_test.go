@@ -204,7 +204,7 @@ func TestShellApproval(t *testing.T) {
 		}
 		return agent.Message{StopReason: agent.StopToolUse, Parts: []agent.Part{{Kind: agent.PartToolCall, CallID: "c1", Name: "shell", Args: json.RawMessage(`{"command":"ls"}`)}}}
 	}))
-	h.a.prefs.approveShell = true
+	h.a.prefs.commands = ModeAsk
 	h.a.applyPrefs()
 	h.send("list files")
 	h.pump("the approval card", func() bool { return h.tt.HasText("Allow") })
@@ -409,4 +409,73 @@ func TestRoutineInspectorAndSheet(t *testing.T) {
 	if h.tt.HasText("PASS") {
 		t.Fatal("a pass shows")
 	}
+}
+
+func TestUnreadAndNotification(t *testing.T) {
+	h := newHarness(t, script(func(bot string, msgs []agent.Message) agent.Message { return say("Report ready.") }))
+	var notes []string
+	h.a.notify = func(title, subtitle, body, chatID string) { notes = append(notes, title+": "+body) }
+	chef := h.a.bots[0]
+	scout, _ := h.st.CreateBot(store.Bot{Name: "Scout", Emoji: "🦊", Color: "#1971c2"})
+	h.a.reload()
+	dmScout, _ := h.st.DMOf(scout.ID)
+	h.a.selectChat(dmScout.ID) // the user looks at Scout while Chef works
+	dmChef, _ := h.st.DMOf(chef.ID)
+	h.a.team.Send(dmChef.ID, "write the report", nil, nil)
+	h.pump("the reply", func() bool { return h.idle() && h.a.unread[dmChef.ID] == 1 })
+	h.tt.Frame()
+	if len(notes) != 1 || notes[0] != "Chef: Report ready." || !h.tt.HasText("1 unread") {
+		t.Fatalf("notes %q texts %q", notes, h.tt.Texts())
+	}
+	h.a.selectChat(dmChef.ID)
+	if h.a.unread[dmChef.ID] != 0 || h.st.Unread(dmChef.ID) != 0 {
+		t.Fatal("not read")
+	}
+	if !h.tt.HasText("🦊") {
+		h.tt.Frame()
+		if !h.tt.HasText("🦊") {
+			t.Fatalf("no emoji look: %q", h.tt.Texts())
+		}
+	}
+}
+
+// reviewing answers reviews by the command and turns by a script.
+type reviewing struct{ turn script }
+
+func (r reviewing) Call(ctx context.Context, system string, msgs []agent.Message, tools []tool.Tool, emit func(agent.Event)) agent.Message {
+	if strings.HasPrefix(system, "You review one action") {
+		text := lastText(msgs)
+		answer := `{"decision":"allow","reason":"Lists files."}`
+		if strings.Contains(text, "rm -rf") {
+			answer = `{"decision":"ask","reason":"Deletes a folder."}`
+		}
+		return agent.Message{Role: agent.RoleAssistant, StopReason: agent.StopEnd, Parts: []agent.Part{{Kind: agent.PartText, Text: answer}}}
+	}
+	return r.turn.Call(ctx, system, msgs, tools, emit)
+}
+
+func TestAutoReviewAndAlwaysAllow(t *testing.T) {
+	h := newHarness(t, reviewing{script(func(bot string, msgs []agent.Message) agent.Message {
+		if l := msgs[len(msgs)-1]; l.Role == agent.RoleTool {
+			return say("result: " + l.Parts[0].Text)
+		}
+		return agent.Message{StopReason: agent.StopToolUse, Parts: []agent.Part{{Kind: agent.PartToolCall, CallID: store.NewID("c"), Name: "shell",
+			Args: json.RawMessage(`{"command":"` + lastText(msgs) + `"}`)}}}
+	})})
+	h.a.prefs.commands = ModeReview
+	h.a.applyPrefs()
+	h.send("ls")
+	h.pump("ls ran", func() bool { return h.tt.HasText(`result: ran {"command":"ls"}`) && h.idle() })
+
+	h.send("rm -rf build")
+	h.pump("the review's question", func() bool { return h.tt.HasText("Auto-review: Deletes a folder.") })
+	if err := h.tt.Click("Always Allow"); err != nil {
+		t.Fatal(err)
+	}
+	h.pump("rm ran", func() bool { return h.tt.HasText(`result: ran {"command":"rm -rf build"}`) && h.idle() })
+	if !strings.Contains(h.st.Setting("allow_rules"), "shell:rm -rf build") {
+		t.Fatalf("rules %q", h.st.Setting("allow_rules"))
+	}
+	h.send("rm -rf build") // allowed by the rule, no question
+	h.pump("rm ran again", func() bool { return h.idle() && len(h.a.approvals.in(h.a.sel)) == 0 })
 }

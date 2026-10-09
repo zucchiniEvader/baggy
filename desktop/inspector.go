@@ -86,7 +86,7 @@ func (a *app) memberRow(c *ui.Context, ch store.Chat, id string) {
 	}
 	row.ContextMenu(menu)
 	row.Children(func() {
-		ui.Avatar(c, name, nil).FontSize(10)
+		a.avatar(c, id, name, 10)
 		ui.Text(c, name).Grow(1).SingleLine().TextColor(a.authorColor(id))
 		if ch.Owner == id {
 			ui.Text(c, L("Owner")).FontSize(11).TextColor(t.TextMuted)
@@ -103,7 +103,7 @@ func (a *app) botDetails(c *ui.Context, id string) {
 	}
 	ui.Text(c, L("Bot")).FontSize(11).Bold().TextColor(t.TextMuted)
 	ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
-		ui.Avatar(c, b.Name, nil)
+		a.avatar(c, b.ID, b.Name, 14)
 		ui.Text(c, b.Name).Bold()
 	})
 	if b.Description != "" {
@@ -134,5 +134,8 @@ func (a *app) botDetails(c *ui.Context, id string) {
 func (a *app) spentRow(c *ui.Context, ch store.Chat) {
 	if es, err := a.st.Messages(ch.ID, 0); err == nil {
 		ui.Text(c, L("Spent in this chat: %s", money(spent(es)))).FontSize(12).TextColor(c.Theme().TextMuted)
+	}
+	if line := a.contextLine(ch.ID); line != "" {
+		ui.Text(c, line).FontSize(12).TextColor(c.Theme().TextMuted)
 	}
 }

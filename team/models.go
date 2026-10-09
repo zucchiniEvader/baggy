@@ -69,3 +69,5 @@ func Models(st *store.Store, fallback connect.Config) func(store.Bot) (agent.Mod
 		return provider.Model{Provider: p, Thinking: provider.ThinkingLevel(b.Thinking)}, nil
 	}
 }
+
+func connectFallback(t *Team) connect.Config { return t.Fallback }

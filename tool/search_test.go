@@ -83,3 +83,41 @@ func TestFindAndGrep(t *testing.T) {
 		t.Fatalf("grep one file: %q", r.Text)
 	}
 }
+
+func TestSeveralEditsLsAndGitignore(t *testing.T) {
+	dir := tree(t)
+	os.WriteFile(filepath.Join(dir, "e.txt"), []byte("alpha beta gamma"), 0o644)
+	if r := runTool(t, EditFile{Dir: dir}, map[string]any{"path": "e.txt", "edits": []map[string]any{{"old": "alpha", "new": "A"}, {"old": "gamma", "new": "G"}}}); r.IsError {
+		t.Fatal(r.Text)
+	}
+	if b, _ := os.ReadFile(filepath.Join(dir, "e.txt")); string(b) != "A beta G" {
+		t.Fatalf("%q", b)
+	}
+	if r := runTool(t, EditFile{Dir: dir}, map[string]any{"path": "e.txt", "edits": []map[string]any{{"old": "beta", "new": "B"}, {"old": "nope", "new": "x"}}}); !r.IsError || !strings.Contains(r.Text, "edit 2") {
+		t.Fatalf("%+v", r)
+	}
+	if b, _ := os.ReadFile(filepath.Join(dir, "e.txt")); string(b) != "A beta G" {
+		t.Fatal("a failed edit changed the file")
+	}
+	r := runTool(t, Ls{Dir: dir}, map[string]any{})
+	if !strings.HasPrefix(r.Text, ".git/") || !strings.Contains(r.Text, "sub/") || !strings.Contains(r.Text, "a.go  ") {
+		t.Fatalf("ls: %q", r.Text)
+	}
+	os.WriteFile(filepath.Join(dir, ".gitignore"), []byte("# build output\n*.md\n/build/\n!keep.md\n"), 0o644)
+	os.MkdirAll(filepath.Join(dir, "build"), 0o755)
+	os.WriteFile(filepath.Join(dir, "build", "x.go"), []byte("hello"), 0o644)
+	os.WriteFile(filepath.Join(dir, "keep.md"), []byte("hello"), 0o644)
+	os.WriteFile(filepath.Join(dir, "sub", ".gitignore"), []byte("b.go\n"), 0o644)
+	r = runTool(t, Find{Dir: dir}, map[string]any{"pattern": "**"})
+	for _, gone := range []string{"sub/c.md", "build/x.go", "sub/b.go"} {
+		if strings.Contains(r.Text, gone) {
+			t.Fatalf("find showed %s: %q", gone, r.Text)
+		}
+	}
+	if !strings.Contains(r.Text, "keep.md") || !strings.Contains(r.Text, "a.go") {
+		t.Fatalf("find: %q", r.Text)
+	}
+	if r := runTool(t, Grep{Dir: dir}, map[string]any{"pattern": "(?i)hello"}); strings.Contains(r.Text, "build/") || !strings.Contains(r.Text, "keep.md") {
+		t.Fatalf("grep: %q", r.Text)
+	}
+}

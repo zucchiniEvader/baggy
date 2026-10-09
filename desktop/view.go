@@ -114,7 +114,7 @@ func (a *app) sidebar(c *ui.Context) {
 		if !focused {
 			a.side.keyboard = false
 		}
-		a.side.keys(holder, chosen, len(a.chats), func(i int) { a.sel = a.chats[i].ID }) // the keys stay in the list
+		a.side.keys(holder, chosen, len(a.chats), func(i int) { a.sel = a.chats[i].ID; a.markRead() }) // the keys stay in the list
 		holder.Children(func() {
 			chats := a.chats
 			a.side.list.Key = func(i int) any { return chats[i].ID }
@@ -146,6 +146,7 @@ func (a *app) chatRow(c *ui.Context, ch store.Chat, chosen, focused bool) {
 		a.side.focus = true // the list takes the keys, the arrows move from here
 		if !chosen {
 			a.sel = ch.ID
+			a.markRead()
 		}
 	}
 	row.ContextMenu(func(m *ui.Menu) {
@@ -166,7 +167,11 @@ func (a *app) chatRow(c *ui.Context, ch store.Chat, chosen, focused bool) {
 		}
 	})
 	row.Children(func() {
-		ui.Avatar(c, title, nil).FontSize(12)
+		if ch.Kind == store.DM {
+			a.avatar(c, ch.Owner, title, 12)
+		} else {
+			ui.Avatar(c, title, nil).FontSize(12)
+		}
 		ui.Column(c).Grow(1).Shrink(1).MinWidth(0).Gap(1).Children(func() {
 			ui.Text(c, title).FontSize(13).FontWeight(500).SingleLine()
 			status := ""
@@ -180,6 +185,9 @@ func (a *app) chatRow(c *ui.Context, ch store.Chat, chosen, focused bool) {
 				ui.Text(c, status).FontSize(11).TextColor(sub).SingleLine()
 			}
 		})
+		if n := a.unread[ch.ID]; n > 0 && !chosen {
+			ui.Badge(c, fmt.Sprint(n)).Label(L("%d unread", n))
+		}
 	})
 }
 
@@ -200,6 +208,7 @@ func (a *app) main(c *ui.Context) {
 		ui.Column(c).Grow(1).MinWidth(0).Fill().Children(func() {
 			a.header(c, *ch)
 			a.transcript(c, *ch, v)
+			a.approvalBar(c, *ch)
 			a.composer(c, *ch, v)
 		})
 		if a.inspector {

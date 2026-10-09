@@ -20,6 +20,7 @@ type botForm struct {
 	name, description   string
 	providerName, model string
 	thinking            string
+	emoji, color        string
 	err                 string
 }
 
@@ -52,7 +53,7 @@ func (a *app) providerName(id string) string {
 }
 
 func (a *app) newBot() {
-	a.botSheet = &botForm{open: true, providerName: L("Default"), thinking: "Default"}
+	a.botSheet = &botForm{open: true, providerName: L("Default"), thinking: "Default", color: colorName("")}
 }
 
 func (a *app) editBot(id string) {
@@ -66,7 +67,8 @@ func (a *app) editBot(id string) {
 			th = l
 		}
 	}
-	a.botSheet = &botForm{open: true, id: b.ID, name: b.Name, description: b.Description, providerName: a.providerName(b.Provider), model: b.Model, thinking: th}
+	a.botSheet = &botForm{open: true, id: b.ID, name: b.Name, description: b.Description, providerName: a.providerName(b.Provider), model: b.Model, thinking: th,
+		emoji: b.Emoji, color: colorName(b.Color)}
 }
 
 func (a *app) saveBot(f *botForm) bool {
@@ -74,7 +76,8 @@ func (a *app) saveBot(f *botForm) bool {
 	if th == "default" {
 		th = ""
 	}
-	b := store.Bot{ID: f.id, Name: f.name, Description: f.description, Provider: a.providerID(f.providerName), Model: strings.TrimSpace(f.model), Thinking: th}
+	b := store.Bot{ID: f.id, Name: f.name, Description: f.description, Provider: a.providerID(f.providerName), Model: strings.TrimSpace(f.model), Thinking: th,
+		Emoji: strings.TrimSpace(f.emoji), Color: colorHex(f.color)}
 	var err error
 	if f.id == "" {
 		b, err = a.st.CreateBot(b)
@@ -111,6 +114,8 @@ func (a *app) botSheetView(c *ui.Context) {
 				ui.Field(c, L("Provider"), func() { ui.Select(c, &f.providerName, a.providerNames()) })
 				ui.Field(c, L("Model"), func() { ui.TextInput(c, &f.model).Placeholder(a.modelHint(f.providerName)) })
 				ui.Field(c, L("Thinking"), func() { ui.Select(c, &f.thinking, thinkingLevels) })
+				ui.Field(c, L("Emoji"), func() { ui.TextInput(c, &f.emoji).Placeholder("🦊").Width(80) }).Description(L("Its look, on the color below; empty shows its initials."))
+				ui.Field(c, L("Color"), func() { ui.Select(c, &f.color, colorNames()) })
 			})
 			if f.err != "" {
 				ui.Text(c, f.err).TextColor(c.Theme().Danger)

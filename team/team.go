@@ -13,6 +13,7 @@ import (
 
 	"github.com/spike/gobot/agent"
 	"github.com/spike/gobot/mcp"
+	"github.com/spike/gobot/provider/connect"
 	"github.com/spike/gobot/store"
 	"github.com/spike/gobot/terminal"
 	"github.com/spike/gobot/tool"
@@ -51,6 +52,9 @@ type Team struct {
 	Store *store.Store
 	// Model resolves the model a bot runs on.
 	Model func(store.Bot) (agent.Model, error)
+	// Fallback is the provider config used when the store has none, for
+	// telling what model a bot runs on (team.Models takes its own).
+	Fallback connect.Config
 	// Tools are the bot's own tools for a turn (the team's are added).
 	Tools func(b store.Bot, workspace string) []tool.Tool
 	// Emit receives events from any goroutine; it must not block for long.

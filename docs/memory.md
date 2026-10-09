@@ -10,4 +10,4 @@ Every write is atomic (a temporary file renamed over the old) and scrubbed first
 
 `Search(query, since)` finds the lines holding every word of the query in `MEMORY.md`, the topic notes and the diary (only diary days from `since` on when it is set). `Save(was, text)` replaces `MEMORY.md` with a person's edit unless the file no longer holds `was` (`ErrChanged`); `Loaded` reports how much of it loads.
 
-The team's tools, the flush before a compaction, the recent-work brief and `recall` over chats are in `team.md`. The desktop's bot inspector shows how much of `MEMORY.md` loads and opens an editor that refuses to save over the bot's own change until Reload or Overwrite.
+`recall` takes `since` and `until` (`24h`, `3d`, `2w`, `today`, `yesterday`, or a date, `team.When`; as an end a day is its last moment) or `days`. The team's tools, the flush before a compaction, the recent-work brief and `recall` over chats are in `team.md`. The desktop's bot inspector shows how much of `MEMORY.md` loads and opens an editor that refuses to save over the bot's own change until Reload or Overwrite.

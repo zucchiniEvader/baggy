@@ -26,6 +26,10 @@ Each opened chat has a `chatView`: rows built from its stored entries (`buildRow
 - **Sheets**: New/Edit Bot (name, description, provider, model, thinking), New/Edit Group (name, description, members), Settings (providers with Make Default, Edit…, Delete, Add Provider…, and the preferences), a provider (name, protocol, base URL, key, models, web search for the Messages API and Responses, on by default, and the protocol's reasoning switch), confirmations for deletes.
 - **Command palette** (Cmd+K): the chats and the commands, filtered as typed; it owns the keyboard, so its highlight is the accent. Cmd+N new bot, Cmd+, Settings, Cmd+1–9 a chat, Escape stops the chat shown.
 
+## Unread, notifications, looks
+
+A chat's unread count (the bots' finished replies after its read mark) shows as a badge in the sidebar; a chat is read while it is shown in a focused window. A run that ends with a reply or a failure out of sight, and an action waiting for approval, post a system notification (the bot's name, the group's title, the first 280 characters), whose click opens the chat. A bot's look is an emoji on a color, set in its sheet, shown in the sidebar and inspector (its initials without one). The inspector shows how full the chat's last request was against the model's window ("Context: 42k of 1.0M tokens (4%)") beside what the chat cost.
+
 ## Routines
 
 The app starts the routine scheduler with the window; a bot's inspector lists its routines and opens a routine's sheet (`routines.md`).
@@ -44,6 +48,6 @@ Bots run with memory and compaction on (`GOBOT_MEMORY=0` turns memory off, `GOBO
 
 ## Approvals and preferences
 
-With "Ask before shell commands" on, every `shell` call waits on its card ("waiting for approval") for Allow or Deny; a denial, or Stop, gives the bot `Declined`. Preferences sit in the store's settings: show thinking, ask before shell commands, keep running when closed (closing hides the window; the tray icon's menu opens it again or quits), language (Auto follows the system's; English; 中文, from `l10n_zh.go`, keyed by the English string `L` takes), and the sidebar's width and the inspector, saved as they change. The window remembers its size, position and maximized state (MyGo's `StateKey: "main"`).
+The Commands preference says what happens before a shell command or a plugin tool its server does not mark read-only (a codemode script's too): Run, Ask every time, or Auto-review, where `team.Review` with the bot's own model lets through what is safe and only what it doubts waits, its reason shown. A waiting action shows on its card ("waiting for approval") and in a bar above the composer (a script's calls have no card), with Allow, Always Allow (keeps the exact command, or the plugin tool, as a rule in the settings) and Deny; a denial, or Stop, gives the bot `Declined`. Preferences sit in the store's settings: show thinking, commands, keep running when closed (closing hides the window; the tray icon's menu opens it again or quits), language (Auto follows the system's; English; 中文, from `l10n_zh.go`, keyed by the English string `L` takes), and the sidebar's width and the inspector, saved as they change. The window remembers its size, position and maximized state (MyGo's `StateKey: "main"`).
 
 The built app has been started against a scratch `GOBOT_DATA` and ran without errors; its views are checked in the offscreen Tester and by the rendered PNGs, not by hand.

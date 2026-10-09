@@ -127,5 +127,73 @@ func (t *Team) teamTools(b store.Bot, chat store.Chat, r *run) []tool.Tool {
 				return tool.Result{Text: to.Name + " owns the work now."}
 			}})
 	}
+	tools = append(tools, t.listTeammates(b), t.editBot(b))
 	return tools
+}
+
+func (t *Team) listTeammates(b store.Bot) tool.Tool {
+	return Func{N: "list_teammates", D: "List the user's bots: id, name, description, the provider, model and thinking each runs with, and whether it is working now.",
+		S: `{"type":"object","properties":{},"additionalProperties":false}`,
+		F: func(ctx context.Context, raw json.RawMessage) tool.Result {
+			bots, err := t.Store.Bots()
+			if err != nil {
+				return errResult("%v", err)
+			}
+			var s strings.Builder
+			for _, o := range bots {
+				model := o.Model
+				if cfg, err := Config(t.Store, o, connectFallback(t)); err == nil {
+					model = cfg.Model
+				}
+				fmt.Fprintf(&s, "- %s (id %s)", o.Name, o.ID)
+				if o.ID == b.ID {
+					s.WriteString(" — you")
+				}
+				fmt.Fprintf(&s, ": model %s", model)
+				if o.Thinking != "" {
+					s.WriteString(", thinking " + o.Thinking)
+				}
+				if dm, err := t.Store.DMOf(o.ID); err == nil && t.Busy(dm.ID) {
+					s.WriteString(", working now")
+				}
+				if d := strings.TrimSpace(o.Description); d != "" {
+					s.WriteString("\n  " + strings.ReplaceAll(d, "\n", "\n  "))
+				}
+				s.WriteString("\n")
+			}
+			return tool.Result{Text: s.String()}
+		}}
+}
+
+func (t *Team) editBot(b store.Bot) tool.Tool {
+	return Func{N: "edit_bot", D: "Change a teammate's profile, or your own: only the fields given change. A description is the complete account of the bot's job and how it works; it applies from that bot's next turn. Only when the user asked for it.",
+		S: `{"type":"object","properties":{"bot":{"type":"string","description":"id or name"},"name":{"type":"string"},"description":{"type":"string"},"model":{"type":"string"},"thinking":{"type":"string","enum":["","off","low","medium","high"]}},"required":["bot"],"additionalProperties":false}`,
+		F: func(ctx context.Context, raw json.RawMessage) tool.Result {
+			var a struct {
+				Bot, Name, Description, Model string
+				Thinking                      *string
+			}
+			json.Unmarshal(raw, &a)
+			o, err := t.findBot(a.Bot)
+			if err != nil {
+				return errResult("%v", err)
+			}
+			if a.Name != "" {
+				o.Name = a.Name
+			}
+			if a.Description != "" {
+				o.Description = a.Description
+			}
+			if a.Model != "" {
+				o.Model = a.Model
+			}
+			if a.Thinking != nil {
+				o.Thinking = *a.Thinking
+			}
+			if err := t.Store.UpdateBot(o); err != nil {
+				return errResult("%v", err)
+			}
+			t.emit(Event{Kind: EventChanged, BotID: o.ID})
+			return tool.Result{Text: fmt.Sprintf("Updated %s (id %s).", o.Name, o.ID)}
+		}}
 }

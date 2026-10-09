@@ -15,33 +15,42 @@ import (
 	"strings"
 )
 
-// EditFile replaces one exact passage of a file (or every one).
+// EditFile replaces exact passages of a file: one (old, new), or several
+// (edits) applied in order, each to the text the one before left.
 type EditFile struct{ Dir string }
 
 func (EditFile) Name() string { return "edit_file" }
 func (EditFile) Description() string {
-	return "Replace an exact passage of a text file with new text. `old` must appear exactly once unless `all` is true; " +
-		"include enough surrounding lines to make it unique. Prefer this to rewriting a whole file."
+	return "Replace exact passages of a text file. Give old and new for one, or edits [{old, new}] for several, applied in order. " +
+		"Each old must appear exactly once unless all is true; include enough surrounding lines to make it unique. Prefer this to rewriting a whole file."
 }
 func (EditFile) Schema() json.RawMessage {
 	return json.RawMessage(`{"type":"object","properties":{
 "path":{"type":"string","description":"File path, absolute or relative to the working directory."},
 "old":{"type":"string","description":"The exact text to replace, whitespace included."},
 "new":{"type":"string","description":"The text to put in its place."},
-"all":{"type":"boolean","description":"Replace every occurrence. Default false."}
-},"required":["path","old","new"],"additionalProperties":false}`)
+"all":{"type":"boolean","description":"Replace every occurrence. Default false."},
+"edits":{"type":"array","items":{"type":"object","properties":{"old":{"type":"string"},"new":{"type":"string"},"all":{"type":"boolean"}},"required":["old","new"],"additionalProperties":false}}
+},"required":["path"],"additionalProperties":false}`)
+}
+
+type edit struct {
+	Old, New string
+	All      bool
 }
 
 func (e EditFile) Execute(_ context.Context, args json.RawMessage) Result {
 	var a struct {
 		Path, Old, New string
 		All            bool
+		Edits          []edit
 	}
 	if err := json.Unmarshal(args, &a); err != nil {
 		return Result{Text: err.Error(), IsError: true}
 	}
-	if a.Old == "" {
-		return Result{Text: "old is empty: use write_file to create a file", IsError: true}
+	edits := a.Edits
+	if a.Old != "" || len(edits) == 0 {
+		edits = append([]edit{{a.Old, a.New, a.All}}, edits...)
 	}
 	p := resolve(e.Dir, a.Path)
 	b, err := os.ReadFile(p)
@@ -49,28 +58,84 @@ func (e EditFile) Execute(_ context.Context, args json.RawMessage) Result {
 		return Result{Text: err.Error(), IsError: true}
 	}
 	text := string(b)
-	n := strings.Count(text, a.Old)
-	if n == 0 && strings.Contains(text, "\r\n") && !strings.Contains(a.Old, "\r\n") {
-		// The file has Windows line ends and the model wrote Unix ones.
-		a.Old, a.New = strings.ReplaceAll(a.Old, "\n", "\r\n"), strings.ReplaceAll(a.New, "\n", "\r\n")
-		n = strings.Count(text, a.Old)
-	}
-	switch {
-	case n == 0:
-		return Result{Text: "old was not found in " + a.Path + "; read the file and copy the passage exactly", IsError: true}
-	case n > 1 && !a.All:
-		return Result{Text: fmt.Sprintf("old appears %d times in %s; add surrounding lines to make it unique, or set all", n, a.Path), IsError: true}
-	}
-	if a.All {
-		text = strings.ReplaceAll(text, a.Old, a.New)
-	} else {
-		text = strings.Replace(text, a.Old, a.New, 1)
+	crlf := strings.Contains(text, "\r\n")
+	total := 0
+	for i, ed := range edits {
+		which := ""
+		if len(edits) > 1 {
+			which = fmt.Sprintf("edit %d: ", i+1)
+		}
+		if ed.Old == "" {
+			return Result{Text: which + "old is empty: use write_file to create a file", IsError: true}
+		}
+		n := strings.Count(text, ed.Old)
+		if n == 0 && crlf && !strings.Contains(ed.Old, "\r\n") {
+			// The file has Windows line ends and the model wrote Unix ones.
+			ed.Old, ed.New = strings.ReplaceAll(ed.Old, "\n", "\r\n"), strings.ReplaceAll(ed.New, "\n", "\r\n")
+			n = strings.Count(text, ed.Old)
+		}
+		switch {
+		case n == 0:
+			return Result{Text: which + "old was not found in " + a.Path + "; read the file and copy the passage exactly. Nothing was changed.", IsError: true}
+		case n > 1 && !ed.All:
+			return Result{Text: fmt.Sprintf("%sold appears %d times in %s; add surrounding lines to make it unique, or set all. Nothing was changed.", which, n, a.Path), IsError: true}
+		}
+		if ed.All {
+			text = strings.ReplaceAll(text, ed.Old, ed.New)
+			total += n
+		} else {
+			text = strings.Replace(text, ed.Old, ed.New, 1)
+			total++
+		}
 	}
 	info, _ := os.Stat(p)
 	if err := os.WriteFile(p, []byte(text), info.Mode().Perm()); err != nil {
 		return Result{Text: err.Error(), IsError: true}
 	}
-	return Result{Text: fmt.Sprintf("replaced %d occurrence(s) in %s", map[bool]int{true: n, false: 1}[a.All], a.Path)}
+	return Result{Text: fmt.Sprintf("replaced %d occurrence(s) in %s", total, a.Path)}
+}
+
+// Ls lists a folder.
+type Ls struct{ Dir string }
+
+func (Ls) Name() string { return "ls" }
+func (Ls) Description() string {
+	return "List a folder's entries: folders end with /, files show their size. At most 500, folders first."
+}
+func (Ls) Schema() json.RawMessage {
+	return json.RawMessage(`{"type":"object","properties":{
+"path":{"type":"string","description":"A folder, absolute or relative to the working directory. Default: the working directory."}
+},"additionalProperties":false}`)
+}
+
+func (l Ls) Execute(_ context.Context, args json.RawMessage) Result {
+	var a struct{ Path string }
+	json.Unmarshal(args, &a)
+	es, err := os.ReadDir(resolve(l.Dir, a.Path))
+	if err != nil {
+		return Result{Text: err.Error(), IsError: true}
+	}
+	sort.SliceStable(es, func(i, j int) bool { return es[i].IsDir() && !es[j].IsDir() })
+	var b strings.Builder
+	for i, e := range es {
+		if i == 500 {
+			b.WriteString(note("%d more entries not shown", len(es)-500))
+			break
+		}
+		if e.IsDir() {
+			b.WriteString(e.Name() + "/\n")
+			continue
+		}
+		size := ""
+		if info, err := e.Info(); err == nil {
+			size = fmt.Sprintf("  %d", info.Size())
+		}
+		b.WriteString(e.Name() + size + "\n")
+	}
+	if len(es) == 0 {
+		return Result{Text: "(empty)"}
+	}
+	return Result{Text: strings.TrimRight(b.String(), "\n")}
 }
 
 // skipDir is a folder find and grep do not enter.
@@ -90,7 +155,7 @@ type Find struct{ Dir string }
 func (Find) Name() string { return "find" }
 func (Find) Description() string {
 	return "List files under a folder whose path matches a glob: `*` within a name, `**` across folders " +
-		"(`**/*.go`, `docs/*.md`). Skips .git, node_modules and the like. At most 200 paths, newest first."
+		"(`**/*.go`, `docs/*.md`). Skips what .gitignore ignores, .git, node_modules and the like. At most 200 paths, newest first."
 }
 func (Find) Schema() json.RawMessage {
 	return json.RawMessage(`{"type":"object","properties":{
@@ -114,18 +179,26 @@ func (f Find) Execute(ctx context.Context, args json.RawMessage) Result {
 		mod int64
 	}
 	var hits []hit
+	ig := &ignorer{}
 	err = filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
 		if err != nil || ctx.Err() != nil {
 			return ctx.Err()
 		}
-		if d.IsDir() {
-			if p != root && skipDir(d.Name()) {
-				return filepath.SkipDir
-			}
-			return nil
-		}
 		rel, _ := filepath.Rel(root, p)
 		rel = filepath.ToSlash(rel)
+		if d.IsDir() {
+			if p != root && (skipDir(d.Name()) || ig.ignored(rel, true)) {
+				return filepath.SkipDir
+			}
+			if p == root {
+				rel = ""
+			}
+			ig.load(p, rel)
+			return nil
+		}
+		if ig.ignored(rel, false) {
+			return nil
+		}
 		if re.MatchString(rel) {
 			info, _ := d.Info()
 			var mod int64
@@ -201,7 +274,7 @@ type Grep struct{ Dir string }
 func (Grep) Name() string { return "grep" }
 func (Grep) Description() string {
 	return "Search text files for lines matching a regular expression (Go syntax; (?i) for any case). " +
-		"Returns path:line: text, at most 200 lines. `glob` limits the files (e.g. *.go). Skips binary files, .git, node_modules."
+		"Returns path:line: text, at most 200 lines. `glob` limits the files (e.g. *.go). Skips binary files and what .gitignore ignores, .git, node_modules."
 }
 func (Grep) Schema() json.RawMessage {
 	return json.RawMessage(`{"type":"object","properties":{
@@ -261,18 +334,26 @@ func (g Grep) Execute(ctx context.Context, args json.RawMessage) Result {
 	if !info.IsDir() {
 		search(root, path.Base(filepath.ToSlash(a.Path)))
 	} else {
+		ig := &ignorer{}
 		filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
 			if err != nil || ctx.Err() != nil {
 				return ctx.Err()
 			}
-			if d.IsDir() {
-				if p != root && skipDir(d.Name()) {
-					return filepath.SkipDir
-				}
-				return nil
-			}
 			rel, _ := filepath.Rel(root, p)
 			rel = filepath.ToSlash(rel)
+			if d.IsDir() {
+				if p != root && (skipDir(d.Name()) || ig.ignored(rel, true)) {
+					return filepath.SkipDir
+				}
+				if p == root {
+					rel = ""
+				}
+				ig.load(p, rel)
+				return nil
+			}
+			if ig.ignored(rel, false) {
+				return nil
+			}
 			if only == nil || only.MatchString(rel) {
 				search(p, rel)
 			}

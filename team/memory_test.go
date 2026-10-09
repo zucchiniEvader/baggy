@@ -127,3 +127,22 @@ func TestRecallBriefAndDiary(t *testing.T) {
 		t.Fatal("recall with days")
 	}
 }
+
+func TestWhen(t *testing.T) {
+	now := time.Date(2026, 10, 9, 15, 0, 0, 0, time.UTC)
+	cases := map[string]time.Time{
+		"24h": now.Add(-24 * time.Hour), "3d": now.AddDate(0, 0, -3), "today": time.Date(2026, 10, 9, 0, 0, 0, 0, time.UTC),
+		"yesterday": time.Date(2026, 10, 8, 0, 0, 0, 0, time.UTC), "2026-10-01": time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC),
+	}
+	for s, want := range cases {
+		if got, err := When(s, now, false); err != nil || !got.Equal(want) {
+			t.Errorf("%s: %v %v", s, got, err)
+		}
+	}
+	if got, _ := When("yesterday", now, true); got.Day() != 8 || got.Hour() != 23 {
+		t.Errorf("end of yesterday %v", got)
+	}
+	if _, err := When("soon", now, false); err == nil {
+		t.Error("soon read")
+	}
+}

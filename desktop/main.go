@@ -12,6 +12,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/egoist/mygo"
@@ -78,6 +79,23 @@ func main() {
 		a.post = win.Update
 		a.openFolder = func(p string) { go mygo.Shell.OpenPath(p) }
 		a.mcpPath = filepath.Join(dataDir(), "mcp.json")
+		win.OnFocus(func() { win.Update(func() { a.focused = true; a.markRead() }) })
+		win.OnBlur(func() { win.Update(func() { a.focused = false }) })
+		a.notify = func(title, subtitle, body, chatID string) {
+			go mygo.NewNotification(mygo.NotificationOptions{ID: "chat-" + chatID + "-" + store.NewID("n"), Title: title, Subtitle: subtitle, Body: body, Group: chatID}).Show()
+		}
+		mygo.App.OnNotificationClick(func(id string) {
+			win.Update(func() {
+				if rest, ok := strings.CutPrefix(id, "chat-"); ok {
+					if i := strings.LastIndex(rest, "-n-"); i >= 0 {
+						rest = rest[:i]
+					}
+					a.selectChat(rest)
+				}
+				win.Show()
+				mygo.App.Focus()
+			})
+		})
 		a.pickImage = func() []string {
 			paths, _ := mygo.Dialog.Open(mygo.OpenDialogOptions{Parent: win, Title: L("Attach Images"), Multiple: true,
 				Filters: []mygo.FileFilter{{Name: L("Images"), Extensions: []string{"png", "jpg", "jpeg", "gif", "webp"}}}})

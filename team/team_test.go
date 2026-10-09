@@ -352,3 +352,57 @@ type ctxScript func(ctx context.Context, msgs []agent.Message) agent.Message
 func (f ctxScript) Call(ctx context.Context, _ string, msgs []agent.Message, _ []tool.Tool, _ func(agent.Event)) agent.Message {
 	return f(ctx, msgs)
 }
+
+func TestListTeammatesAndEditBot(t *testing.T) {
+	var listed string
+	f := setup(t, script(func(bot string, msgs []agent.Message) agent.Message {
+		l := msgs[len(msgs)-1]
+		if l.Role == agent.RoleTool {
+			if strings.Contains(l.Parts[0].Text, "(id ") && listed == "" {
+				listed = l.Parts[0].Text
+				return call("edit_bot", map[string]any{"bot": "Scout", "description": "Finds facts, with sources.", "thinking": "high"})
+			}
+			return say("ok")
+		}
+		return call("list_teammates", map[string]any{})
+	}))
+	a := f.bot(t, "A")
+	s := f.bot(t, "Scout")
+	dm, _ := f.st.DMOf(a.ID)
+	f.team.Send(dm.ID, "update Scout", nil, nil)
+	f.team.Wait()
+	if !strings.Contains(listed, "A (id "+a.ID+") — you") || !strings.Contains(listed, "Scout (id "+s.ID+")") {
+		t.Fatalf("listed %q", listed)
+	}
+	got, _ := f.st.Bot(s.ID)
+	if got.Description != "Finds facts, with sources." || got.Thinking != "high" || got.Name != "Scout" {
+		t.Fatalf("bot %+v", got)
+	}
+}
+
+func TestReview(t *testing.T) {
+	answer := ""
+	m := script(func(bot string, msgs []agent.Message) agent.Message { return say(answer) })
+	b := store.Bot{Name: "A"}
+	answer = "```json\n{\"decision\": \"allow\", \"reason\": \"Lists files.\"}\n```"
+	if ok, why := Review(context.Background(), sysWrap(m), b, "what is here?", "ls -la", "/w"); !ok || why != "Lists files." {
+		t.Fatalf("%v %q", ok, why)
+	}
+	answer = `{"decision":"ask","reason":"Deletes files outside the workspace."}`
+	if ok, why := Review(context.Background(), sysWrap(m), b, "tidy up", "rm -rf ~/Documents", "/w"); ok || !strings.Contains(why, "Deletes") {
+		t.Fatalf("%v %q", ok, why)
+	}
+	answer = "sure, go ahead"
+	if ok, _ := Review(context.Background(), sysWrap(m), b, "x", "y", "/w"); ok {
+		t.Fatal("an unreadable answer allowed")
+	}
+}
+
+// sysWrap lets a script answer the review's system prompt (it has no "You are X").
+type sysWrap script
+
+func (s sysWrap) Call(ctx context.Context, system string, msgs []agent.Message, tools []tool.Tool, emit func(agent.Event)) agent.Message {
+	m := s("", msgs)
+	m.Role, m.StopReason = agent.RoleAssistant, agent.StopEnd
+	return m
+}

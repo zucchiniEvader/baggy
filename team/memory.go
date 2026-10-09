@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -73,15 +74,31 @@ func (t *Team) MemoryTools(b store.Bot, chat store.Chat) []tool.Tool {
 				}
 				return tool.Result{Text: "Logged."}
 			}},
-		Func{N: "recall", D: "Search your memory files, your diary, and every chat you are in for messages holding all the words of query, newest first. days limits it to the last days.",
-			S: `{"type":"object","properties":{"query":{"type":"string"},"days":{"type":"integer","minimum":1}},"required":["query"],"additionalProperties":false}`,
+		Func{N: "recall", D: "Search your memory files, your diary, and every chat you are in for messages holding all the words of query, newest first. since and until limit it in time: 24h, 3d, today, yesterday, or a date (2026-10-01); days is the last that many days.",
+			S: `{"type":"object","properties":{"query":{"type":"string"},"since":{"type":"string"},"until":{"type":"string"},"days":{"type":"integer","minimum":1}},"required":["query"],"additionalProperties":false}`,
 			F: func(ctx context.Context, raw json.RawMessage) tool.Result {
 				var a struct {
-					Query string
-					Days  int
+					Query, Since, Until string
+					Days                int
 				}
 				json.Unmarshal(raw, &a)
-				return tool.Result{Text: t.recall(b, a.Query, a.Days)}
+				now := t.now()
+				var since, until time.Time
+				if a.Days > 0 {
+					since = now.Add(-time.Duration(a.Days) * 24 * time.Hour)
+				}
+				var err error
+				if a.Since != "" {
+					if since, err = When(a.Since, now, false); err != nil {
+						return errResult("%v", err)
+					}
+				}
+				if a.Until != "" {
+					if until, err = When(a.Until, now, true); err != nil {
+						return errResult("%v", err)
+					}
+				}
+				return tool.Result{Text: t.recallRange(b, a.Query, since, until)}
 			}},
 	}
 }
@@ -91,11 +108,60 @@ func (t *Team) recall(b store.Bot, query string, days int) string {
 	if days > 0 {
 		since = t.now().Add(-time.Duration(days) * 24 * time.Hour)
 	}
+	return t.recallRange(b, query, since, time.Time{})
+}
+
+// When reads a time a bot names: 24h, 3d, 2w (that long ago), today,
+// yesterday, or a date; a date or day as an end (end true) is its last
+// moment.
+func When(s string, now time.Time, end bool) (time.Time, error) {
+	s = strings.ToLower(strings.TrimSpace(s))
+	day := func(t time.Time) time.Time {
+		d := time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, now.Location())
+		if end {
+			d = d.Add(24*time.Hour - time.Nanosecond)
+		}
+		return d
+	}
+	switch s {
+	case "today":
+		return day(now), nil
+	case "yesterday":
+		return day(now.AddDate(0, 0, -1)), nil
+	}
+	if len(s) >= 2 {
+		if n, err := strconv.Atoi(s[:len(s)-1]); err == nil && n > 0 {
+			switch s[len(s)-1] {
+			case 'h':
+				return now.Add(-time.Duration(n) * time.Hour), nil
+			case 'd':
+				return now.AddDate(0, 0, -n), nil
+			case 'w':
+				return now.AddDate(0, 0, -7*n), nil
+			}
+		}
+	}
+	if d, err := time.ParseInLocation("2006-01-02", s, now.Location()); err == nil {
+		return day(d), nil
+	}
+	return time.Time{}, fmt.Errorf("%q is not a time: 24h, 3d, today, yesterday, or a date like 2026-10-01", s)
+}
+
+func (t *Team) recallRange(b store.Bot, query string, since, until time.Time) string {
 	words := memory.Words(query)
 	if len(words) == 0 {
 		return "Give some words to look for."
 	}
 	hits := t.memoryOf(b).Search(query, since)
+	if !until.IsZero() {
+		kept := hits[:0]
+		for _, h := range hits {
+			if h.When.IsZero() || !h.When.After(until) {
+				kept = append(kept, h)
+			}
+		}
+		hits = kept
+	}
 	bots, _ := t.Store.Bots()
 	byID := botNames(bots)
 	chats, _ := t.Store.ChatsOf(b.ID)
@@ -106,7 +172,7 @@ func (t *Team) recall(b store.Bot, query string, days int) string {
 		}
 		for _, e := range es {
 			when := time.UnixMilli(e.Created)
-			if (!since.IsZero() && when.Before(since)) || e.Msg.Role == agent.RoleTool {
+			if (!since.IsZero() && when.Before(since)) || (!until.IsZero() && when.After(until)) || e.Msg.Role == agent.RoleTool {
 				continue
 			}
 			text := textOf(e.Msg)

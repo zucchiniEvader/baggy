@@ -29,6 +29,9 @@ type app struct {
 	side      listNav
 	inspector bool
 	tasksOpen bool
+	focused   bool           // the window has the focus
+	unread    map[string]int // by chat
+	notify    func(title, subtitle, body, chatID string)
 	sideWidth float32
 
 	botSheet   *botForm
@@ -80,7 +83,7 @@ type confirmation struct {
 }
 
 func newApp(st *store.Store, tm *team.Team, post func(func())) *app {
-	a := &app{st: st, team: tm, post: post, views: map[string]*chatView{}, busy: map[string]bool{}}
+	a := &app{st: st, team: tm, post: post, views: map[string]*chatView{}, busy: map[string]bool{}, unread: map[string]int{}, focused: true}
 	a.approvals = newApprovals(a)
 	a.prefs = loadPrefs(st)
 	a.sideWidth, a.inspector = a.prefs.sideWidth, a.prefs.inspector
@@ -99,6 +102,7 @@ func (a *app) reload() {
 		a.byID[b.ID] = b
 	}
 	a.chats, _ = a.st.Chats()
+	a.countUnread()
 	if a.sel != "" && a.chat(a.sel) == nil {
 		a.sel = ""
 		if len(a.chats) > 0 {
@@ -155,6 +159,7 @@ func (v *chatView) notice(text string) { v.rows = append(v.rows, row{kind: rowNo
 func (a *app) selectChat(id string) {
 	a.sel = id
 	a.view(id).focus = true
+	a.markRead()
 }
 
 // apply folds one team event into the state.
@@ -165,6 +170,9 @@ func (a *app) apply(e team.Event) {
 		return
 	case team.EventRunEnd:
 		delete(a.busy, e.ChatID)
+		a.countUnread()
+		a.markRead()
+		a.notifyEnd(e.ChatID)
 		if v := a.views[e.ChatID]; v != nil {
 			v.working, v.retrying = "", ""
 			v.stream = map[string]int{}
@@ -177,6 +185,9 @@ func (a *app) apply(e team.Event) {
 	v := a.views[e.ChatID]
 	if e.Kind == team.EventEntry {
 		a.reload() // the chat moves up the sidebar
+		if e.ChatID == a.sel {
+			a.markRead()
+		}
 	}
 	if v == nil {
 		return // not opened: it loads from the store when it is

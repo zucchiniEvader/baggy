@@ -32,7 +32,8 @@ type Chat struct {
 	Owner       string   `json:"owner"`       // the bot holding the work
 	Members     []string `json:"members"`     // bot ids in turn order
 	Created     int64    `json:"created"`
-	Updated     int64    `json:"updated"` // last message
+	Updated     int64    `json:"updated"`  // last message
+	ReadSeq     int64    `json:"read_seq"` // the newest message the user has seen
 }
 
 func (s *Store) Chat(id string) (Chat, error) {
@@ -72,14 +73,14 @@ func (s *Store) ChatsOf(botID string) ([]Chat, error) {
 }
 
 func (s *Store) queryChats(where string, args ...any) ([]Chat, error) {
-	rows, err := s.db.Query(`SELECT id, kind, title, description, owner, created, updated FROM chats `+where, args...)
+	rows, err := s.db.Query(`SELECT id, kind, title, description, owner, created, updated, read_seq FROM chats `+where, args...)
 	if err != nil {
 		return nil, err
 	}
 	var out []Chat
 	for rows.Next() {
 		var c Chat
-		if err := rows.Scan(&c.ID, &c.Kind, &c.Title, &c.Description, &c.Owner, &c.Created, &c.Updated); err != nil {
+		if err := rows.Scan(&c.ID, &c.Kind, &c.Title, &c.Description, &c.Owner, &c.Created, &c.Updated, &c.ReadSeq); err != nil {
 			rows.Close()
 			return nil, err
 		}
@@ -393,4 +394,20 @@ func (s *Store) Since(botID string, after int64, limit int) ([]Entry, error) {
 func (s *Store) DeleteEntry(chatID string, seq int64) error {
 	_, err := s.db.Exec(`DELETE FROM messages WHERE chat_id = ? AND seq = ?`, chatID, seq)
 	return err
+}
+
+// MarkRead records that the user has seen a chat up to its newest message.
+func (s *Store) MarkRead(chatID string) error {
+	_, err := s.db.Exec(`UPDATE chats SET read_seq = (SELECT COALESCE(MAX(seq), 0) FROM messages WHERE chat_id = ?) WHERE id = ?`, chatID, chatID)
+	return err
+}
+
+// Unread counts the bots' finished replies after the chat's read mark.
+func (s *Store) Unread(chatID string) int {
+	var n int
+	s.db.QueryRow(`SELECT COUNT(*) FROM messages m JOIN chats c ON c.id = m.chat_id
+		WHERE m.chat_id = ? AND m.seq > c.read_seq AND m.author != ? AND m.author != ?
+		AND json_extract(m.body, '$.role') = 'assistant' AND json_extract(m.body, '$.stop_reason') != 'tool_use'`,
+		chatID, User, System).Scan(&n)
+	return n
 }

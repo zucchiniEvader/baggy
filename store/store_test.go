@@ -158,3 +158,23 @@ func TestRoutines(t *testing.T) {
 		t.Fatal("no messages yet")
 	}
 }
+
+func TestLooksAndUnread(t *testing.T) {
+	s := open(t)
+	b := must(s.CreateBot(Bot{Name: "A", Emoji: "🦊", Color: "#ff8800"}))
+	if got := must(s.Bot(b.ID)); got.Emoji != "🦊" || got.Color != "#ff8800" {
+		t.Fatalf("look %+v", got)
+	}
+	dm := must(s.DMOf(b.ID))
+	must(s.Append(dm.ID, User, "", Meta{}, agent.Message{Role: agent.RoleUser}))
+	must(s.Append(dm.ID, b.ID, "t", Meta{}, agent.Message{Role: agent.RoleAssistant, StopReason: agent.StopToolUse}))
+	must(s.Append(dm.ID, b.ID, "t", Meta{}, agent.Message{Role: agent.RoleTool}))
+	must(s.Append(dm.ID, b.ID, "t", Meta{}, agent.Message{Role: agent.RoleAssistant, StopReason: agent.StopEnd}))
+	if n := s.Unread(dm.ID); n != 1 {
+		t.Fatalf("unread %d", n)
+	}
+	mustDo(s.MarkRead(dm.ID))
+	if n := s.Unread(dm.ID); n != 0 || must(s.Chat(dm.ID)).ReadSeq != 4 {
+		t.Fatalf("after read %d", n)
+	}
+}
