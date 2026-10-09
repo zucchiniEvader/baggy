@@ -1,0 +1,331 @@
+package main
+
+import (
+	"context"
+	"encoding/json"
+	"image/png"
+	"os"
+	"path/filepath"
+	"regexp"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/egoist/mygo/ui"
+	"github.com/spike/gobot/agent"
+	"github.com/spike/gobot/store"
+	"github.com/spike/gobot/team"
+	"github.com/spike/gobot/tool"
+)
+
+// script answers as the bot the system prompt names.
+type script func(bot string, msgs []agent.Message) agent.Message
+
+var whoRe = regexp.MustCompile(`You are (\S+) \(id`)
+
+func (s script) Call(ctx context.Context, system string, msgs []agent.Message, tools []tool.Tool, emit func(agent.Event)) agent.Message {
+	m := s(whoRe.FindStringSubmatch(system)[1], msgs)
+	m.Role = agent.RoleAssistant
+	if m.StopReason == "" {
+		m.StopReason = agent.StopEnd
+	}
+	if t := messageText(m); t != "" {
+		emit(agent.Event{Kind: agent.EventTextDelta, Delta: t})
+	}
+	return m
+}
+
+func say(s string) agent.Message {
+	return agent.Message{Parts: []agent.Part{{Kind: agent.PartText, Text: s}}}
+}
+
+func lastText(msgs []agent.Message) string { return messageText(msgs[len(msgs)-1]) }
+
+type echoTool struct{}
+
+func (echoTool) Name() string            { return "shell" }
+func (echoTool) Description() string     { return "runs" }
+func (echoTool) Schema() json.RawMessage { return json.RawMessage(`{"type":"object"}`) }
+func (echoTool) Execute(_ context.Context, a json.RawMessage) tool.Result {
+	return tool.Result{Text: "ran " + string(a)}
+}
+
+// harness is an app over a temporary store, its events run on the test
+// goroutine as the window would run them.
+type harness struct {
+	t     *testing.T
+	st    *store.Store
+	a     *app
+	tt    *ui.Tester
+	posts chan func()
+}
+
+func newHarness(t *testing.T, m agent.Model) *harness {
+	st, err := store.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { st.Close() })
+	st.Seed()
+	h := &harness{t: t, st: st, posts: make(chan func(), 1024)}
+	tm := &team.Team{Store: st, Model: func(store.Bot) (agent.Model, error) { return m, nil },
+		Tools: func(store.Bot, string) []tool.Tool { return []tool.Tool{echoTool{}} }}
+	h.a = newApp(st, tm, func(fn func()) { h.posts <- fn })
+	tm.Emit = func(e team.Event) { h.a.post(func() { h.a.apply(e) }) }
+	tm.Approve = h.a.approvals.approve
+	h.a.applyPrefs()
+	h.tt = ui.NewTester(h.a.root, 1000, 700)
+	return h
+}
+
+// pump runs posted functions and draws until cond holds.
+func (h *harness) pump(what string, cond func() bool) {
+	h.t.Helper()
+	deadline := time.After(5 * time.Second)
+	for {
+		h.tt.Frame()
+		if cond() {
+			return
+		}
+		select {
+		case fn := <-h.posts:
+			fn()
+		case <-time.After(20 * time.Millisecond):
+		case <-deadline:
+			h.t.Fatalf("timed out waiting for %s; texts %q", what, h.tt.Texts())
+		}
+	}
+}
+
+func (h *harness) idle() bool { return len(h.a.busy) == 0 && len(h.posts) == 0 }
+
+func (h *harness) send(text string) {
+	h.t.Helper()
+	h.a.view(h.a.sel).focus = true
+	h.tt.Frame()
+	h.tt.Type(text)
+	h.tt.Key(0, ui.KeyEnter)
+}
+
+func TestSendShowsReplyAndRestores(t *testing.T) {
+	h := newHarness(t, script(func(bot string, msgs []agent.Message) agent.Message {
+		return say("**Hi** from " + bot + ", re: " + lastText(msgs))
+	}))
+	if !h.tt.HasText("Chef") {
+		t.Fatalf("no Chef: %q", h.tt.Texts())
+	}
+	h.send("hello")
+	h.pump("the reply", func() bool { return h.tt.HasText(" from Chef, re: hello") && h.idle() })
+	if !h.tt.HasText("Hi") { // bold, a span of its own
+		t.Fatalf("markdown: %q", h.tt.Texts())
+	}
+
+	// A new app over the same store shows the same transcript.
+	b := newApp(h.st, h.a.team, func(fn func()) { fn() })
+	b.applyPrefs()
+	tt := ui.NewTester(b.root, 1000, 700)
+	if !tt.HasText("hello") || !tt.HasText(" from Chef, re: hello") {
+		t.Fatalf("not restored: %q", tt.Texts())
+	}
+}
+
+func TestGroupShowsAuthorsAndPasses(t *testing.T) {
+	h := newHarness(t, script(func(bot string, msgs []agent.Message) agent.Message {
+		for _, m := range msgs {
+			if m.Role == agent.RoleAssistant {
+				return say("PASS")
+			}
+		}
+		return say(bot + " here")
+	}))
+	scout, _ := h.st.CreateBot(store.Bot{Name: "Scout", Description: "Finds things."})
+	chef := h.a.bots[0]
+	g, _ := h.st.CreateGroup("Launch", "ship it", []string{chef.ID, scout.ID})
+	h.a.reload()
+	h.a.selectChat(g.ID)
+	h.send("go")
+	h.pump("both replies", func() bool { return h.tt.HasText("Chef here") && h.tt.HasText("Scout here") && h.idle() })
+	if h.tt.HasText("PASS") {
+		t.Fatal("a PASS shows")
+	}
+	if !h.tt.HasText("Scout") || !h.tt.HasText("Launch") {
+		t.Fatalf("names: %q", h.tt.Texts())
+	}
+}
+
+func TestMentionMenuPicksBot(t *testing.T) {
+	h := newHarness(t, script(func(bot string, msgs []agent.Message) agent.Message { return say("ok") }))
+	scout, _ := h.st.CreateBot(store.Bot{Name: "Scout"})
+	h.a.reload()
+	h.a.view(h.a.sel).focus = true
+	h.tt.Frame()
+	h.tt.Type("ask @Sc")
+	h.tt.Frame()
+	if !h.tt.HasText("@Scout") {
+		t.Fatalf("no @ menu (draft %q, open %v): %q", h.a.views[h.a.sel].draft, h.a.views[h.a.sel].atOpen, h.tt.Texts())
+	}
+	h.tt.Key(0, ui.KeyEnter)
+	h.tt.Frame()
+	v := h.a.views[h.a.sel]
+	if v.draft != "ask @Scout " || len(v.mentions) != 1 || v.mentions[0] != scout.ID {
+		t.Fatalf("draft %q mentions %v", v.draft, v.mentions)
+	}
+}
+
+func TestSidebarAccentOnlyFromKeyboard(t *testing.T) {
+	h := newHarness(t, script(func(string, []agent.Message) agent.Message { return say("ok") }))
+	h.st.CreateBot(store.Bot{Name: "Scout"})
+	h.a.reload()
+	h.tt.Frame()
+	if err := h.tt.Click("Scout"); err != nil {
+		t.Fatal(err)
+	}
+	h.tt.Frame()
+	if h.a.side.keyboard || h.a.title(*h.a.chat(h.a.sel)) != "Scout" {
+		t.Fatalf("click: keyboard=%v sel=%s", h.a.side.keyboard, h.a.sel)
+	}
+	h.tt.Frame()
+	h.tt.Key(0, ui.KeyDown)
+	h.tt.Frame()
+	if !h.a.side.keyboard {
+		t.Fatalf("keys did not set keyboard; focused chats %v message %v", h.tt.Focused("Chats"), h.tt.Focused("Message"))
+	}
+	h.tt.Click("Message")
+	h.tt.Frame()
+	if h.a.side.keyboard {
+		t.Fatal("keyboard kept after the list lost the focus")
+	}
+}
+
+func TestShellApproval(t *testing.T) {
+	h := newHarness(t, script(func(bot string, msgs []agent.Message) agent.Message {
+		if msgs[len(msgs)-1].Role == agent.RoleTool {
+			return say("result: " + msgs[len(msgs)-1].Parts[0].Text)
+		}
+		return agent.Message{StopReason: agent.StopToolUse, Parts: []agent.Part{{Kind: agent.PartToolCall, CallID: "c1", Name: "shell", Args: json.RawMessage(`{"command":"ls"}`)}}}
+	}))
+	h.a.prefs.approveShell = true
+	h.a.applyPrefs()
+	h.send("list files")
+	h.pump("the approval card", func() bool { return h.tt.HasText("Allow") })
+	if err := h.tt.Click("Allow"); err != nil {
+		t.Fatal(err)
+	}
+	h.pump("the result", func() bool { return h.tt.HasText(`result: ran {"command":"ls"}`) && h.idle() })
+
+	h.send("again")
+	h.pump("the card", func() bool { return h.tt.HasText("Deny") })
+	h.tt.Click("Deny")
+	h.pump("the refusal", func() bool { return h.tt.HasText("result: "+Declined) && h.idle() })
+}
+
+func TestCreateBotSheet(t *testing.T) {
+	h := newHarness(t, script(func(string, []agent.Message) agent.Message { return say("ok") }))
+	h.a.newBot()
+	h.tt.Frame()
+	h.tt.Type("Scout")
+	h.tt.Frame()
+	if err := h.tt.Click("Create"); err != nil {
+		t.Fatal(err)
+	}
+	h.tt.Frame()
+	if h.a.botSheet != nil || len(h.a.bots) != 2 || h.a.title(*h.a.chat(h.a.sel)) != "Scout" {
+		t.Fatalf("sheet %v bots %d", h.a.botSheet, len(h.a.bots))
+	}
+}
+
+func TestPaletteRunsCommand(t *testing.T) {
+	h := newHarness(t, script(func(string, []agent.Message) agent.Message { return say("ok") }))
+	h.tt.Frame()
+	h.tt.Key(ui.Cmd, ui.KeyK)
+	h.tt.Frame()
+	h.tt.Type("settings")
+	h.tt.Frame()
+	h.tt.Key(0, ui.KeyEnter)
+	h.tt.Frame()
+	if !h.a.settings || h.a.palette != nil {
+		t.Fatalf("settings %v palette %v", h.a.settings, h.a.palette)
+	}
+}
+
+func TestChinese(t *testing.T) {
+	defer setLanguage("English", "")
+	setLanguage("Auto", "zh-CN")
+	if L("Settings") == "Settings" {
+		t.Fatal("no Chinese for Settings")
+	}
+	setLanguage("English", "zh-CN")
+	if L("Settings") != "Settings" {
+		t.Fatal("English not chosen")
+	}
+}
+
+func TestMarkdownBlocks(t *testing.T) {
+	bs := parseMarkdown("# Title\n\nSome **bold** and `code` [link](https://x.y).\n\n- a\n- [x] b\n\n```go\nfmt.Println()\n```\n\n| h1 | h2 |\n|----|----|\n| c1 | c2 |\n")
+	kinds := []blockKind{}
+	for _, b := range bs {
+		kinds = append(kinds, b.kind)
+	}
+	want := []blockKind{blockHeading, blockParagraph, blockList, blockCode, blockTable}
+	if len(kinds) != len(want) {
+		t.Fatalf("kinds %v", kinds)
+	}
+	for i := range want {
+		if kinds[i] != want[i] {
+			t.Fatalf("kinds %v", kinds)
+		}
+	}
+	p := bs[1].spans
+	if len(p) < 5 || !p[1].bold || !p[3].code || p[5].link != "https://x.y" {
+		t.Fatalf("spans %+v", p)
+	}
+	if c := bs[2].checked; c[0] != nil || c[1] == nil || !*c[1] {
+		t.Fatalf("tasks %+v", c)
+	}
+	if bs[3].text != "fmt.Println()" || len(bs[4].rows) != 2 {
+		t.Fatalf("code %q rows %d", bs[3].text, len(bs[4].rows))
+	}
+}
+
+func TestAttachRejectsNonImages(t *testing.T) {
+	v := &chatView{}
+	if err := v.attachBytes([]byte("hello"), "x.txt"); err == nil {
+		t.Fatal("text accepted")
+	}
+	var pngHeader = []byte{0x89, 'P', 'N', 'G', '\r', '\n', 0x1a, '\n', 0, 0, 0, 0}
+	if err := v.attachBytes(pngHeader, "x.png"); err != nil || v.images[0].MediaType != "image/png" {
+		t.Fatalf("png: %v %+v", err, v.images)
+	}
+}
+
+// GOBOT_RENDER=<folder> go test -run TestRender writes PNGs of a sample group.
+func TestRender(t *testing.T) {
+	dir := os.Getenv("GOBOT_RENDER")
+	if dir == "" {
+		t.Skip("set GOBOT_RENDER to a folder")
+	}
+	h := newHarness(t, script(func(string, []agent.Message) agent.Message { return say("ok") }))
+	scout, _ := h.st.CreateBot(store.Bot{Name: "Scout", Description: "Finds things."})
+	chef := h.a.bots[0]
+	g, _ := h.st.CreateGroup("Launch", "Ship the beta", []string{chef.ID, scout.ID})
+	add := func(author string, m agent.Message) { h.st.Append(g.ID, author, "", store.Meta{}, m) }
+	add(store.User, agent.Message{Role: agent.RoleUser, Parts: []agent.Part{{Kind: agent.PartText, Text: "@Scout find the three open bugs, then Chef plans."}}})
+	add(scout.ID, agent.Message{Role: agent.RoleAssistant, StopReason: agent.StopToolUse, Parts: []agent.Part{{Kind: agent.PartThinking, Text: "Search the tracker."}, {Kind: agent.PartText, Text: "Looking."}, {Kind: agent.PartToolCall, CallID: "c", Name: "shell", Args: json.RawMessage(`{"command":"gh issue list"}`)}}})
+	add(scout.ID, agent.Message{Role: agent.RoleTool, Parts: []agent.Part{{Kind: agent.PartToolResult, CallID: "c", Text: "#12 crash\n#14 typo\n#15 slow start"}}})
+	add(scout.ID, agent.Message{Role: agent.RoleAssistant, StopReason: agent.StopEnd, Parts: []agent.Part{{Kind: agent.PartText, Text: "Three bugs:\n\n1. **#12** crash on start\n2. `#14` typo\n3. #15 slow start"}}})
+	add(chef.ID, agent.Message{Role: agent.RoleAssistant, StopReason: agent.StopEnd, Parts: []agent.Part{{Kind: agent.PartText, Text: "Plan: fix #12 first. I own the release."}}})
+	h.a.reload()
+	h.a.selectChat(g.ID)
+	h.a.inspector = true
+	for name, dark := range map[string]bool{"light": false, "dark": true} {
+		h.tt.SetDark(dark)
+		h.tt.Frame()
+		f, err := os.Create(filepath.Join(dir, "group-"+name+".png"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		png.Encode(f, h.tt.Image())
+		f.Close()
+	}
+	_ = strings.TrimSpace
+}

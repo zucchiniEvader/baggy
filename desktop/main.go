@@ -1,52 +1,104 @@
-// Command desktop is gobot's window: a chat with the agent, drawn by MyGo's
-// native UI.
+// Command desktop is gobot's window: the user's bots, their direct chats and
+// groups, drawn by MyGo's native UI over the team runtime.
 //
-//	ANTHROPIC_API_KEY=... go tool mygo dev
+//	go tool mygo dev
 //
-// The provider comes from the environment (connect.FromEnv): GOBOT_API picks
-// the protocol (anthropic, chat or responses), GOBOT_MODEL the model (default
-// claude-sonnet-5-5), GOBOT_BASE_URL and GOBOT_API_KEY the server.
+// State lives in GOBOT_DATA (default: the user config folder's gobot). With
+// no provider stored, bots run on the environment's (connect.FromEnv).
 package main
 
 import (
 	"log"
 	"os"
+	"path/filepath"
 
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
-	"github.com/spike/gobot/provider"
 	"github.com/spike/gobot/provider/connect"
+	"github.com/spike/gobot/store"
+	"github.com/spike/gobot/team"
 	"github.com/spike/gobot/tool"
 )
 
-const system = "You are a personal assistant on the user's computer. You can run shell commands and read and write files in the working directory. Be brief."
+func dataDir() string {
+	if d := os.Getenv("GOBOT_DATA"); d != "" {
+		return d
+	}
+	base, err := os.UserConfigDir()
+	if err != nil {
+		base = os.TempDir()
+	}
+	return filepath.Join(base, "gobot")
+}
 
 func main() {
-	dir, err := os.Getwd()
+	st, err := store.Open(dataDir())
 	if err != nil {
 		log.Fatal(err)
 	}
-	cfg := connect.FromEnv("claude-sonnet-5-5")
-	p, err := connect.New(cfg)
-	if err != nil {
+	defer st.Close()
+	if _, err := st.Seed(); err != nil {
 		log.Fatal(err)
 	}
-	tools := []tool.Tool{tool.Shell{Dir: dir}, tool.ReadFile{Dir: dir}, tool.WriteFile{Dir: dir}}
+	fallback := connect.FromEnv("claude-sonnet-5-5")
+	var a *app
+	tm := newTeam(st, fallback, func(e team.Event) { a.post(func() { a.apply(e) }) })
+	pending := make(chan func(), 1024) // events before the window is up
+	a = newApp(st, tm, func(fn func()) { pending <- fn })
+	a.fallback = fallback
+	a.locale = mygo.App.Locale()
+	a.readImage = func() []byte { return mygo.Clipboard.ReadImage() }
+	tm.Approve = a.approvals.approve
+	a.applyPrefs()
 
-	app := newChat(provider.Model{Provider: p}, system, tools, nil)
-	if cfg.APIKey == "" {
-		app.notice("No API key (GOBOT_API_KEY, or ANTHROPIC_API_KEY for the Anthropic API); replies will fail.")
-	}
 	mygo.App.WhenReady(func() {
 		win := mygo.NewWindow(mygo.WindowOptions{
 			Title:   "gobot",
-			Width:   760,
-			Height:  640,
-			Content: ui.View(app.view),
+			Width:   1040,
+			Height:  700,
+			Content: ui.View(a.root),
 		})
-		app.post = win.Update
+		a.post = win.Update
+		a.pickImage = func() []string {
+			paths, _ := mygo.Dialog.Open(mygo.OpenDialogOptions{Parent: win, Title: L("Attach Images"), Multiple: true,
+				Filters: []mygo.FileFilter{{Name: L("Images"), Extensions: []string{"png", "jpg", "jpeg", "gif", "webp"}}}})
+			return paths
+		}
+		for len(pending) > 0 {
+			win.Update(<-pending)
+		}
+		win.OnClose(func(e *mygo.CloseEvent) {
+			if a.prefs.keepRunning {
+				e.PreventDefault()
+				win.Hide()
+			}
+		})
+		tray, err := mygo.NewTray(mygo.TrayOptions{
+			Icon: trayIcon, IconIsTemplate: true, ToolTip: "gobot",
+			Menu: mygo.NewMenu([]*mygo.MenuItem{
+				{Label: L("Open gobot"), Click: func(*mygo.MenuItem, *mygo.Window) { win.Show(); mygo.App.Focus() }},
+				mygo.Separator(),
+				{Role: mygo.RoleQuit},
+			}),
+		})
+		if err != nil {
+			log.Println("tray:", err)
+		}
+		_ = tray
 	})
 	if err := mygo.App.Run(); err != nil {
 		log.Fatal(err)
+	}
+}
+
+// newTeam runs the bots with the shell and file tools in their workspaces.
+func newTeam(st *store.Store, fallback connect.Config, emit func(team.Event)) *team.Team {
+	return &team.Team{
+		Store: st,
+		Model: team.Models(st, fallback),
+		Tools: func(b store.Bot, ws string) []tool.Tool {
+			return []tool.Tool{tool.Shell{Dir: ws}, tool.ReadFile{Dir: ws}, tool.WriteFile{Dir: ws}}
+		},
+		Emit: emit,
 	}
 }

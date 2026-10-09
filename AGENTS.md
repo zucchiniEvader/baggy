@@ -30,6 +30,8 @@ provider/   Provider interface, Request, stream Events; one adapter per wire pro
   connect/    a provider from a protocol name and settings, or the environment
   internal/wire/  posting with retries, SSE reading, shared by the adapters
 tool/       Tool interface and Result, argument validation, shell and file tools
+store/      SQLite state: providers, bots, chats, members, messages, settings (docs/store.md)
+team/       runs DMs and group rooms, projection, system prompts, team tools (docs/team.md)
 desktop/    the MyGo app, its own module (docs/desktop.md)
 docs/       one doc per subject, written as the system is
 ```
