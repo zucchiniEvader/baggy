@@ -94,7 +94,7 @@ This adapter is tested against `httptest` servers only: it has not been run agai
 
 `provider.Model{Provider, MaxTokens, Thinking}` implements `agent.Model`, so `agent.Run` drives any provider. Each call builds a `Request` from the system prompt, transcript and tools (`tool.Tool` becomes a `ToolSpec` with its schema), and marks the whole transcript as a cache point, since the loop's next call sends it again. `text_delta` and `thinking_delta` stream events are forwarded as `agent.Event`s of the same kinds; `tool_call` events are not (the final message carries the calls); the `done` message is returned. A stream that ends without `done` yields a `StopError` message, or `StopAborted` when the context is cancelled.
 
-`go run ./cmd/room [model]` runs one three-bot group exchange (Chef, Scout, Critic) the same way; it has been run against DeepSeek over Chat Completions. `go run ./cmd/smoke [model]` runs a multi-tool task (see `tools.md`) against a real API chosen by `connect.FromEnv`; `GOBOT_THINKING` sets the thinking level. It has been run against DeepSeek's endpoint (`ANTHROPIC_BASE_URL=https://api.deepseek.com/anthropic`, model `deepseek-chat`): streamed text, parallel and sequential tool calls, cache reads. Thinking signature replay is not covered by that run.
+`go run ./cmd/room [model]` runs one three-bot group exchange (Chef, Scout, Critic) the same way; it has been run against DeepSeek over Chat Completions. `go run ./cmd/smoke [model]` runs a multi-tool task (see `tools.md`) against a real API chosen by `connect.FromEnv`; `GOBOT_THINKING` sets the thinking level. It has been run against DeepSeek's endpoint (`ANTHROPIC_BASE_URL=https://api.deepseek.com/anthropic`, model `deepseek-chat`): streamed text, parallel and sequential tool calls, cache reads; and with `deepseek-reasoner` and `GOBOT_THINKING=high`, which streamed three signed thinking blocks and sent two back in the turn's later calls (smoke prints `thinking`, `signed` and `replayed`). Anthropic's own API has not been run: there is no key here.
 
 ## Transcript transform (`agent.Transform`)
 
@@ -106,9 +106,14 @@ Every adapter runs the transcript through `agent.Transform(msgs, TransformOption
 - Every tool call gets a result before the next assistant message, the next user message, or the end; a missing one is an error result "No result provided", in one `RoleTool` message.
 - With `SupportsImages` false, each run of images becomes one note (`NonVisionUserImage`, or `NonVisionToolImage` in a tool message).
 - Another model's tool call ids go through `NormalizeToolCallID` (when set) and their results follow. The Anthropic adapter leaves this nil because it reduces every id itself.
+- A request carries only its latest images: at most `MaxRequestImages` (20) and `MaxRequestImageBytes` (16 MB of base64). Older ones become `OlderImageOmitted`. Past the count they go ten at a time, so the same ones stay out from one request to the next and the cached prefix breaks once in ten images; past the bytes, only as many as must, never the newest.
+
+## Bound thinking (`anthropic.DropBoundThinking`)
+
+Opus 5.5, Fable 5.1 and Sonnet 5.5 (`anthropic.Bound`, dated ids too) bind a thinking block to the system prompt, the tools and the messages before it, and refuse one replayed after any of them changed; a bot's system prompt does change between turns (a new teammate, a memory update). The adapter keeps on each thinking part it streams a key of its request's system prompt and tools (`Part.Raw` `{"ctx": …}`, never sent). Before converting a request for a bound model, it drops every thinking block when any signed one carries another key or none, and keeps them all otherwise; dropping only some would change what the rest were bound to. A compaction drops the thinking of what it keeps, since that now follows a summary (`team.md`).
 
 `Transform` also returns `origins`, the index in the input each output message comes from (a made-up result takes the index of the message it follows). `agent.PrefixLen(origins, n)` turns a prefix length of the original transcript, such as a `Request.CachePoints` entry, into the same prefix of the transformed one.
 
 ## Not yet
 
-A live check of the Responses adapter, limiting the images one request carries (`../lorca`'s `MAX_REQUEST_IMAGES`), thinking bound to the system prompt and tools on newer models (`drop_bound_thinking` in `../lorca`), tool result images.
+A live check of the Responses adapter and of Anthropic's own API (both need a key this machine lacks), tool result images, scaling an image down before it goes.

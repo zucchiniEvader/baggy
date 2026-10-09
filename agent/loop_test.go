@@ -6,6 +6,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/spike/gobot/tool"
 )
@@ -208,7 +209,7 @@ func TestCompactReplacesWhatCallsSend(t *testing.T) {
 	calls := 0
 	out := Run(context.Background(), m, []Message{userText("a"), userText("b")}, Options{
 		Tools: []tool.Tool{echo{}},
-		Compact: func(_ context.Context, msgs []Message) ([]Message, bool) {
+		Compact: func(_ context.Context, msgs []Message, _ bool) ([]Message, bool) {
 			calls++
 			if calls == 2 { // between the calls: keep only the summary and the tool exchange
 				return append([]Message{summary}, msgs[2:]...), true
@@ -308,4 +309,60 @@ func (w waiter) Execute(ctx context.Context, _ json.RawMessage) tool.Result {
 	close(w.started)
 	<-ctx.Done()
 	return tool.Result{}
+}
+
+func TestRetryTransientAndCompactOnOverflow(t *testing.T) {
+	n := 0
+	var retries []string
+	fail := func(s string) Message {
+		return Message{Role: RoleAssistant, StopReason: StopError, Parts: []Part{{Kind: PartText, Text: s, IsError: true}}}
+	}
+	m := modelFunc(func(msgs []Message) Message {
+		n++
+		switch n {
+		case 1:
+			return fail("529: Overloaded")
+		case 2:
+			return fail("400: prompt is too long: 210000 tokens > 200000 maximum")
+		}
+		return Message{Role: RoleAssistant, StopReason: StopEnd, Parts: []Part{{Kind: PartText, Text: lastText(msgs)}}}
+	})
+	forced := false
+	out := Run(context.Background(), m, []Message{userText("a"), userText("b")}, Options{
+		Retry: &Retry{Max: 2, Base: time.Millisecond, MaxDelay: time.Millisecond},
+		Compact: func(_ context.Context, msgs []Message, force bool) ([]Message, bool) {
+			if !force {
+				return nil, false
+			}
+			forced = true
+			return []Message{userText("summary"), msgs[len(msgs)-1]}, true
+		},
+		Emit: func(e Event) {
+			if e.Kind == EventRetry {
+				retries = append(retries, e.Delta)
+			}
+		},
+	})
+	if n != 3 || !forced || len(retries) != 2 || len(out) != 1 || lastText(out) != "b" {
+		t.Fatalf("calls %d forced %v retries %q out %+v", n, forced, retries, out)
+	}
+
+	n = 0
+	out = Run(context.Background(), modelFunc(func([]Message) Message { n++; return fail("insufficient_quota: billing") }), []Message{userText("a")},
+		Options{Retry: &Retry{Max: 3, Base: time.Millisecond, MaxDelay: time.Millisecond}})
+	if n != 1 || out[0].StopReason != StopError {
+		t.Fatalf("quota retried: %d", n)
+	}
+}
+
+func TestErrorClasses(t *testing.T) {
+	for s, want := range map[string]bool{"529: Overloaded": true, "stream ended before message_stop": true, "unexpected EOF": true, "429: rate limit": true,
+		"401: invalid x-api-key": false, "429: insufficient_quota": false, "prompt is too long": false} {
+		if IsRetryable(s) != want {
+			t.Errorf("IsRetryable(%q) = %v", s, !want)
+		}
+	}
+	if !IsContextOverflow("This model's maximum context length is 128000 tokens") {
+		t.Error("overflow not seen")
+	}
 }

@@ -9,7 +9,7 @@ go test ./...                              # views run in MyGo's offscreen Teste
 GOBOT_RENDER=<folder> go test -run TestRender ./...   # writes group-light.png and group-dark.png
 ```
 
-State is a `store` in `GOBOT_DATA` (default: the user config folder's `gobot`), seeded with Chef. Bots run on the providers added in Settings; with none, on the environment's (`connect.FromEnv`: `GOBOT_API`, `GOBOT_BASE_URL`, `GOBOT_API_KEY`, `GOBOT_MODEL`, or `ANTHROPIC_API_KEY`). A bot's tools are `shell`, `read_file` and `write_file` in its workspace, plus the team's.
+State is a `store` in `GOBOT_DATA` (default: the user config folder's `gobot`), seeded with Chef. Bots run on the providers added in Settings; with none, on the environment's (`connect.FromEnv`: `GOBOT_API`, `GOBOT_BASE_URL`, `GOBOT_API_KEY`, `GOBOT_MODEL`, or `ANTHROPIC_API_KEY`). A bot's tools are `shell`, `read_file`, `write_file`, `edit_file`, `find` and `grep` in its workspace, plus the team's and its memory's; failed model calls are retried (`agent.DefaultRetry`), the header reading "Retrying: …" meanwhile and the partial reply dropped.
 
 ## State and threads
 

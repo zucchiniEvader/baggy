@@ -65,15 +65,15 @@ func or(v, def float64) float64 {
 }
 
 // compactor is the Compact hook of a turn.
-func (t *Team) compactor(b store.Bot, chat store.Chat, model agent.Model, modelID, system string, tools []tool.Tool) func(context.Context, []agent.Message) ([]agent.Message, bool) {
+func (t *Team) compactor(b store.Bot, chat store.Chat, model agent.Model, modelID, system string, tools []tool.Tool) func(context.Context, []agent.Message, bool) ([]agent.Message, bool) {
 	c := t.Compaction
-	return func(ctx context.Context, msgs []agent.Message) ([]agent.Message, bool) {
+	return func(ctx context.Context, msgs []agent.Message, force bool) ([]agent.Message, bool) {
 		window := c.window(modelID)
 		fixed := agent.TextTokens(system)
 		for _, tl := range tools {
 			fixed += agent.TextTokens(tl.Description()) + agent.TextTokens(string(tl.Schema()))
 		}
-		if fixed+agent.EstimateTokens(msgs) < int(or(c.Threshold, 0.8)*float64(window)) {
+		if !force && fixed+agent.EstimateTokens(msgs) < int(or(c.Threshold, 0.8)*float64(window)) {
 			return nil, false
 		}
 		k := cutPoint(msgs, int(or(c.Keep, 0.25)*float64(window)))
@@ -97,7 +97,9 @@ func (t *Team) compactor(b store.Bot, chat store.Chat, model agent.Model, modelI
 			return nil, false
 		}
 		t.emit(Event{Kind: EventEntry, ChatID: chat.ID, BotID: b.ID, Entry: &e})
-		return append([]agent.Message{m}, msgs[k:]...), true
+		// What was kept now follows a summary, so its thinking, bound to the
+		// messages before it on some models, goes.
+		return append([]agent.Message{m}, withoutThinking(msgs[k:])...), true
 	}
 }
 
@@ -220,4 +222,21 @@ func clip(s string, n int) string {
 		return s
 	}
 	return s[:n] + "…"
+}
+
+func withoutThinking(msgs []agent.Message) []agent.Message {
+	out := make([]agent.Message, len(msgs))
+	for i, m := range msgs {
+		if m.Role == agent.RoleAssistant {
+			var parts []agent.Part
+			for _, p := range m.Parts {
+				if p.Kind != agent.PartThinking {
+					parts = append(parts, p)
+				}
+			}
+			m.Parts = parts
+		}
+		out[i] = m
+	}
+	return out
 }

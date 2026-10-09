@@ -223,6 +223,9 @@ func (a *app) header(c *ui.Context, ch store.Chat) {
 			}
 			if v := a.views[ch.ID]; v != nil && v.working != "" && a.busy[ch.ID] {
 				sub = L("%s is working…", a.name(v.working))
+				if v.retrying != "" {
+					sub = L("Retrying: %s", oneLine(v.retrying, 80))
+				}
 			}
 			if sub != "" {
 				ui.Text(c, sub).FontSize(12).TextColor(t.TextMuted).SingleLine()

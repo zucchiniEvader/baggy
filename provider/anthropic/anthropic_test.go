@@ -237,3 +237,40 @@ func TestBuildBodyTransformsTranscript(t *testing.T) {
 		t.Fatalf("cache marks: %s", s)
 	}
 }
+
+func TestDropBoundThinking(t *testing.T) {
+	req := provider.Request{System: "you are A"}
+	key := contextKey(req)
+	think := func(s, k string) agent.Message {
+		return agent.Message{Role: agent.RoleAssistant, Provider: "anthropic", Model: "claude-sonnet-5-5", StopReason: agent.StopToolUse,
+			Parts: []agent.Part{{Kind: agent.PartThinking, Text: s, Signature: "sig-" + s, Raw: thinkingRaw(k)}, {Kind: agent.PartToolCall, CallID: s, Name: "x", Args: json.RawMessage(`{}`)}}}
+	}
+	result := func(id string) agent.Message {
+		return agent.Message{Role: agent.RoleTool, Parts: []agent.Part{{Kind: agent.PartToolResult, CallID: id, Text: "r"}}}
+	}
+	user := func(s string) agent.Message {
+		return agent.Message{Role: agent.RoleUser, Parts: []agent.Part{{Kind: agent.PartText, Text: s}}}
+	}
+	same := []agent.Message{user("a"), think("one", key), result("one"), user("b"), think("two", key), result("two")}
+	if out := DropBoundThinking("claude-sonnet-5-5", key, same); len(out[1].Parts) != 2 || len(out[4].Parts) != 2 {
+		t.Fatal("thinking under the same prompt was dropped")
+	}
+	changed := []agent.Message{user("a"), think("one", "other"), result("one"), user("b"), think("two", key), result("two")}
+	out := DropBoundThinking("claude-sonnet-5-5-20260901", key, changed)
+	if len(out[1].Parts) != 1 || len(out[4].Parts) != 1 || changed[4].Parts[0].Kind != agent.PartThinking {
+		t.Fatalf("stale: %+v / %+v", out[1].Parts, out[4].Parts)
+	}
+	if kept := DropBoundThinking("claude-haiku-4-5", key, changed); len(kept[1].Parts) != 2 {
+		t.Fatal("an unbound model lost its thinking")
+	}
+	req.Messages = changed
+	b, _ := json.Marshal(New("anthropic", "", "k", "claude-sonnet-5-5").buildBody(req)["messages"])
+	if strings.Contains(string(b), "sig-") {
+		t.Fatalf("request: %s", b)
+	}
+	req.Messages = same
+	b, _ = json.Marshal(New("anthropic", "", "k", "claude-sonnet-5-5").buildBody(req)["messages"])
+	if !strings.Contains(string(b), "sig-one") || strings.Contains(string(b), `"ctx"`) {
+		t.Fatalf("request: %s", b)
+	}
+}

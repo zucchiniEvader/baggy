@@ -132,4 +132,5 @@ var zh = map[string]string{
 	"Interrupt":              "打断",
 	"Send now, cutting the current step short (Cmd+Enter)": "立即发送,打断当前这一步(Cmd+Enter)",
 	"Steer waits for the current step":                     "引导会等当前这一步做完",
+	"Retrying: %s":                                         "重试中:%s",
 }

@@ -36,9 +36,18 @@ func main() {
 	}
 	defer os.RemoveAll(dir)
 	m := provider.Model{Provider: p, Thinking: provider.ThinkingLevel(os.Getenv("GOBOT_THINKING"))}
-	user := agent.Message{Role: agent.RoleUser, Parts: []agent.Part{{Kind: agent.PartText, Text: "Write notes/a.txt containing the numbers 1 to 3, one per line, and notes/b.txt containing the word done. Then, in one step, use the shell to count the lines of both files, and tell me the counts."}}}
+	task := "Write notes/a.txt containing the numbers 1 to 3, one per line, and notes/b.txt containing the word done. Then, in one step, use the shell to count the lines of both files, and tell me the counts."
+	if os.Getenv("GOBOT_TASK") == "edit" { // find, grep and edit_file over a small tree
+		os.MkdirAll(dir+"/docs/old", 0o755)
+		os.WriteFile(dir+"/docs/plan.md", []byte("# Plan\n\n- TODO: pick a venue\n- book flights\n"), 0o644)
+		os.WriteFile(dir+"/docs/old/notes.md", []byte("nothing here\n"), 0o644)
+		os.WriteFile(dir+"/main.go", []byte("package main\n// TODO: remove\n"), 0o644)
+		task = "Without the shell: find the markdown files, grep them for TODO, and in the markdown file that has one, replace the TODO line with '- DONE: picked the Blue Note'. Tell me which file you changed."
+	}
+	user := agent.Message{Role: agent.RoleUser, Parts: []agent.Part{{Kind: agent.PartText, Text: task}}}
 	out := agent.Run(context.Background(), m, []agent.Message{user}, agent.Options{
-		Tools: []tool.Tool{tool.Shell{Dir: dir}, tool.ReadFile{Dir: dir}, tool.WriteFile{Dir: dir}},
+		Tools: []tool.Tool{tool.Shell{Dir: dir}, tool.ReadFile{Dir: dir}, tool.WriteFile{Dir: dir}, tool.EditFile{Dir: dir}, tool.Find{Dir: dir}, tool.Grep{Dir: dir}},
+		Retry: agent.DefaultRetry,
 		Emit: func(e agent.Event) {
 			switch e.Kind {
 			case "text_delta", "thinking_delta":
@@ -54,8 +63,26 @@ func main() {
 			}
 		},
 	})
+	if os.Getenv("GOBOT_TASK") == "edit" {
+		b, _ := os.ReadFile(dir + "/docs/plan.md")
+		fmt.Printf("\n--- docs/plan.md now:\n%s", b)
+	}
 	last := out[len(out)-1]
-	fmt.Printf("\nstop=%s usage=%+v messages=%d\n", last.StopReason, last.Usage, len(out))
+	thinking, signed, replayed := 0, 0, 0
+	for i, m := range out {
+		for _, p := range m.Parts {
+			if p.Kind == agent.PartThinking {
+				thinking++
+				if p.Signature != "" {
+					signed++
+					if i < len(out)-1 { // a later call of the run sent it back
+						replayed++
+					}
+				}
+			}
+		}
+	}
+	fmt.Printf("\nstop=%s usage=%+v messages=%d thinking=%d signed=%d replayed=%d\n", last.StopReason, last.Usage, len(out), thinking, signed, replayed)
 	if last.StopReason != agent.StopEnd {
 		os.Exit(1)
 	}

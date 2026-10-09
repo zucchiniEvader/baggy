@@ -62,6 +62,7 @@ type chatView struct {
 	images   []agent.Part // attached, sent with the next message
 	focus    bool
 	working  string // the bot whose turn runs
+	retrying string // why the reply under way is being asked again
 }
 
 type confirmation struct {
@@ -159,7 +160,7 @@ func (a *app) apply(e team.Event) {
 	case team.EventRunEnd:
 		delete(a.busy, e.ChatID)
 		if v := a.views[e.ChatID]; v != nil {
-			v.working = ""
+			v.working, v.retrying = "", ""
 			v.stream = map[string]int{}
 		}
 		return
@@ -193,6 +194,7 @@ func (v *chatView) applyAgent(e team.Event) {
 	switch ev.Kind {
 	case agent.EventMessageStart:
 		if ev.Message == nil { // a model reply is starting
+			v.retrying = ""
 			v.rows = append(v.rows, row{kind: rowAssistant, author: e.BotID, turn: e.Turn})
 			v.stream[e.Turn] = len(v.rows) - 1
 		}
@@ -206,6 +208,12 @@ func (v *chatView) applyAgent(e team.Event) {
 		} else {
 			v.rows[i].thinking += ev.Delta
 		}
+	case agent.EventRetry: // the reply streaming failed and is asked again
+		if i, ok := v.stream[e.Turn]; ok && i < len(v.rows) && v.rows[i].seq == 0 {
+			v.rows = append(v.rows[:i], v.rows[i+1:]...)
+			delete(v.stream, e.Turn)
+		}
+		v.retrying = ev.Delta
 	case agent.EventToolEnd:
 		for i := len(v.rows) - 1; i >= 0; i-- {
 			if r := &v.rows[i]; r.kind == rowTool && r.call.CallID == ev.Call.CallID {

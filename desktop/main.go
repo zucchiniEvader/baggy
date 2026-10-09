@@ -14,6 +14,7 @@ import (
 
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
+	"github.com/spike/gobot/agent"
 	"github.com/spike/gobot/provider/connect"
 	"github.com/spike/gobot/store"
 	"github.com/spike/gobot/team"
@@ -99,9 +100,10 @@ func newTeam(st *store.Store, fallback connect.Config, emit func(team.Event)) *t
 		Store: st,
 		Model: team.Models(st, fallback),
 		Tools: func(b store.Bot, ws string) []tool.Tool {
-			return []tool.Tool{tool.Shell{Dir: ws}, tool.ReadFile{Dir: ws}, tool.WriteFile{Dir: ws}}
+			return []tool.Tool{tool.Shell{Dir: ws}, tool.ReadFile{Dir: ws}, tool.WriteFile{Dir: ws}, tool.EditFile{Dir: ws}, tool.Find{Dir: ws}, tool.Grep{Dir: ws}}
 		},
 		Emit:       emit,
+		Retry:      agent.DefaultRetry,
 		Memory:     os.Getenv("GOBOT_MEMORY") != "0",
 		Compaction: &team.Compaction{NoFlush: os.Getenv("GOBOT_MEMORY_FLUSH") == "0"},
 	}

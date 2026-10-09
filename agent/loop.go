@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"sync"
+	"time"
 
 	"github.com/spike/gobot/tool"
 )
@@ -27,6 +28,7 @@ const (
 	EventToolStart     EventKind = "tool_start"  // Call is set
 	EventToolEnd       EventKind = "tool_end"    // Call and Result are set
 	EventTurnEnd       EventKind = "turn_end"
+	EventRetry         EventKind = "retry" // the reply streaming failed and is asked again; Delta is why
 )
 
 // Event is what a UI or store observes while a turn runs. Run delivers events
@@ -62,7 +64,12 @@ type Options struct {
 	// Compact, when set, runs before each model call with the messages it
 	// would send; when it returns ok, the call and the rest of the run use
 	// its replacement (a summary and what was kept) instead.
-	Compact func(ctx context.Context, msgs []Message) (replacement []Message, ok bool)
+	// force is set after the model said the prompt is too long.
+	Compact func(ctx context.Context, msgs []Message, force bool) (replacement []Message, ok bool)
+
+	// Retry, when set, asks a model call again after it failed for a
+	// transient reason (IsRetryable); the failed reply is not kept.
+	Retry *Retry
 
 	// Interrupt, when set, can cut the step under way short: a reply
 	// streaming keeps its text as said (no thinking, no calls), running tools
@@ -105,13 +112,40 @@ func Run(ctx context.Context, m Model, msgs []Message, o Options) []Message {
 	for {
 		all := append(append([]Message{}, base...), out[since:]...)
 		if o.Compact != nil {
-			if rep, ok := o.Compact(ctx, all); ok {
+			if rep, ok := o.Compact(ctx, all, false); ok {
 				base, since, all = rep, len(out), rep
 			}
 		}
 		sctx, done := o.Interrupt.step(ctx)
-		emit(Event{Kind: EventMessageStart})
-		reply := m.Call(sctx, o.System, all, o.Tools, emit)
+		var reply Message
+		for attempt, compacted := 1, false; ; attempt++ {
+			emit(Event{Kind: EventMessageStart})
+			reply = m.Call(sctx, o.System, all, o.Tools, emit)
+			if reply.StopReason != StopError || sctx.Err() != nil {
+				break
+			}
+			why := errorOf(reply)
+			if IsContextOverflow(why) && o.Compact != nil && !compacted {
+				compacted = true
+				if rep, ok := o.Compact(ctx, all, true); ok {
+					base, since, all = rep, len(out), rep
+					emit(Event{Kind: EventRetry, Delta: why})
+					attempt--
+					continue
+				}
+			}
+			if o.Retry == nil || attempt > o.Retry.Max || !IsRetryable(why) {
+				break
+			}
+			emit(Event{Kind: EventRetry, Delta: why})
+			select {
+			case <-sctx.Done():
+			case <-time.After(o.Retry.Delay(attempt)):
+			}
+			if sctx.Err() != nil {
+				break
+			}
+		}
 		if sctx.Err() != nil && ctx.Err() == nil { // interrupted while it streamed
 			done()
 			if cut, ok := cutShort(reply); ok {

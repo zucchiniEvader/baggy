@@ -22,6 +22,7 @@
 | `message_end` | `Message`, final |
 | `tool_start` | `Call` (id, name, arguments) |
 | `tool_end` | `Call`, `Result` |
+| `retry` | `Delta`: why the reply streaming failed; it is asked again |
 
 ## Steering and follow-ups
 
@@ -43,10 +44,14 @@ Cancel a run with its `ctx`; the call in flight ends with `StopAborted`.
 
 Cancelling the run's context still ends the run.
 
+## Retry
+
+`Options.Retry` (`agent.DefaultRetry`: three retries from a second, doubling, capped at a minute) asks a model call again when its reply failed for a transient reason: `IsRetryable` matches overloaded, rate limits, 5xx, a dropped connection or a stream that ended early, and never exhausted quota or billing. The failed reply is not kept; the loop emits `retry` with the reason (Delta) and then a new `message_start`, so a UI drops what streamed. The adapters already retry a request that fails before it streams (`providers.md`); this covers the rest. A reply saying the prompt no longer fits (`IsContextOverflow`) calls `Compact` with `force` set, once, and goes again on its replacement.
+
 ## Token estimates
 
 `agent.EstimateTokens(msgs)` guesses a request's size: the `Usage.Context()` the newest reply reported for everything up to it, plus about a token per four characters of what came after (an image counts `ImageTokens`, 1600). `MessageTokens` and `TextTokens` are the same guess for one message or a string. Compaction (`team.md`) decides with it.
 
 ## Not yet
 
-Retry of a failed call, an `Agent` that owns the transcript.
+An `Agent` that owns the transcript.

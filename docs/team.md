@@ -12,7 +12,7 @@ tm := &team.Team{
 tm.Send(chatID, "plan the launch", mentions, replyTo)
 ```
 
-`Model` resolves a bot through `team.Config`: its provider, else the `default_provider` setting, else the first stored one, else the fallback config when it has a key; its model, else the provider's first. Optional fields: `Memory` turns on every bot's memory (`memory.md`), `Compaction` summarizes a chat's older part before a request outgrows the model's window (below), `Now` is the clock, and `Approve` runs before each tool call with the bot and chat and may block it (the desktop's shell approval).
+`Model` resolves a bot through `team.Config`: its provider, else the `default_provider` setting, else the first stored one, else the fallback config when it has a key; its model, else the provider's first. Optional fields: `Memory` turns on every bot's memory (`memory.md`), `Compaction` summarizes a chat's older part before a request outgrows the model's window (below), `Retry` is each turn's `agent.Retry`, `Now` is the clock, and `Approve` runs before each tool call with the bot and chat and may block it (the desktop's shell approval).
 
 ## Runs and events
 
@@ -52,7 +52,7 @@ With `Team.Compaction` set, every model call of a turn goes through `agent.Optio
 1. The cut: the oldest user message, made by the user or from a stored entry (it has an id; never a tool result), such that what follows fits `Keep` (0.25) of the window. A tool call and its result are never parted. Nothing to cut, nothing happens.
 2. The memory flush, with `Memory` on and `NoFlush` off: a silent turn over the same request (same system prompt and tools, so the prompt cache serves it) plus a prompt naming where the kept part starts and asking to save what is durable; `BeforeToolCall` refuses every tool but `memory_update` and `memory_log`, nothing it says is stored, and a failure or `FlushTimeout` (two minutes) goes on to the summary.
 3. The summary: one call (`summarySystem`, no tools) over the cut part as a plain-text `Transcript`, whoever wrote it (so thinking and seals from any model never matter), asking for Goal, Decisions and facts, Work done, Open items and the user's preferences, folding in an earlier summary.
-4. It is stored as a user message of `Kind: "compaction"` whose `Meta.KeepID` is the cut message's id, and the call goes on with the summary and the kept messages.
+4. It is stored as a user message of `Kind: "compaction"` whose `Meta.KeepID` is the cut message's id, and the call goes on with the summary and the kept messages, their thinking dropped (it was bound to what came before). A model's "prompt is too long" forces this past the threshold (`force`).
 
 `Project` then starts every bot's view of the chat at the newest summary, followed by the entries from the kept one on (`ProjectedID`: a message's own id, or `seq-N` for one made up for another bot's words), older summaries left out. A summary in a group serves every member. `go run` of a six-message DM against DeepSeek with a 6000-token window compacted once, flushed two facts to `MEMORY.md`, and answered a question about the cut part from the summary.
 

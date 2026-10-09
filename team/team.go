@@ -59,6 +59,9 @@ type Team struct {
 	// Compaction, when set, summarizes a chat's older part before a request
 	// would outgrow the model's window.
 	Compaction *Compaction
+	// Retry asks a failed model call again (agent.DefaultRetry is a fair
+	// choice); nil tries once.
+	Retry *agent.Retry
 	// Now is the clock (time.Now when nil).
 	Now func() time.Time
 	// Approve, when set, runs before each tool call of a turn and may block
@@ -279,7 +282,7 @@ func (t *Team) turn(ctx context.Context, chat store.Chat, botID string, r *run, 
 		tools = append(tools, t.MemoryTools(b, chat)...)
 		system += "\n\n" + t.memoryOf(b).Prompt()
 	}
-	var compact func(context.Context, []agent.Message) ([]agent.Message, bool)
+	var compact func(context.Context, []agent.Message, bool) ([]agent.Message, bool)
 	if t.Compaction != nil {
 		compact = t.compactor(b, chat, model, modelID(model, b), system, tools)
 	}

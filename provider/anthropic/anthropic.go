@@ -98,7 +98,7 @@ func (p *Provider) run(ctx context.Context, req provider.Request, emit func(prov
 	defer resp.Body.Close()
 	emit(provider.Event{Kind: provider.EventStart})
 
-	s := &streamState{p: p, emit: emit}
+	s := &streamState{p: p, emit: emit, key: contextKey(req)}
 	if err := s.read(resp.Body); err != nil {
 		return p.fail(ctx, s.msg, err)
 	}
@@ -139,6 +139,7 @@ func callID(id string) string { return wire.CallID(id) }
 
 func (p *Provider) buildBody(req provider.Request) map[string]any {
 	transformed, origins := agent.Transform(req.Messages, agent.TransformOptions{Provider: p.id, Model: p.model, SupportsImages: !p.NoImages})
+	transformed = DropBoundThinking(p.model, contextKey(req), transformed)
 	msgs, ends := convert(transformed)
 
 	marks := 0
@@ -337,6 +338,7 @@ func assistantBlocks(m agent.Message) []block {
 
 type streamState struct {
 	p       *Provider
+	key     string // contextKey of the request
 	emit    func(provider.Event)
 	msg     agent.Message
 	blocks  map[int]*openBlock
@@ -499,7 +501,7 @@ func (s *streamState) finishBlock(ob *openBlock) {
 			s.msg.Parts = append(s.msg.Parts, agent.Part{Kind: agent.PartText, Text: ob.text.String()})
 		}
 	case "thinking":
-		s.msg.Parts = append(s.msg.Parts, agent.Part{Kind: agent.PartThinking, Text: ob.text.String(), Signature: ob.signature})
+		s.msg.Parts = append(s.msg.Parts, agent.Part{Kind: agent.PartThinking, Text: ob.text.String(), Signature: ob.signature, Raw: thinkingRaw(s.key)})
 	case "tool_use":
 		part := agent.Part{Kind: agent.PartToolCall, CallID: ob.id, Name: ob.name, Args: inputJSON(ob.text.String())}
 		s.msg.Parts = append(s.msg.Parts, part)

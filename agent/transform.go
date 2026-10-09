@@ -6,6 +6,12 @@ const (
 	NonVisionUserImage = "(image omitted: model does not support images)"
 	NonVisionToolImage = "(tool image omitted: model does not support images)"
 	NoResultProvided   = "No result provided"
+	OlderImageOmitted  = "(older image omitted: a request carries only the latest images)"
+
+	// MaxRequestImages and MaxRequestImageBytes (of base64) bound the images
+	// one request carries; older ones become OlderImageOmitted.
+	MaxRequestImages     = 20
+	MaxRequestImageBytes = 16 << 20
 )
 
 // TransformOptions describe the model a request goes to.
@@ -28,7 +34,8 @@ type TransformOptions struct {
 //   - tool call ids from another model get the shape the API wants;
 //   - failed and aborted turns are left out;
 //   - a tool call that never got a result gets an error result before the
-//     next assistant turn, the next user message, or the end.
+//     next assistant turn, the next user message, or the end;
+//   - only the latest images go (limitImages).
 //
 // The input is not modified. origins[i] is the index in msgs that out[i]
 // comes from; a made-up result belongs to the message it follows.
@@ -141,7 +148,39 @@ func Transform(msgs []Message, o TransformOptions) (out []Message, origins []int
 		origins = append(origins, i)
 	}
 	settle()
+	limitImages(out)
 	return out, origins
+}
+
+// limitImages keeps the latest MaxRequestImages images, and as many of them
+// as fit MaxRequestImageBytes of base64, never dropping the newest. Past the
+// count they go ten at a time, so the same ones stay out from one request to
+// the next and the cached prefix breaks once in ten images.
+func limitImages(msgs []Message) {
+	type at struct{ m, p, size int }
+	var imgs []at
+	for i, m := range msgs {
+		for j, p := range m.Parts {
+			if p.Kind == PartImage {
+				imgs = append(imgs, at{i, j, (len(p.Data) + 2) / 3 * 4})
+			}
+		}
+	}
+	drop := 0
+	if over := len(imgs) - MaxRequestImages; over > 0 {
+		drop = (over + 9) / 10 * 10
+	}
+	total := 0
+	for _, im := range imgs[drop:] {
+		total += im.size
+	}
+	for drop < len(imgs)-1 && total > MaxRequestImageBytes {
+		total -= imgs[drop].size
+		drop++
+	}
+	for _, im := range imgs[:min(drop, len(imgs))] {
+		msgs[im.m].Parts[im.p] = Part{Kind: PartText, Text: OlderImageOmitted}
+	}
 }
 
 // PrefixLen maps a prefix length of the original transcript to the same

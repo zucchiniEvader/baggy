@@ -111,3 +111,38 @@ func TestPrefixLen(t *testing.T) {
 		}
 	}
 }
+
+func TestOnlyTheLatestImagesGo(t *testing.T) {
+	img := func(n int) Message {
+		return Message{Role: RoleUser, Parts: []Part{{Kind: PartText, Text: "see"}, {Kind: PartImage, MediaType: "image/png", Data: make([]byte, n)}}}
+	}
+	count := func(ms []Message) (images, notes int) {
+		for _, m := range ms {
+			for _, p := range m.Parts {
+				switch {
+				case p.Kind == PartImage:
+					images++
+				case p.Text == OlderImageOmitted:
+					notes++
+				}
+			}
+		}
+		return
+	}
+	var msgs []Message
+	for i := 0; i < 23; i++ {
+		msgs = append(msgs, img(10))
+	}
+	out, _ := Transform(msgs, TransformOptions{SupportsImages: true})
+	if i, n := count(out); i != 13 || n != 10 { // three over: ten go
+		t.Fatalf("23 images: %d kept, %d notes", i, n)
+	}
+	if count(msgs); msgs[0].Parts[1].Kind != PartImage {
+		t.Fatal("the input changed")
+	}
+	big := []Message{img(7 << 20), img(7 << 20), img(1)}
+	out, _ = Transform(big, TransformOptions{SupportsImages: true})
+	if i, n := count(out); i != 2 || n != 1 || out[2].Parts[1].Kind != PartImage {
+		t.Fatalf("bytes: %d kept, %d notes", i, n)
+	}
+}
