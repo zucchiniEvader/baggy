@@ -60,7 +60,7 @@ func TestModelDrivesLoop(t *testing.T) {
 		Tools:  []tool.Tool{fakeTool{}},
 		Emit: func(e agent.Event) {
 			if e.Kind == "text_delta" || e.Kind == "thinking_delta" {
-				deltas = append(deltas, e.Kind+":"+e.Delta)
+				deltas = append(deltas, string(e.Kind)+":"+e.Delta)
 			}
 		},
 	})

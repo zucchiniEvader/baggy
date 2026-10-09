@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"encoding/json"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -62,5 +63,134 @@ func TestExecuteValidatesArguments(t *testing.T) {
 	r = execute(context.Background(), tools, Hooks{}, Part{Name: "strict", Args: json.RawMessage(`{"n":"7"}`)})
 	if r.IsError || string(s.got) != `{"n":7}` {
 		t.Fatalf("coerced call: %+v, args %s", r, s.got)
+	}
+}
+
+// seen records the transcript each model call received and replays replies.
+type seen struct {
+	replies []Message
+	calls   [][]Message
+	onCall  func(n int) // runs inside call n (1-based), before the reply
+}
+
+func (s *seen) Call(_ context.Context, _ string, msgs []Message, _ []tool.Tool, _ func(Event)) Message {
+	s.calls = append(s.calls, append([]Message(nil), msgs...))
+	if s.onCall != nil {
+		s.onCall(len(s.calls))
+	}
+	return s.replies[len(s.calls)-1]
+}
+
+func say(s string) Message {
+	return Message{Role: RoleAssistant, StopReason: StopEnd, Parts: []Part{{Kind: PartText, Text: s}}}
+}
+func ask(id string) Message {
+	return Message{Role: RoleAssistant, StopReason: StopToolUse, Parts: []Part{{Kind: PartToolCall, CallID: id, Name: "echo", Args: json.RawMessage(`{}`)}}}
+}
+func userText(s string) Message {
+	return Message{Role: RoleUser, Parts: []Part{{Kind: PartText, Text: s}}}
+}
+
+func lastText(ms []Message) string { return ms[len(ms)-1].Parts[0].Text }
+
+func TestEventsCarryCallsAndPersistEveryMessage(t *testing.T) {
+	var kinds []EventKind
+	var ended []Role
+	var toolEnd Event
+	m := &seen{replies: []Message{ask("c1"), say("done")}}
+	Run(context.Background(), m, []Message{userText("go")}, Options{
+		Tools: []tool.Tool{echo{}},
+		Emit: func(e Event) {
+			kinds = append(kinds, e.Kind)
+			if e.Kind == EventMessageEnd {
+				ended = append(ended, e.Message.Role)
+			}
+			if e.Kind == EventToolEnd {
+				toolEnd = e
+			}
+		},
+	})
+	if want := []Role{RoleAssistant, RoleTool, RoleAssistant}; !reflect.DeepEqual(ended, want) {
+		t.Errorf("message_end roles %v, want %v", ended, want)
+	}
+	if toolEnd.Call == nil || toolEnd.Call.Name != "echo" || toolEnd.Call.CallID != "c1" || toolEnd.Result == nil || toolEnd.Result.Text != `{}` {
+		t.Errorf("tool_end: %+v", toolEnd)
+	}
+	if kinds[0] != EventTurnStart || kinds[1] != EventMessageStart || kinds[len(kinds)-1] != EventTurnEnd {
+		t.Errorf("kinds %v", kinds)
+	}
+}
+
+func TestSteeringReachesTheNextModelCall(t *testing.T) {
+	steer := NewQueue(QueueAll)
+	m := &seen{replies: []Message{ask("c1"), say("ok")}}
+	m.onCall = func(n int) {
+		if n == 1 {
+			steer.Push(userText("change direction")) // arrives while the model is replying
+		}
+	}
+	out := Run(context.Background(), m, []Message{userText("go")}, Options{Tools: []tool.Tool{echo{}}, Steering: steer})
+
+	if len(m.calls) != 2 || lastText(m.calls[1]) != "change direction" || m.calls[1][len(m.calls[1])-2].Role != RoleTool {
+		t.Fatalf("second call saw %+v", m.calls[1])
+	}
+	if len(out) != 4 || out[2].Role != RoleUser {
+		t.Fatalf("out %+v", out)
+	}
+}
+
+func TestQueuedBeforeTheRunIsTakenFirst(t *testing.T) {
+	steer := NewQueue(QueueAll)
+	steer.Push(userText("early"))
+	m := &seen{replies: []Message{say("ok")}}
+	Run(context.Background(), m, []Message{userText("go")}, Options{Steering: steer})
+	if lastText(m.calls[0]) != "early" || steer.Len() != 0 {
+		t.Fatalf("first call saw %+v", m.calls[0])
+	}
+}
+
+func TestFollowUpRunsWhenTheModelWouldStop(t *testing.T) {
+	steer, follow := NewQueue(QueueOneAtATime), NewQueue(QueueOneAtATime)
+	follow.Push(userText("f1"), userText("f2"))
+	m := &seen{replies: []Message{say("a"), say("b"), say("c"), say("d")}}
+	m.onCall = func(n int) {
+		if n == 2 {
+			steer.Push(userText("s1")) // beats the remaining follow-up
+		}
+	}
+	out := Run(context.Background(), m, []Message{userText("go")}, Options{Steering: steer, FollowUp: follow})
+
+	var texts []string
+	for _, msg := range out {
+		texts = append(texts, msg.Parts[0].Text)
+	}
+	if want := []string{"a", "f1", "b", "s1", "c", "f2", "d"}; !reflect.DeepEqual(texts, want) {
+		t.Fatalf("texts %v, want %v", texts, want)
+	}
+	if follow.Len() != 0 || steer.Len() != 0 {
+		t.Fatalf("queues not drained: %d %d", follow.Len(), steer.Len())
+	}
+}
+
+func TestErrorEndsTheRunWithoutReadingQueues(t *testing.T) {
+	follow := NewQueue(QueueAll)
+	follow.Push(userText("later"))
+	m := &seen{replies: []Message{{Role: RoleAssistant, StopReason: StopError}}}
+	out := Run(context.Background(), m, []Message{userText("go")}, Options{FollowUp: follow})
+	if len(out) != 1 || follow.Len() != 1 {
+		t.Fatalf("out %d, queued %d", len(out), follow.Len())
+	}
+}
+
+func TestParallelToolEventsAreSerialized(t *testing.T) {
+	reply := Message{Role: RoleAssistant, StopReason: StopToolUse}
+	for i := 0; i < 8; i++ {
+		reply.Parts = append(reply.Parts, Part{Kind: PartToolCall, CallID: string(rune('a' + i)), Name: "echo", Args: json.RawMessage(`{}`)})
+	}
+	m := &seen{replies: []Message{reply, say("ok")}}
+	n := 0 // unsynchronized on purpose: -race flags concurrent Emit calls
+	Run(context.Background(), m, []Message{userText("go")}, Options{Tools: []tool.Tool{echo{}}, Emit: func(Event) { n++ }})
+	if n == 0 {
+		t.Fatal("no events")
 	}
 }

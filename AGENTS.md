@@ -40,7 +40,7 @@ docs/       one doc per subject, written as the system is
 
 ## Next
 
-1. `provider/openaicompat` (Chat Completions), using `agent.Transform`.
-2. More tools (edit, find, grep).
-3. SQLite store; bots and DMs; then group chat and handoff.
-4. MyGo UI over `agent.Event`; compaction and memory.
+1. A minimal MyGo window over `agent.Event` (prompt box, streamed text, tool cards), to learn what MyGo asks of the core. Windows is the platform but not the first target.
+2. SQLite store; bots and DMs; then group chat and handoff.
+3. Compaction and memory; interrupting a step for steering.
+4. `provider/openaicompat` (Chat Completions, uses `agent.Transform`); the model catalog and cost; more tools (edit, find, grep); a shell for Windows.

@@ -33,9 +33,9 @@ func (m Model) Call(ctx context.Context, system string, msgs []agent.Message, to
 	for e := range m.Provider.Stream(ctx, req) {
 		switch e.Kind {
 		case EventTextDelta:
-			emit(agent.Event{Kind: "text_delta", Delta: e.Delta})
+			emit(agent.Event{Kind: agent.EventTextDelta, Delta: e.Delta})
 		case EventThinkingDelta:
-			emit(agent.Event{Kind: "thinking_delta", Delta: e.Delta})
+			emit(agent.Event{Kind: agent.EventThinkingDelta, Delta: e.Delta})
 		case EventDone:
 			return *e.Message
 		}
