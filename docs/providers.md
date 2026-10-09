@@ -19,16 +19,25 @@ Consecutive same-role messages merge, so a tool result follows its call; assista
 
 Thinking: `Default` sends nothing; otherwise `thinking: {type: adaptive}` with `output_config.effort`, `Off` is `{type: disabled}`. `Budget` selects `{type: enabled, budget_tokens}` (1024, 2048, 8192 for low, medium, high; `max_tokens` is raised to leave 1024 for the answer) for Haiku 4.5 and earlier.
 
-From the stream: `text_delta` and `thinking_delta` become events; `signature_delta` fills the thinking part's signature; `input_json_delta` builds a `tool_use` input, emitted as a `tool_call` event at `content_block_stop`. `server_tool_use` (with its streamed input) and every other block type (`*_tool_result`, `redacted_thinking`, unknown) are kept as `PartServer` parts. Usage: `input_tokens`, `cache_read_input_tokens`, `cache_creation_input_tokens` from `message_start`; cumulative `output_tokens` and `output_tokens_details.thinking_tokens` from `message_delta`. Cost comes from the catalog (below).
+From the stream: `text_delta` and `thinking_delta` become events; `signature_delta` fills the thinking part's signature; `input_json_delta` builds a `tool_use` input, emitted as a `tool_call` event at `content_block_stop`. `server_tool_use` (with its streamed input) and every other block type (`*_tool_result`, `redacted_thinking`, unknown) are kept as `PartServer` parts (see Web search). Usage: `input_tokens`, `cache_read_input_tokens`, `cache_creation_input_tokens` from `message_start`; cumulative `output_tokens` and `output_tokens_details.thinking_tokens` from `message_delta`. Cost comes from the catalog (below).
 
 | `stop_reason` | Becomes |
 | --- | --- |
-| `end_turn`, `stop_sequence`, `pause_turn` | `StopEnd` |
+| `end_turn`, `stop_sequence` | `StopEnd` |
+| `pause_turn` | `StopPause` |
 | `max_tokens` | `StopLength` |
 | `tool_use` | `StopToolUse` |
 | `refusal`, none, anything else | `StopError`, naming the reason |
 
 A request that fails before it streams (connection error, 408, 409, 429, 5xx) is retried twice, waiting `retry-after` or a backoff from `Backoff` (500 ms) doubling to 8 s; a wait above `MaxRetryDelay` (60 s) fails instead. Tests run against `httptest` servers.
+
+## Web search (server tools)
+
+A provider's `web_search` option (`connect.Config.WebSearch`, `GOBOT_WEB_SEARCH=1`) declares the server's own search. On the Messages API `anthropic.WebTools(base, model)` picks the tools: DeepSeek's endpoint runs `web_search_20250305` only; elsewhere `web_search_20260209` and `web_fetch_20260209` (the `20250305`/`20250910` versions for the 4.5 generation and earlier), declared before the function tools. A `server_tool_use` block (with its streamed input) and its `*_tool_result` are kept as `PartServer` and replayed verbatim on later calls; each emits a `server_tool` event as it completes. A `pause_turn` stop is `agent.StopPause`: the loop sends the reply back as it is so the server goes on (at most five in a row). On Responses, `WebSearch` declares `{"type":"web_search"}`; a `web_search_call` item is kept as a `PartServer` to show and is not sent back. Chat Completions has no server search.
+
+`provider.DescribeServer(part)` reads either shape into a `ServerBlock`: a call (tool, query or URL) or a result (the call's id, the number of hits, or the error code from an error object or an error entry in a list). `redacted_thinking` blocks are not server tools, and `DropBoundThinking` drops them with the thinking.
+
+Checked against DeepSeek's `/anthropic`: one search with ten results, an answer naming its source, and a second turn that replayed the blocks.
 
 ## What the adapters share (`provider/internal/wire`)
 

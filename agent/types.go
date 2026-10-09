@@ -69,6 +69,7 @@ const (
 	StopEnd     StopReason = "stop"
 	StopLength  StopReason = "length"
 	StopToolUse StopReason = "tool_use"
+	StopPause   StopReason = "pause" // the server paused a long turn (server tools); send it back to go on
 	StopError   StopReason = "error"
 	StopAborted StopReason = "aborted"
 )

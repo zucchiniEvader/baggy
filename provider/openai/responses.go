@@ -27,6 +27,9 @@ type Responses struct {
 	// model's own reasoning items back, so its reasoning carries across tool
 	// calls. Off by default: not every Responses server takes `include`.
 	EncryptedReasoning bool
+	// WebSearch declares OpenAI's server-side web_search tool; its calls are
+	// kept to show, not sent back.
+	WebSearch bool
 }
 
 // NewResponses returns a provider for the Responses API at base ("" is
@@ -119,8 +122,11 @@ func (r *Responses) buildBody(req provider.Request) obj {
 	if r.EncryptedReasoning {
 		body["include"] = []string{"reasoning.encrypted_content"}
 	}
-	if len(req.Tools) > 0 {
+	if len(req.Tools) > 0 || r.WebSearch {
 		var tools []obj
+		if r.WebSearch {
+			tools = append(tools, obj{"type": "web_search"})
+		}
 		for _, t := range req.Tools {
 			tools = append(tools, obj{"type": "function", "name": t.Name, "description": t.Description, "parameters": t.Parameters, "strict": false})
 		}
@@ -308,6 +314,10 @@ func (s *respStream) handle(event, data string) (bool, error) {
 			if w.EncryptedContent != "" {
 				it.raw, it.encrypted = ev.Item, w.EncryptedContent
 			}
+		case "web_search_call":
+			it.raw = ev.Item
+			part := agent.Part{Kind: agent.PartServer, Name: w.Type, Raw: ev.Item}
+			s.emit(provider.Event{Kind: provider.EventServerTool, Part: &part})
 		}
 	case "response.completed", "response.done", "response.incomplete":
 		s.stop = agent.StopEnd
@@ -360,6 +370,10 @@ func (s *respStream) message() agent.Message {
 			}
 		case "function_call":
 			m.Parts = append(m.Parts, agent.Part{Kind: agent.PartToolCall, CallID: it.callID, Name: it.name, Args: wire.Args(it.text.String())})
+		case "web_search_call":
+			if len(it.raw) > 0 {
+				m.Parts = append(m.Parts, agent.Part{Kind: agent.PartServer, Name: it.typ, Raw: it.raw})
+			}
 		}
 	}
 	return m

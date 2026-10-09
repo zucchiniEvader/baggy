@@ -303,6 +303,13 @@ func (a *app) drawRow(c *ui.Context, ch store.Chat, v *chatView, r row) {
 			if group {
 				ui.Text(c, a.name(r.author)).FontSize(12).Bold().TextColor(a.authorColor(r.author))
 			}
+			for _, s := range r.searches {
+				color := t.TextMuted
+				if s.err != "" {
+					color = t.Danger
+				}
+				ui.Text(c, "⌕ "+searchText(s)).FontSize(12).TextColor(color).Selectable()
+			}
 			if r.thinking != "" && a.prefs.showThinking {
 				ui.Text(c, strings.TrimSpace(r.thinking)).Selectable().Italic().FontSize(12).TextColor(t.TextMuted)
 			}
@@ -311,7 +318,7 @@ func (a *app) drawRow(c *ui.Context, ch store.Chat, v *chatView, r row) {
 				ui.Text(c, r.text).Selectable().TextColor(t.Danger)
 			case r.text != "":
 				markdown(c, r.text)
-			case !r.stopped && r.seq == 0:
+			case !r.stopped && r.seq == 0 && len(r.searches) == 0:
 				ui.Text(c, "…").TextColor(t.TextMuted)
 			}
 			if r.stopped {

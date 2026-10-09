@@ -40,6 +40,8 @@ func (m Model) Call(ctx context.Context, system string, msgs []agent.Message, to
 			emit(agent.Event{Kind: agent.EventTextDelta, Delta: e.Delta})
 		case EventThinkingDelta:
 			emit(agent.Event{Kind: agent.EventThinkingDelta, Delta: e.Delta})
+		case EventServerTool:
+			emit(agent.Event{Kind: agent.EventServerTool, Call: e.Part})
 		case EventDone:
 			reply := *e.Message
 			if info, ok := catalog.Find(m.Provider.Model()); ok && reply.Usage.Cost == 0 {

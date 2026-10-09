@@ -358,3 +358,22 @@ func TestMemoryEditorConflict(t *testing.T) {
 		t.Fatalf("not saved: %q", m.Read())
 	}
 }
+
+func TestSearchRowsFromEntryAndEvents(t *testing.T) {
+	call := agent.Part{Kind: agent.PartServer, Name: "web_search", Raw: json.RawMessage(`{"type":"server_tool_use","id":"s1","name":"web_search","input":{"query":"kyoto"}}`)}
+	res := agent.Part{Kind: agent.PartServer, Name: "web_search_tool_result", Raw: json.RawMessage(`{"type":"web_search_tool_result","tool_use_id":"s1","content":[{"type":"web_search_result"}]}`)}
+	rows := entryRows(store.Entry{Seq: 1, Msg: agent.Message{Role: agent.RoleAssistant, StopReason: agent.StopEnd, Parts: []agent.Part{call, res, {Kind: agent.PartText, Text: "Mild."}}}})
+	if len(rows) != 1 || len(rows[0].searches) != 1 || searchText(rows[0].searches[0]) != "Searched the web for “kyoto”" {
+		t.Fatalf("rows %+v", rows)
+	}
+	v := &chatView{stream: map[string]int{}}
+	v.applyAgent(team.Event{Turn: "t", BotID: "b", Agent: agent.Event{Kind: agent.EventMessageStart}})
+	v.applyAgent(team.Event{Turn: "t", Agent: agent.Event{Kind: agent.EventServerTool, Call: &call}})
+	if s := searchText(v.rows[0].searches[0]); s != "Searching the web for “kyoto”…" {
+		t.Fatalf("live: %s", s)
+	}
+	v.applyAgent(team.Event{Turn: "t", Agent: agent.Event{Kind: agent.EventServerTool, Call: &res}})
+	if !v.rows[0].searches[0].done {
+		t.Fatal("result not applied")
+	}
+}

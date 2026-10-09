@@ -274,3 +274,59 @@ func TestDropBoundThinking(t *testing.T) {
 		t.Fatalf("request: %s", b)
 	}
 }
+
+func TestSearchStreamsServerToolEvents(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		io.Copy(io.Discard, r.Body)
+		io.WriteString(w, sse(
+			`{"type":"message_start","message":{"id":"m","usage":{"input_tokens":1}}}`,
+			`{"type":"content_block_start","index":0,"content_block":{"type":"server_tool_use","id":"s1","name":"web_search","input":{}}}`,
+			`{"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"{\"query\":\"kyoto weather\"}"}}`,
+			`{"type":"content_block_stop","index":0}`,
+			`{"type":"content_block_start","index":1,"content_block":{"type":"web_search_tool_result","tool_use_id":"s1","content":[{"type":"web_search_result","url":"https://a"},{"type":"web_search_result","url":"https://b"}]}}`,
+			`{"type":"content_block_stop","index":1}`,
+			`{"type":"content_block_start","index":2,"content_block":{"type":"server_tool_use","id":"f1","name":"web_fetch","input":{}}}`,
+			`{"type":"content_block_delta","index":2,"delta":{"type":"input_json_delta","partial_json":"{\"url\":\"https://a\"}"}}`,
+			`{"type":"content_block_stop","index":2}`,
+			`{"type":"content_block_start","index":3,"content_block":{"type":"web_fetch_tool_result","tool_use_id":"f1","content":{"type":"web_fetch_tool_error","error_code":"url_not_accessible"}}}`,
+			`{"type":"content_block_stop","index":3}`,
+			`{"type":"message_delta","delta":{"stop_reason":"pause_turn"},"usage":{"output_tokens":5}}`,
+			`{"type":"message_stop"}`))
+	}))
+	defer srv.Close()
+	p := New("", srv.URL, "k", "claude-sonnet-5-5")
+	p.ServerTools = WebTools(srv.URL, "claude-sonnet-5-5")
+	msg, evs := collect(p, provider.Request{})
+	var blocks []provider.ServerBlock
+	for _, e := range evs {
+		if e.Kind == provider.EventServerTool {
+			b, ok := provider.DescribeServer(*e.Part)
+			if !ok {
+				t.Fatalf("not a server block: %s", e.Part.Raw)
+			}
+			blocks = append(blocks, b)
+		}
+	}
+	if len(blocks) != 4 || blocks[0].Detail != "kyoto weather" || !blocks[1].Result || blocks[1].Count != 2 || blocks[1].ID != "s1" ||
+		blocks[2].Tool != provider.WebFetch || blocks[2].Detail != "https://a" || blocks[3].Error != "url not accessible" {
+		t.Fatalf("blocks %+v", blocks)
+	}
+	if msg.StopReason != agent.StopPause || len(msg.Parts) != 4 {
+		t.Fatalf("message %+v", msg)
+	}
+}
+
+func TestWebTools(t *testing.T) {
+	if ds := WebTools("https://api.deepseek.com/anthropic", "deepseek-chat"); len(ds) != 1 || !strings.Contains(string(ds[0]), "20250305") {
+		t.Fatalf("deepseek %s", ds)
+	}
+	if a := WebTools("", "claude-opus-5-5"); len(a) != 2 || !strings.Contains(string(a[0]), "20260209") {
+		t.Fatalf("anthropic %s", a)
+	}
+	if h := WebTools("", "claude-haiku-4-5-20251001"); !strings.Contains(string(h[1]), "web_fetch_20250910") {
+		t.Fatalf("haiku %s", h)
+	}
+	if o := WebTools("", "claude-opus-4-8"); !strings.Contains(string(o[0]), "20260209") {
+		t.Fatalf("opus 4.8 %s", o)
+	}
+}

@@ -31,6 +31,9 @@ type Config struct {
 	EncryptedReasoning bool
 	// NoImages marks a text-only model the catalog does not know.
 	NoImages bool
+	// WebSearch declares the server's web search (and fetch, on Anthropic):
+	// the Messages API and Responses; Chat Completions has none.
+	WebSearch bool
 }
 
 func New(c Config) (provider.Provider, error) {
@@ -38,6 +41,9 @@ func New(c Config) (provider.Provider, error) {
 	case Anthropic, "":
 		p := anthropic.New(c.ID, c.BaseURL, c.APIKey, c.Model)
 		p.NoImages = c.NoImages || !catalog.Images(c.Model)
+		if c.WebSearch {
+			p.ServerTools = anthropic.WebTools(c.BaseURL, c.Model)
+		}
 		return p, nil
 	case Chat:
 		p := openai.NewChat(c.ID, c.BaseURL, c.APIKey, c.Model)
@@ -48,14 +54,15 @@ func New(c Config) (provider.Provider, error) {
 		p := openai.NewResponses(c.ID, c.BaseURL, c.APIKey, c.Model)
 		p.EncryptedReasoning = c.EncryptedReasoning
 		p.NoImages = c.NoImages || !catalog.Images(c.Model)
+		p.WebSearch = c.WebSearch
 		return p, nil
 	}
 	return nil, fmt.Errorf("unknown API %q (want %s, %s or %s)", c.API, Anthropic, Chat, Responses)
 }
 
 // FromEnv reads GOBOT_API, GOBOT_PROVIDER, GOBOT_BASE_URL, GOBOT_API_KEY and
-// GOBOT_MODEL (model when that is unset), with GOBOT_REPLAY_REASONING=1 and
-// GOBOT_ENCRYPTED_REASONING=1 as switches. For the Anthropic API the key and
+// GOBOT_MODEL (model when that is unset), with GOBOT_REPLAY_REASONING=1,
+// GOBOT_ENCRYPTED_REASONING=1 and GOBOT_WEB_SEARCH=1 as switches. For the Anthropic API the key and
 // base URL fall back to ANTHROPIC_API_KEY and ANTHROPIC_BASE_URL.
 func FromEnv(model string) Config {
 	c := Config{
@@ -66,6 +73,7 @@ func FromEnv(model string) Config {
 		Model:              os.Getenv("GOBOT_MODEL"),
 		ReplayReasoning:    os.Getenv("GOBOT_REPLAY_REASONING") == "1",
 		EncryptedReasoning: os.Getenv("GOBOT_ENCRYPTED_REASONING") == "1",
+		WebSearch:          os.Getenv("GOBOT_WEB_SEARCH") == "1",
 	}
 	if c.Model == "" {
 		c.Model = model

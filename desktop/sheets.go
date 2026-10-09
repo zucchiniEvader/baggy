@@ -229,12 +229,12 @@ func (a *app) groupSheetView(c *ui.Context) {
 // ---- providers ----
 
 type providerForm struct {
-	open                 bool
-	id                   string
-	name, api, base, key string
-	models               string // comma separated
-	replay, encrypted    bool
-	err                  string
+	open                   bool
+	id                     string
+	name, api, base, key   string
+	models                 string // comma separated
+	replay, encrypted, web bool
+	err                    string
 }
 
 var apiLabels = []string{"Anthropic Messages", "OpenAI Chat Completions", "OpenAI Responses"}
@@ -260,7 +260,7 @@ func apiID(label string) string {
 
 func (a *app) editProvider(p store.Provider) {
 	a.provSheet = &providerForm{open: true, id: p.ID, name: p.Name, api: apiLabel(p.API), base: p.BaseURL, key: p.APIKey,
-		models: strings.Join(p.Models, ", "), replay: p.Options["replay_reasoning"], encrypted: p.Options["encrypted_reasoning"]}
+		models: strings.Join(p.Models, ", "), replay: p.Options["replay_reasoning"], encrypted: p.Options["encrypted_reasoning"], web: p.Options["web_search"]}
 }
 
 func (a *app) saveProvider(f *providerForm) bool {
@@ -275,7 +275,7 @@ func (a *app) saveProvider(f *providerForm) bool {
 		return false
 	}
 	p := store.Provider{ID: f.id, Name: strings.TrimSpace(f.name), API: apiID(f.api), BaseURL: strings.TrimSpace(f.base), APIKey: strings.TrimSpace(f.key), Models: models,
-		Options: map[string]bool{"replay_reasoning": f.replay, "encrypted_reasoning": f.encrypted}}
+		Options: map[string]bool{"replay_reasoning": f.replay, "encrypted_reasoning": f.encrypted, "web_search": f.web && apiID(f.api) != connect.Chat}}
 	p, err := a.st.SaveProvider(p)
 	if err != nil {
 		f.err = err.Error()
@@ -306,6 +306,9 @@ func (a *app) providerSheetView(c *ui.Context) {
 					Description(L("Comma separated; the first is the default."))
 				if apiID(f.api) == connect.Chat {
 					ui.Field(c, L("Send reasoning back"), func() { ui.Switch(c, &f.replay) }).Description(L("As reasoning_content, which DeepSeek's thinking mode takes."))
+				}
+				if apiID(f.api) != connect.Chat {
+					ui.Field(c, L("Web search"), func() { ui.Switch(c, &f.web) }).Description(L("The server searches the web (and reads pages, on Anthropic) for the bot."))
 				}
 				if apiID(f.api) == connect.Responses {
 					ui.Field(c, L("Encrypted reasoning"), func() { ui.Switch(c, &f.encrypted) }).Description(L("Keeps reasoning across tool calls on OpenAI's API."))
@@ -378,7 +381,7 @@ func (a *app) settingsView(c *ui.Context) {
 			})
 			if ui.Button(c, L("Add Provider…")).Clicked() {
 				a.settings = false
-				a.provSheet = &providerForm{open: true, api: apiLabels[0]}
+				a.provSheet = &providerForm{open: true, api: apiLabels[0], web: true}
 			}
 			ui.Divider(c)
 			a.prefsView(c)

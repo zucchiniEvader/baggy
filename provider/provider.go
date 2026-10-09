@@ -51,12 +51,13 @@ const (
 	EventTextDelta     EventKind = "text_delta"
 	EventThinkingDelta EventKind = "thinking_delta"
 	EventToolCall      EventKind = "tool_call" // arguments complete
+	EventServerTool    EventKind = "server_tool" // Part: a server tool's call or result, complete
 	EventDone          EventKind = "done"      // Message is final
 )
 
 type Event struct {
 	Kind    EventKind
 	Delta   string         // text_delta, thinking_delta
-	Part    *agent.Part    // tool_call
+	Part    *agent.Part    // tool_call, server_tool
 	Message *agent.Message // done
 }

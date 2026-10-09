@@ -8,7 +8,8 @@
 2. `Options.Compact`, when set, sees the messages the call would send; when it returns a replacement (a summary and what it kept), this call and the rest of the run send that instead, followed by the messages the run adds from then on. Then one model call: `message_start` before it, `message_end` after, `text_delta` and `thinking_delta` while it streams.
 3. A reply that stopped for `StopError` or `StopAborted`, or a cancelled `ctx`, ends the run. Queues are not read, so what they hold waits for the next run.
 4. `StopToolUse`: the reply's calls run in parallel (`BeforeToolCall`, schema validation, `Execute`, `AfterToolCall`), one `tool_start` and `tool_end` each, then one `RoleTool` message with the results. Steering is read and the loop goes to step 2.
-5. Otherwise the model would stop: steering is read, and when it is empty, follow-up. Messages found continue the run (step 2); none ends it with `turn_end`.
+5. `StopPause` (the server paused a long turn of server tools): the reply is sent back as it is, at most five times in a row.
+6. Otherwise the model would stop: steering is read, and when it is empty, follow-up. Messages found continue the run (step 2); none ends it with `turn_end`.
 
 ## Events
 
@@ -23,6 +24,7 @@
 | `tool_start` | `Call` (id, name, arguments) |
 | `tool_end` | `Call`, `Result` |
 | `retry` | `Delta`: why the reply streaming failed; it is asked again |
+| `server_tool` | `Call`: a server tool's block (web search or fetch, call or result), as it completes; `provider.DescribeServer` reads it |
 
 ## Steering and follow-ups
 

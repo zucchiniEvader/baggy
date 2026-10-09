@@ -76,7 +76,7 @@ func DropBoundThinking(model, key string, msgs []agent.Message) []agent.Message 
 		if m.Role == agent.RoleAssistant {
 			var parts []agent.Part
 			for _, p := range m.Parts {
-				if p.Kind != agent.PartThinking {
+				if p.Kind != agent.PartThinking && !redacted(p) {
 					parts = append(parts, p)
 				}
 			}
@@ -85,4 +85,9 @@ func DropBoundThinking(model, key string, msgs []agent.Message) []agent.Message 
 		out[i] = m
 	}
 	return out
+}
+
+// redacted is a redacted_thinking block, thinking too.
+func redacted(p agent.Part) bool {
+	return p.Kind == agent.PartServer && p.Name == "redacted_thinking"
 }

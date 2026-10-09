@@ -366,3 +366,18 @@ func TestErrorClasses(t *testing.T) {
 		t.Error("overflow not seen")
 	}
 }
+
+func TestPausedReplyGoesBack(t *testing.T) {
+	var seen [][]Message
+	m := modelFunc(func(msgs []Message) Message {
+		seen = append(seen, msgs)
+		if len(seen) == 1 {
+			return Message{Role: RoleAssistant, StopReason: StopPause, Parts: []Part{{Kind: PartServer, Raw: []byte(`{"type":"server_tool_use"}`)}}}
+		}
+		return Message{Role: RoleAssistant, StopReason: StopEnd, Parts: []Part{{Kind: PartText, Text: "found"}}}
+	})
+	out := Run(context.Background(), m, []Message{userText("search")}, Options{})
+	if len(seen) != 2 || len(seen[1]) != 2 || seen[1][1].StopReason != StopPause || lastText(out) != "found" {
+		t.Fatalf("seen %+v out %+v", seen, out)
+	}
+}

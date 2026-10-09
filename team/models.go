@@ -45,7 +45,7 @@ func Config(st *store.Store, b store.Bot, fallback connect.Config) (connect.Conf
 		return fallback, nil
 	}
 	c := connect.Config{API: p.API, ID: p.ID, BaseURL: p.BaseURL, APIKey: p.APIKey, Model: b.Model,
-		ReplayReasoning: p.Options["replay_reasoning"], EncryptedReasoning: p.Options["encrypted_reasoning"], NoImages: p.Options["no_images"]}
+		ReplayReasoning: p.Options["replay_reasoning"], EncryptedReasoning: p.Options["encrypted_reasoning"], NoImages: p.Options["no_images"], WebSearch: p.Options["web_search"]}
 	if c.Model == "" && len(p.Models) > 0 {
 		c.Model = p.Models[0]
 	}

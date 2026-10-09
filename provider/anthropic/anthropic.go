@@ -48,6 +48,33 @@ type Provider struct {
 	NoImages bool
 }
 
+// WebTools are the server tools a Messages API server runs: DeepSeek's web
+// search on its endpoint, Anthropic's web search and web fetch elsewhere
+// (the basic versions for Haiku 4.5 and the 4.5 generation and earlier).
+func WebTools(base, model string) []json.RawMessage {
+	if strings.Contains(base, "deepseek") {
+		return []json.RawMessage{json.RawMessage(`{"type":"web_search_20250305","name":"web_search"}`)}
+	}
+	search, fetch := "web_search_20260209", "web_fetch_20260209"
+	if legacy(model) {
+		search, fetch = "web_search_20250305", "web_fetch_20250910"
+	}
+	return []json.RawMessage{
+		json.RawMessage(`{"type":"` + search + `","name":"web_search"}`),
+		json.RawMessage(`{"type":"` + fetch + `","name":"web_fetch"}`),
+	}
+}
+
+// legacy is a model of the 4.5 generation or earlier.
+func legacy(model string) bool {
+	for _, p := range []string{"claude-haiku-4-5", "claude-sonnet-4-5", "claude-opus-4-5", "claude-opus-4-1", "claude-sonnet-4-", "claude-opus-4-", "claude-3"} {
+		if strings.HasPrefix(model, p) && !strings.HasPrefix(model, "claude-opus-4-8") {
+			return true
+		}
+	}
+	return false
+}
+
 // New returns a provider for the Messages API at base ("" is Anthropic's).
 func New(id, base, apiKey, model string) *Provider {
 	if base == "" {
@@ -512,9 +539,15 @@ func (s *streamState) finishBlock(ob *openBlock) {
 		_ = json.Unmarshal(ob.raw, &v)
 		v["input"] = inputJSON(ob.text.String())
 		raw, _ := json.Marshal(v)
-		s.msg.Parts = append(s.msg.Parts, agent.Part{Kind: agent.PartServer, Name: ob.name, Raw: raw})
+		part := agent.Part{Kind: agent.PartServer, Name: ob.name, Raw: raw}
+		s.msg.Parts = append(s.msg.Parts, part)
+		s.emit(provider.Event{Kind: provider.EventServerTool, Part: &part})
 	default: // *_tool_result, redacted_thinking, anything new: kept as is
-		s.msg.Parts = append(s.msg.Parts, agent.Part{Kind: agent.PartServer, Name: ob.typ, Raw: ob.raw})
+		part := agent.Part{Kind: agent.PartServer, Name: ob.typ, Raw: ob.raw}
+		s.msg.Parts = append(s.msg.Parts, part)
+		if strings.HasSuffix(ob.typ, "_tool_result") {
+			s.emit(provider.Event{Kind: provider.EventServerTool, Part: &part})
+		}
 	}
 }
 
@@ -522,8 +555,10 @@ func inputJSON(s string) json.RawMessage { return wire.Args(s) }
 
 func (s *streamState) setStop() error {
 	switch s.stop {
-	case "end_turn", "stop_sequence", "pause_turn":
+	case "end_turn", "stop_sequence":
 		s.msg.StopReason = agent.StopEnd
+	case "pause_turn":
+		s.msg.StopReason = agent.StopPause
 	case "max_tokens":
 		s.msg.StopReason = agent.StopLength
 	case "tool_use":

@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	"github.com/spike/gobot/agent"
+	"github.com/spike/gobot/provider"
 	"github.com/spike/gobot/store"
 	"github.com/spike/gobot/team"
 	"github.com/spike/gobot/tool"
@@ -35,6 +36,64 @@ type row struct {
 	result   *tool.Result
 	pending  bool // a tool call waiting for approval
 	images   int  // images attached to a user message
+	searches []search
+}
+
+// search is a server tool's work in a reply: a web search or a page read.
+type search struct {
+	id, tool, detail string
+	done             bool
+	err              string
+	count            int
+}
+
+// addServer folds a server block into a reply's searches.
+func addServer(ss []search, p agent.Part) []search {
+	b, ok := provider.DescribeServer(p)
+	if !ok {
+		return ss
+	}
+	if !b.Result {
+		for _, s := range ss {
+			if s.id == b.ID && b.ID != "" {
+				return ss
+			}
+		}
+		s := search{id: b.ID, tool: b.Tool, detail: b.Detail}
+		if b.Error != "" { // a Responses item is the call and its outcome
+			s.done, s.err = true, b.Error
+		} else if b.Tool == provider.WebSearch && p.Name == "web_search_call" {
+			s.done = true
+		}
+		return append(ss, s)
+	}
+	for i := range ss {
+		if ss[i].id == b.ID {
+			ss[i].done, ss[i].err, ss[i].count = true, b.Error, b.Count
+		}
+	}
+	return ss
+}
+
+// searchText is how a search reads.
+func searchText(s search) string {
+	switch {
+	case s.tool == provider.WebFetch && s.err != "":
+		return L("Could not read %s: %s", s.detail, s.err)
+	case s.tool == provider.WebFetch && s.done:
+		return L("Read %s", s.detail)
+	case s.tool == provider.WebFetch:
+		return L("Reading %s…", s.detail)
+	case s.err != "":
+		return L("Web search failed: %s", s.err)
+	case s.done && s.detail != "":
+		return L("Searched the web for “%s”", s.detail)
+	case s.done:
+		return L("Searched the web")
+	case s.detail != "":
+		return L("Searching the web for “%s”…", s.detail)
+	}
+	return L("Searching the web…")
 }
 
 func messageText(m agent.Message) string {
@@ -76,8 +135,11 @@ func entryRows(e store.Entry) []row {
 		var out []row
 		r := row{kind: rowAssistant, author: e.Author, seq: e.Seq, turn: e.Turn, text: messageText(m)}
 		for _, p := range m.Parts {
-			if p.Kind == agent.PartThinking {
+			switch p.Kind {
+			case agent.PartThinking:
 				r.thinking += p.Text
+			case agent.PartServer:
+				r.searches = addServer(r.searches, p)
 			}
 		}
 		switch m.StopReason {
@@ -89,7 +151,7 @@ func entryRows(e store.Entry) []row {
 		case agent.StopAborted:
 			r.stopped = true
 		}
-		if strings.TrimSpace(r.text) != "" || strings.TrimSpace(r.thinking) != "" || r.failed || r.stopped {
+		if strings.TrimSpace(r.text) != "" || strings.TrimSpace(r.thinking) != "" || r.failed || r.stopped || len(r.searches) > 0 {
 			out = append(out, r)
 		}
 		for _, p := range m.Parts {

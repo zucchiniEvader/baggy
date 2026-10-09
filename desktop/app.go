@@ -208,6 +208,10 @@ func (v *chatView) applyAgent(e team.Event) {
 		} else {
 			v.rows[i].thinking += ev.Delta
 		}
+	case agent.EventServerTool:
+		if i, ok := v.stream[e.Turn]; ok && i < len(v.rows) {
+			v.rows[i].searches = addServer(v.rows[i].searches, *ev.Call)
+		}
 	case agent.EventRetry: // the reply streaming failed and is asked again
 		if i, ok := v.stream[e.Turn]; ok && i < len(v.rows) && v.rows[i].seq == 0 {
 			v.rows = append(v.rows[:i], v.rows[i+1:]...)

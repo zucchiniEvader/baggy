@@ -28,7 +28,8 @@ const (
 	EventToolStart     EventKind = "tool_start"  // Call is set
 	EventToolEnd       EventKind = "tool_end"    // Call and Result are set
 	EventTurnEnd       EventKind = "turn_end"
-	EventRetry         EventKind = "retry" // the reply streaming failed and is asked again; Delta is why
+	EventRetry         EventKind = "retry"       // the reply streaming failed and is asked again; Delta is why
+	EventServerTool    EventKind = "server_tool" // Call: a server tool's block (web search), as it completes
 )
 
 // Event is what a UI or store observes while a turn runs. Run delivers events
@@ -78,6 +79,9 @@ type Options struct {
 	Interrupt *Interrupt
 }
 
+// maxPauses is how many paused replies in a row the loop sends back.
+const maxPauses = 5
+
 // Run appends to msgs until the model stops asking for tools and no queued
 // message is left, and returns the new messages, tool results and injected
 // queue messages included. Tool calls of one assistant message run in parallel.
@@ -109,6 +113,7 @@ func Run(ctx context.Context, m Model, msgs []Message, o Options) []Message {
 	emit(Event{Kind: EventTurnStart})
 	add(o.Steering.Drain()...)
 	base, since := msgs, 0 // the call sends base and out[since:]
+	pauses := 0
 	for {
 		all := append(append([]Message{}, base...), out[since:]...)
 		if o.Compact != nil {
@@ -168,6 +173,12 @@ func Run(ctx context.Context, m Model, msgs []Message, o Options) []Message {
 			done()
 			break
 		}
+		if reply.StopReason == StopPause && pauses < maxPauses {
+			pauses++
+			done()
+			continue // the reply goes back as it is, and the server goes on
+		}
+		pauses = 0
 		if reply.StopReason == StopToolUse {
 			var calls []Part
 			for _, p := range reply.Parts {

@@ -328,3 +328,27 @@ func TestResponsesIncompleteAndFailed(t *testing.T) {
 		t.Fatalf("no completed: %+v", msg)
 	}
 }
+
+func TestResponsesWebSearch(t *testing.T) {
+	var got map[string]any
+	srv := server(t, 200, sse(
+		`{"type":"response.output_item.added","item":{"type":"web_search_call","id":"ws_1"}}`,
+		`{"type":"response.output_item.done","item":{"type":"web_search_call","id":"ws_1","status":"completed","action":{"type":"search","query":"kyoto"}}}`,
+		`{"type":"response.output_item.added","item":{"type":"message","id":"m"}}`,
+		`{"type":"response.output_text.delta","item_id":"m","delta":"Mild."}`,
+		`{"type":"response.completed","response":{"status":"completed"}}`), &got)
+	r := NewResponses("", srv.URL, "k", "m")
+	r.WebSearch = true
+	msg, evs := collect(r, provider.Request{})
+	if got["tools"].([]any)[0].(map[string]any)["type"] != "web_search" || count(evs, provider.EventServerTool) != 1 {
+		t.Fatalf("body %v", got)
+	}
+	b, ok := provider.DescribeServer(msg.Parts[0])
+	if !ok || b.Detail != "kyoto" || msg.StopReason != agent.StopEnd {
+		t.Fatalf("parts %+v", msg.Parts)
+	}
+	raw, _ := json.Marshal(r.buildBody(provider.Request{Messages: []agent.Message{{Role: agent.RoleAssistant, Provider: "openai", Model: "m", StopReason: agent.StopEnd, Parts: msg.Parts}}}))
+	if strings.Contains(string(raw), "ws_1") {
+		t.Fatalf("search call sent back: %s", raw)
+	}
+}
