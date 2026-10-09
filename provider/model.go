@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/spike/gobot/agent"
+	"github.com/spike/gobot/provider/catalog"
 	"github.com/spike/gobot/tool"
 )
 
@@ -13,6 +14,9 @@ type Model struct {
 	MaxTokens int // 0: the adapter's default
 	Thinking  ThinkingLevel
 }
+
+// ModelID is the model the provider runs.
+func (m Model) ModelID() string { return m.Provider.Model() }
 
 // Call sends the transcript and forwards text and thinking deltas to emit.
 // The loop sends the same prefix again on its next call, so the whole
@@ -37,7 +41,11 @@ func (m Model) Call(ctx context.Context, system string, msgs []agent.Message, to
 		case EventThinkingDelta:
 			emit(agent.Event{Kind: agent.EventThinkingDelta, Delta: e.Delta})
 		case EventDone:
-			return *e.Message
+			reply := *e.Message
+			if info, ok := catalog.Find(m.Provider.Model()); ok && reply.Usage.Cost == 0 {
+				reply.Usage.Cost = info.Cost(reply.Usage)
+			}
+			return reply
 		}
 	}
 	reply := agent.Message{Role: agent.RoleAssistant, Provider: m.Provider.ID(), Model: m.Provider.Model()}

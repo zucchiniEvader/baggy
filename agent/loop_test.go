@@ -194,3 +194,49 @@ func TestParallelToolEventsAreSerialized(t *testing.T) {
 		t.Fatal("no events")
 	}
 }
+
+func TestCompactReplacesWhatCallsSend(t *testing.T) {
+	var sent [][]Message
+	m := modelFunc(func(msgs []Message) Message {
+		sent = append(sent, msgs)
+		if len(sent) == 1 {
+			return Message{Role: RoleAssistant, StopReason: StopToolUse, Parts: []Part{{Kind: PartToolCall, CallID: "c", Name: "echo", Args: []byte(`{}`)}}}
+		}
+		return Message{Role: RoleAssistant, StopReason: StopEnd, Parts: []Part{{Kind: PartText, Text: "done"}}}
+	})
+	summary := Message{Role: RoleUser, Kind: "compaction", Parts: []Part{{Kind: PartText, Text: "summary"}}}
+	calls := 0
+	out := Run(context.Background(), m, []Message{userText("a"), userText("b")}, Options{
+		Tools: []tool.Tool{echo{}},
+		Compact: func(_ context.Context, msgs []Message) ([]Message, bool) {
+			calls++
+			if calls == 2 { // between the calls: keep only the summary and the tool exchange
+				return append([]Message{summary}, msgs[2:]...), true
+			}
+			return nil, false
+		},
+	})
+	if len(sent) != 2 || len(sent[1]) != 3 || sent[1][0].Kind != "compaction" || sent[1][1].Role != RoleAssistant || sent[1][2].Role != RoleTool {
+		t.Fatalf("second call sent %+v", sent[1])
+	}
+	if len(out) != 3 { // the reply, the result, the last reply: the summary is not the run's
+		t.Fatalf("out %d", len(out))
+	}
+}
+
+func TestEstimateTokensUsesLastUsage(t *testing.T) {
+	msgs := []Message{
+		userText("hello there"),
+		{Role: RoleAssistant, Usage: Usage{Input: 100, Output: 20}, Parts: []Part{{Kind: PartText, Text: "hi"}}},
+		userText("0123456789012345678901234567890123456789"),
+	}
+	if got := EstimateTokens(msgs); got != 120+4+10 {
+		t.Fatalf("estimate %d", got)
+	}
+}
+
+type modelFunc func(msgs []Message) Message
+
+func (f modelFunc) Call(_ context.Context, _ string, msgs []Message, _ []tool.Tool, _ func(Event)) Message {
+	return f(append([]Message(nil), msgs...))
+}

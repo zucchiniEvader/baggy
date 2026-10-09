@@ -23,6 +23,7 @@ func (a *app) inspectorPane(c *ui.Context, ch store.Chat) {
 			if ui.Button(c.Key("edit-group"), L("Edit…")).Clicked() {
 				a.editGroup(ch)
 			}
+			a.spentRow(c, ch)
 			ui.Divider(c)
 			ui.Text(c, L("Members")).FontSize(11).Bold().TextColor(t.TextMuted)
 			ui.Column(c).Gap(2).AlignSelf(ui.Stretch).Children(func() {
@@ -118,10 +119,19 @@ func (a *app) botDetails(c *ui.Context, id string) {
 		a.editBot(id)
 	}
 	a.memoryDetails(c, b)
+	if dm, err := a.st.DMOf(id); err == nil {
+		a.spentRow(c, dm)
+	}
 	ui.Divider(c)
 	if dm, err := a.st.DMOf(id); err == nil {
 		if ui.Button(c.Key("delete-bot"), L("Delete Bot")).Clicked() {
 			a.deleteChat(dm)
 		}
+	}
+}
+
+func (a *app) spentRow(c *ui.Context, ch store.Chat) {
+	if es, err := a.st.Messages(ch.ID, 0); err == nil {
+		ui.Text(c, L("Spent in this chat: %s", money(spent(es)))).FontSize(12).TextColor(c.Theme().TextMuted)
 	}
 }

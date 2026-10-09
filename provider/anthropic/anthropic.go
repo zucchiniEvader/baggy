@@ -42,8 +42,10 @@ type Provider struct {
 	MaxRetryDelay time.Duration
 	// Backoff is the first retry wait; it doubles up to 8 s.
 	Backoff time.Duration
-	// Cache turns the cache_control marks off when false.
+	// NoCache turns the cache_control marks off.
 	NoCache bool
+	// NoImages replaces images with a note, for a text-only model.
+	NoImages bool
 }
 
 // New returns a provider for the Messages API at base ("" is Anthropic's).
@@ -136,7 +138,7 @@ type wireMessage struct {
 func callID(id string) string { return wire.CallID(id) }
 
 func (p *Provider) buildBody(req provider.Request) map[string]any {
-	transformed, origins := agent.Transform(req.Messages, agent.TransformOptions{Provider: p.id, Model: p.model, SupportsImages: true})
+	transformed, origins := agent.Transform(req.Messages, agent.TransformOptions{Provider: p.id, Model: p.model, SupportsImages: !p.NoImages})
 	msgs, ends := convert(transformed)
 
 	marks := 0

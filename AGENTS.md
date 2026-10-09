@@ -29,9 +29,11 @@ provider/   Provider interface, Request, stream Events; one adapter per wire pro
   openai/     the Chat Completions and Responses adapters
   connect/    a provider from a protocol name and settings, or the environment
   internal/wire/  posting with retries, SSE reading, shared by the adapters
+  catalog/    models.dev snapshot: windows, images, prices, cost
 tool/       Tool interface and Result, argument validation, shell and file tools
 store/      SQLite state: providers, bots, chats, members, messages, settings (docs/store.md)
-team/       runs DMs and group rooms, projection, system prompts, team tools (docs/team.md)
+team/       runs DMs and group rooms, projection, prompts, team tools, compaction (docs/team.md)
+memory/     a bot's MEMORY.md, notes and diary, scrubbing, search (docs/memory.md)
 desktop/    the MyGo app, its own module (docs/desktop.md)
 docs/       one doc per subject, written as the system is
 ```

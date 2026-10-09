@@ -440,11 +440,17 @@ func (a *app) sheets(c *ui.Context) {
 			a.confirm = nil
 		}
 	}
+	if a.memSheet != nil {
+		a.memorySheetView(c)
+		if !a.memSheet.open {
+			a.memSheet = nil
+		}
+	}
 	if a.palette != nil {
 		a.paletteView(c)
 	}
 }
 
 func (a *app) hasSheet() bool {
-	return a.botSheet != nil || a.groupSheet != nil || a.provSheet != nil || a.settings || a.confirm != nil || a.palette != nil
+	return a.botSheet != nil || a.groupSheet != nil || a.provSheet != nil || a.settings || a.confirm != nil || a.palette != nil || a.memSheet != nil
 }

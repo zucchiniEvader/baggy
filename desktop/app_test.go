@@ -329,3 +329,32 @@ func TestRender(t *testing.T) {
 	}
 	_ = strings.TrimSpace
 }
+
+func TestMemoryEditorConflict(t *testing.T) {
+	h := newHarness(t, script(func(string, []agent.Message) agent.Message { return say("ok") }))
+	chef := h.a.bots[0]
+	m := h.a.memoryOf(chef)
+	m.Update("append", "likes tea", "", "x")
+	h.a.inspector = true
+	h.tt.Frame()
+	if err := h.tt.Click("Edit…"); err != nil { // the bot's; memory's is the second
+		t.Fatal(err)
+	}
+	h.a.botSheet = nil
+	text := m.Read()
+	h.a.memSheet = &memoryForm{open: true, bot: chef, was: text, text: text + "- edited by hand\n"}
+	m.Update("append", "likes jazz", "", "x") // the bot writes meanwhile
+	h.tt.Frame()
+	h.tt.Click("Save")
+	h.tt.Frame()
+	if h.a.memSheet == nil || !h.a.memSheet.changed || !h.tt.HasText("Overwrite") {
+		t.Fatalf("no conflict: %q", h.tt.Texts())
+	}
+	h.tt.Click("Overwrite")
+	h.tt.Frame()
+	h.tt.Click("Save")
+	h.tt.Frame()
+	if h.a.memSheet != nil || !strings.Contains(m.Read(), "edited by hand") {
+		t.Fatalf("not saved: %q", m.Read())
+	}
+}

@@ -8,6 +8,7 @@ import (
 	"errors"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/spike/gobot/agent"
 	"github.com/spike/gobot/store"
@@ -51,9 +52,15 @@ type Team struct {
 	Tools func(b store.Bot, workspace string) []tool.Tool
 	// Emit receives events from any goroutine; it must not block for long.
 	Emit func(Event)
-	// Prepare, when set, may rewrite the messages of a turn before the model
-	// sees them (context compaction).
-	Prepare func(ctx context.Context, b store.Bot, chat store.Chat, msgs []agent.Message) []agent.Message
+	// Memory gives every bot its memory: MEMORY.md in the system prompt,
+	// memory_update, memory_log and recall, a diary line per turn, and the
+	// recent-work brief after the transcript.
+	Memory bool
+	// Compaction, when set, summarizes a chat's older part before a request
+	// would outgrow the model's window.
+	Compaction *Compaction
+	// Now is the clock (time.Now when nil).
+	Now func() time.Time
 	// Approve, when set, runs before each tool call of a turn and may block
 	// it with a result (approval of shell commands); it may wait for the user
 	// until ctx ends.
@@ -238,12 +245,9 @@ func (t *Team) turn(ctx context.Context, chat store.Chat, botID string, r *run, 
 		return fail(err)
 	}
 	msgs := Project(entries, b.ID, bots)
-	if t.Prepare != nil {
-		msgs = t.Prepare(ctx, b, chat, msgs)
-	}
 	var notes []string
-	if t.Brief != nil {
-		if s := t.Brief(b, chat); s != "" {
+	if t.Memory {
+		if s := t.brief(b, chat); s != "" {
 			notes = append(notes, s)
 		}
 	}
@@ -260,15 +264,22 @@ func (t *Team) turn(ctx context.Context, chat store.Chat, botID string, r *run, 
 		tools = t.Tools(b, ws)
 	}
 	tools = append(tools, t.teamTools(b, chat, r)...)
-	if t.Extra != nil {
-		tools = append(tools, t.Extra(b, chat)...)
+	system := SystemPrompt(b, chat, bots, ws)
+	if t.Memory {
+		tools = append(tools, t.MemoryTools(b, chat)...)
+		system += "\n\n" + t.memoryOf(b).Prompt()
+	}
+	var compact func(context.Context, []agent.Message) ([]agent.Message, bool)
+	if t.Compaction != nil {
+		compact = t.compactor(b, chat, model, modelID(model, b), system, tools)
 	}
 
 	var stored []store.Entry
 	var storeErr error
 	out := agent.Run(ctx, model, msgs, agent.Options{
-		System:   SystemPrompt(b, chat, bots, ws),
+		System:   system,
 		Tools:    tools,
+		Compact:  compact,
 		Hooks:    t.hooks(ctx, b, chat),
 		Steering: r.steering,
 		Emit: func(e agent.Event) {
@@ -305,8 +316,8 @@ func (t *Team) turn(ctx context.Context, chat store.Chat, botID string, r *run, 
 	if storeErr != nil {
 		t.emit(Event{Kind: EventError, ChatID: chat.ID, BotID: botID, Err: storeErr})
 	}
-	if t.AfterTurn != nil {
-		t.AfterTurn(b, chat, out)
+	if t.Memory {
+		t.logTurn(b, chat, out)
 	}
 	return stored
 }
@@ -316,4 +327,12 @@ func (t *Team) hooks(ctx context.Context, b store.Bot, chat store.Chat) agent.Ho
 		return agent.Hooks{}
 	}
 	return agent.Hooks{BeforeToolCall: func(call agent.Part) *tool.Result { return t.Approve(ctx, b, chat, call) }}
+}
+
+// modelID is the model a bot's turn runs on, for its context window.
+func modelID(m agent.Model, b store.Bot) string {
+	if pm, ok := m.(interface{ ModelID() string }); ok {
+		return pm.ModelID()
+	}
+	return b.Model
 }

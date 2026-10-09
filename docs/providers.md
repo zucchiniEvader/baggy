@@ -19,7 +19,7 @@ Consecutive same-role messages merge, so a tool result follows its call; assista
 
 Thinking: `Default` sends nothing; otherwise `thinking: {type: adaptive}` with `output_config.effort`, `Off` is `{type: disabled}`. `Budget` selects `{type: enabled, budget_tokens}` (1024, 2048, 8192 for low, medium, high; `max_tokens` is raised to leave 1024 for the answer) for Haiku 4.5 and earlier.
 
-From the stream: `text_delta` and `thinking_delta` become events; `signature_delta` fills the thinking part's signature; `input_json_delta` builds a `tool_use` input, emitted as a `tool_call` event at `content_block_stop`. `server_tool_use` (with its streamed input) and every other block type (`*_tool_result`, `redacted_thinking`, unknown) are kept as `PartServer` parts. Usage: `input_tokens`, `cache_read_input_tokens`, `cache_creation_input_tokens` from `message_start`; cumulative `output_tokens` and `output_tokens_details.thinking_tokens` from `message_delta`. Cost is not computed yet.
+From the stream: `text_delta` and `thinking_delta` become events; `signature_delta` fills the thinking part's signature; `input_json_delta` builds a `tool_use` input, emitted as a `tool_call` event at `content_block_stop`. `server_tool_use` (with its streamed input) and every other block type (`*_tool_result`, `redacted_thinking`, unknown) are kept as `PartServer` parts. Usage: `input_tokens`, `cache_read_input_tokens`, `cache_creation_input_tokens` from `message_start`; cumulative `output_tokens` and `output_tokens_details.thinking_tokens` from `message_delta`. Cost comes from the catalog (below).
 
 | `stop_reason` | Becomes |
 | --- | --- |
@@ -82,6 +82,10 @@ From the stream, item by item in `output_item.added` order: `output_text.delta` 
 
 This adapter is tested against `httptest` servers only: it has not been run against a live Responses server, and encrypted reasoning replay is unchecked.
 
+## Model catalog (`provider/catalog`)
+
+`catalog.json` is a models.dev snapshot (embedded) of the models the adapters offer: context window, output cap, reasoning, images, rates in dollars per million tokens (input, output, cache read, cache write), and long-context tiers. `catalog.Find(id)` ignores a gateway's `vendor/` prefix and finds a dated id's base entry (`claude-haiku-4-5-20251001`). `Model.Cost(usage)` prices every token at the tier the request's input lands in; `provider.Model` stamps it on each reply's `Usage.Cost` (unknown models cost 0). `catalog.Window` (128k when unknown) sizes compaction, and `catalog.Images` (true when unknown) sets each adapter's `NoImages` in `connect.New`; a provider's `no_images` option marks a text-only model the catalog lacks, such as `deepseek-chat`.
+
 ## Choosing a provider (`provider/connect`)
 
 `connect.New(Config{API, ID, BaseURL, APIKey, Model, ReplayReasoning, EncryptedReasoning})` builds the adapter for `API`: `anthropic` (or empty), `chat`, or `responses`. `connect.FromEnv(defaultModel)` fills a Config from `GOBOT_API`, `GOBOT_PROVIDER`, `GOBOT_BASE_URL`, `GOBOT_API_KEY`, `GOBOT_MODEL`, `GOBOT_REPLAY_REASONING=1` and `GOBOT_ENCRYPTED_REASONING=1`; for the Anthropic API the key and base URL fall back to `ANTHROPIC_API_KEY` and `ANTHROPIC_BASE_URL`. `cmd/smoke` and the desktop app use it until providers are stored settings.
@@ -107,4 +111,4 @@ Every adapter runs the transcript through `agent.Transform(msgs, TransformOption
 
 ## Not yet
 
-A live check of the Responses adapter, limiting the images one request carries (`../lorca`'s `MAX_REQUEST_IMAGES`), thinking bound to the system prompt and tools on newer models (`drop_bound_thinking` in `../lorca`), tool result images, the model catalog and cost.
+A live check of the Responses adapter, limiting the images one request carries (`../lorca`'s `MAX_REQUEST_IMAGES`), thinking bound to the system prompt and tools on newer models (`drop_bound_thinking` in `../lorca`), tool result images.

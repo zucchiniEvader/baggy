@@ -35,13 +35,15 @@ type app struct {
 	settings   bool
 	confirm    *confirmation
 	palette    *paletteState
+	memSheet   *memoryForm
 	approvals  *approvals
 	prefs      *prefs
 
-	fallback  connect.Config  // the provider when none is stored
-	locale    string          // the system's language
-	readImage func() []byte   // the clipboard's image as PNG, or nil
-	pickImage func() []string // asks for image files
+	fallback   connect.Config  // the provider when none is stored
+	locale     string          // the system's language
+	readImage  func() []byte   // the clipboard's image as PNG, or nil
+	pickImage  func() []string // asks for image files
+	openFolder func(path string)
 }
 
 // chatView is one chat's transcript as drawn and its composer.

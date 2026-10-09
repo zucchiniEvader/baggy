@@ -58,6 +58,11 @@ type Options struct {
 	// reading them.
 	Steering *Queue
 	FollowUp *Queue
+
+	// Compact, when set, runs before each model call with the messages it
+	// would send; when it returns ok, the call and the rest of the run use
+	// its replacement (a summary and what was kept) instead.
+	Compact func(ctx context.Context, msgs []Message) (replacement []Message, ok bool)
 }
 
 // Run appends to msgs until the model stops asking for tools and no queued
@@ -90,8 +95,14 @@ func Run(ctx context.Context, m Model, msgs []Message, o Options) []Message {
 
 	emit(Event{Kind: EventTurnStart})
 	add(o.Steering.Drain()...)
+	base, since := msgs, 0 // the call sends base and out[since:]
 	for {
-		all := append(append([]Message{}, msgs...), out...)
+		all := append(append([]Message{}, base...), out[since:]...)
+		if o.Compact != nil {
+			if rep, ok := o.Compact(ctx, all); ok {
+				base, since, all = rep, len(out), rep
+			}
+		}
 		emit(Event{Kind: EventMessageStart})
 		reply := m.Call(ctx, o.System, all, o.Tools, emit)
 		out = append(out, reply)

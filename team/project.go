@@ -30,14 +30,8 @@ func nameOf(byID map[string]store.Bot, id string) string {
 // failed turns are left out.
 func Project(entries []store.Entry, botID string, bots []store.Bot) []agent.Message {
 	byID := botNames(bots)
-	start := 0
-	for i, e := range entries {
-		if e.Msg.Kind == KindCompaction {
-			start = i
-		}
-	}
 	var out []agent.Message
-	for _, e := range entries[start:] {
+	for _, e := range compacted(entries) {
 		m := e.Msg
 		switch {
 		case m.Kind == KindCompaction:
@@ -48,14 +42,58 @@ func Project(entries []store.Entry, botID string, bots []store.Bot) []agent.Mess
 			out = append(out, userView(m, e.Meta, botID, byID))
 		case m.Role == agent.RoleUser && e.Meta.From != "": // message_bot into this chat
 			text := fmt.Sprintf("[Message from %s (id %s) via message_bot]\n%s", nameOf(byID, e.Meta.From), e.Meta.From, textOf(m))
-			out = append(out, textMessage(text))
+			out = append(out, withID(textMessage(text), e))
 		case m.Role == agent.RoleAssistant && m.StopReason != agent.StopError && m.StopReason != agent.StopAborted:
 			if t := strings.TrimSpace(textOf(m)); t != "" {
-				out = append(out, textMessage(fmt.Sprintf("[%s]: %s", nameOf(byID, e.Author), t)))
+				out = append(out, withID(textMessage(fmt.Sprintf("[%s]: %s", nameOf(byID, e.Author), t)), e))
 			}
 		}
 	}
 	return out
+}
+
+// compacted is what follows the newest compaction summary: the summary,
+// then the messages from the one it kept (Meta.KeepID) on, older summaries
+// left out.
+func compacted(entries []store.Entry) []store.Entry {
+	ci := -1
+	for i, e := range entries {
+		if e.Msg.Kind == KindCompaction {
+			ci = i
+		}
+	}
+	if ci < 0 {
+		return entries
+	}
+	c := entries[ci]
+	from := ci + 1
+	for i, e := range entries[:ci] {
+		if c.Meta.KeepID != "" && ProjectedID(e) == c.Meta.KeepID {
+			from = i
+			break
+		}
+	}
+	out := []store.Entry{c}
+	for i, e := range entries[from:] {
+		if from+i != ci && e.Msg.Kind != KindCompaction {
+			out = append(out, e)
+		}
+	}
+	return out
+}
+
+// ProjectedID is the id of the message an entry projects to: its own, or
+// one made of its sequence for a message made up for another bot's words.
+func ProjectedID(e store.Entry) string {
+	if e.Msg.ID != "" && (e.Msg.Role == agent.RoleUser || e.Msg.Kind == KindCompaction) {
+		return e.Msg.ID
+	}
+	return fmt.Sprintf("seq-%d", e.Seq)
+}
+
+func withID(m agent.Message, e store.Entry) agent.Message {
+	m.ID = ProjectedID(e)
+	return m
 }
 
 func textMessage(s string) agent.Message {

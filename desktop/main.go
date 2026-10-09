@@ -59,6 +59,7 @@ func main() {
 			Content: ui.View(a.root),
 		})
 		a.post = win.Update
+		a.openFolder = func(p string) { go mygo.Shell.OpenPath(p) }
 		a.pickImage = func() []string {
 			paths, _ := mygo.Dialog.Open(mygo.OpenDialogOptions{Parent: win, Title: L("Attach Images"), Multiple: true,
 				Filters: []mygo.FileFilter{{Name: L("Images"), Extensions: []string{"png", "jpg", "jpeg", "gif", "webp"}}}})
@@ -99,6 +100,8 @@ func newTeam(st *store.Store, fallback connect.Config, emit func(team.Event)) *t
 		Tools: func(b store.Bot, ws string) []tool.Tool {
 			return []tool.Tool{tool.Shell{Dir: ws}, tool.ReadFile{Dir: ws}, tool.WriteFile{Dir: ws}}
 		},
-		Emit: emit,
+		Emit:       emit,
+		Memory:     os.Getenv("GOBOT_MEMORY") != "0",
+		Compaction: &team.Compaction{NoFlush: os.Getenv("GOBOT_MEMORY_FLUSH") == "0"},
 	}
 }

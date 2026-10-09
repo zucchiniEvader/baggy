@@ -12,7 +12,7 @@ tm := &team.Team{
 tm.Send(chatID, "plan the launch", mentions, replyTo)
 ```
 
-`Model` resolves a bot through `team.Config`: its provider, else the `default_provider` setting, else the first stored one, else the fallback config when it has a key; its model, else the provider's first. Optional fields: `Prepare` rewrites a turn's messages first (compaction), `Extra` adds tools per bot and chat (memory), `Brief` is a note after the transcript (the recent-work brief), `AfterTurn` sees each finished turn (the memory log), and `Approve` runs before each tool call with the bot and chat and may block it (the desktop's shell approval).
+`Model` resolves a bot through `team.Config`: its provider, else the `default_provider` setting, else the first stored one, else the fallback config when it has a key; its model, else the provider's first. Optional fields: `Memory` turns on every bot's memory (`memory.md`), `Compaction` summarizes a chat's older part before a request outgrows the model's window (below), `Now` is the clock, and `Approve` runs before each tool call with the bot and chat and may block it (the desktop's shell approval).
 
 ## Runs and events
 
@@ -44,6 +44,21 @@ After `../lorca/docs/architecture/bots.md`. A user message offers every member a
 `Project(entries, bot, bots)` is the chat from the newest `compaction` entry on: the bot's own messages as they are; the user's as user messages, the first `@Name` of each mention followed by `(id …)` and a reply prefixed `[Replying to your message: "…"]` (or `their earlier message`, or `Scout's message`); a `message_bot` delivery as `[Message from Chef (id …) via message_bot]`; other bots' replies as user messages `[Name]: text`, without their tool calls, results, or failed turns.
 
 `SystemPrompt` is the bot's description, then who and where it is (its id and workspace), the chat (a DM, or the group's members in turn order with "you" and "owner", its description, and how the room works), the user's other bots with their first description line, and when to use `create_bot`. It changes only when those do, so the provider's prompt cache holds.
+
+## Compaction
+
+With `Team.Compaction` set, every model call of a turn goes through `agent.Options.Compact`. It estimates the request (system prompt, tool schemas, `agent.EstimateTokens` of the messages) against the model's window (`Compaction.Window`, else the catalog's, else 128k). Under `Threshold` (0.8) of it nothing happens. Over it:
+
+1. The cut: the oldest user message, made by the user or from a stored entry (it has an id; never a tool result), such that what follows fits `Keep` (0.25) of the window. A tool call and its result are never parted. Nothing to cut, nothing happens.
+2. The memory flush, with `Memory` on and `NoFlush` off: a silent turn over the same request (same system prompt and tools, so the prompt cache serves it) plus a prompt naming where the kept part starts and asking to save what is durable; `BeforeToolCall` refuses every tool but `memory_update` and `memory_log`, nothing it says is stored, and a failure or `FlushTimeout` (two minutes) goes on to the summary.
+3. The summary: one call (`summarySystem`, no tools) over the cut part as a plain-text `Transcript`, whoever wrote it (so thinking and seals from any model never matter), asking for Goal, Decisions and facts, Work done, Open items and the user's preferences, folding in an earlier summary.
+4. It is stored as a user message of `Kind: "compaction"` whose `Meta.KeepID` is the cut message's id, and the call goes on with the summary and the kept messages.
+
+`Project` then starts every bot's view of the chat at the newest summary, followed by the entries from the kept one on (`ProjectedID`: a message's own id, or `seq-N` for one made up for another bot's words), older summaries left out. A summary in a group serves every member. `go run` of a six-message DM against DeepSeek with a 6000-token window compacted once, flushed two facts to `MEMORY.md`, and answered a question about the cut part from the summary.
+
+## Memory in turns
+
+With `Memory` on, a turn gets `MemoryTools` (`memory_update`, `memory_log`, `recall`) and the bot's `memory.Prompt()` after its system prompt; after the transcript, the **recent-work brief**: the newest thing the bot said in each of its other chats over two days, newest first, at most ten lines and about 350 tokens (`- today 09:05 · your chat with the user · you said: "…"`), kept out of the system prompt so the cache holds. Each finished turn adds a diary line (`in group "Trip" · said "…" · used shell, read_file`); a pass with no tools adds none. `recall(query, days)` searches the memory files, the diary, and every chat the bot is in for messages holding every word, newest first, at most 20, naming the chat and the speaker.
 
 ## Team tools
 

@@ -7,6 +7,7 @@ import (
 
 	"github.com/spike/gobot/provider"
 	"github.com/spike/gobot/provider/anthropic"
+	"github.com/spike/gobot/provider/catalog"
 	"github.com/spike/gobot/provider/openai"
 )
 
@@ -28,19 +29,25 @@ type Config struct {
 	ReplayReasoning bool
 	// EncryptedReasoning: Responses replays encrypted reasoning items.
 	EncryptedReasoning bool
+	// NoImages marks a text-only model the catalog does not know.
+	NoImages bool
 }
 
 func New(c Config) (provider.Provider, error) {
 	switch c.API {
 	case Anthropic, "":
-		return anthropic.New(c.ID, c.BaseURL, c.APIKey, c.Model), nil
+		p := anthropic.New(c.ID, c.BaseURL, c.APIKey, c.Model)
+		p.NoImages = c.NoImages || !catalog.Images(c.Model)
+		return p, nil
 	case Chat:
 		p := openai.NewChat(c.ID, c.BaseURL, c.APIKey, c.Model)
 		p.ReplayReasoning = c.ReplayReasoning
+		p.NoImages = c.NoImages || !catalog.Images(c.Model)
 		return p, nil
 	case Responses:
 		p := openai.NewResponses(c.ID, c.BaseURL, c.APIKey, c.Model)
 		p.EncryptedReasoning = c.EncryptedReasoning
+		p.NoImages = c.NoImages || !catalog.Images(c.Model)
 		return p, nil
 	}
 	return nil, fmt.Errorf("unknown API %q (want %s, %s or %s)", c.API, Anthropic, Chat, Responses)
