@@ -34,6 +34,7 @@ tool/       Tool interface and Result, argument validation, shell, file, edit, f
 store/      SQLite state: providers, bots, chats, members, messages, settings (docs/store.md)
 team/       runs DMs and group rooms, projection, prompts, team tools, compaction (docs/team.md)
 memory/     a bot's MEMORY.md, notes and diary, scrubbing, search (docs/memory.md)
+schedule/   routine schedules: intervals, cron in a timezone, words (docs/routines.md)
 desktop/    the MyGo app, its own module (docs/desktop.md)
 docs/       one doc per subject, written as the system is
 ```
@@ -56,7 +57,7 @@ One machine, one user; no Runners, relay, phone app or marketplace. Milestones r
 4. ~~Desktop polish~~: markdown, step interrupt, shell approvals, images, tray, palette, Chinese, window and pane preferences.
 5. ~~Reliability and breadth~~: loop retry and overflow compaction, `provider/openai` (Chat Completions, Responses), bound thinking, the request image limit, `edit_file`, `find`, `grep`, thinking replay checked on DeepSeek's Anthropic endpoint. Still open, waiting for keys: the Responses adapter and Anthropic's own API live.
 6. ~~Web search.~~ The server tools of the Anthropic endpoint (Anthropic's `web_search`/`web_fetch`, DeepSeek's `web_search`) declared per provider, their blocks replayed, and the searches shown in the transcript.
-7. **Routines.** A bot's scheduled tasks after `../lorca/docs/architecture/routines.md`: the `routines` tool, schedules (`every 2h`, cron in a timezone), missed-run policy, read-only checks, runs in the bot's DM, the desktop's list and sheet.
+7. ~~Routines.~~ A bot's scheduled tasks after `../lorca/docs/architecture/routines.md`: the `routines` tool, schedules (`every 2h`, cron in a timezone), missed-run policy, read-only checks, runs in the bot's DM, the desktop's list and sheet.
 8. **Plugins.** The user's MCP servers in `mcp.json` (Claude Desktop's format: stdio and HTTP), their tools reached from **codemode** scripts in a goja sandbox (`tools.<server>__<tool>`, only the output reaching the model), the desktop's MCP section.
 9. **Terminal sessions.** A command in a pseudo-terminal of its own on macOS and Linux: `bash_input`, `bash_output`, background commands, the login shell's environment, the command's card and Running tasks.
 10. **Review and reach.** Auto-review of commands and plugin calls by a small model with Always allow; system notifications and unread counts; `list_teammates` and `edit_bot`; `ls`, several edits per `edit_file`, `.gitignore` in `find`/`grep`, `recall` by time; bot looks; context size per chat.

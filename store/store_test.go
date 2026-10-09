@@ -134,3 +134,27 @@ func mustDo(err error) {
 		panic(err)
 	}
 }
+
+func TestRoutines(t *testing.T) {
+	s := open(t)
+	b := must(s.CreateBot(Bot{Name: "A"}))
+	r := must(s.SaveRoutine(Routine{BotID: b.ID, Name: "Brief", Prompt: "Summarize the news", Schedule: "0 8 * * *", Enabled: true}))
+	if r.ID == "" || r.Missed != Coalesce || r.EnabledAt == 0 {
+		t.Fatalf("routine %+v", r)
+	}
+	r.LastOutcome = OutcomePass
+	must(s.SaveRoutine(r))
+	if got := must(s.Routines(b.ID)); len(got) != 1 || got[0].LastOutcome != OutcomePass {
+		t.Fatalf("routines %+v", got)
+	}
+	if _, err := s.SaveRoutine(Routine{BotID: b.ID, Name: "x", Prompt: "y", Schedule: "z", Missed: "later"}); err == nil {
+		t.Fatal("bad policy accepted")
+	}
+	mustDo(s.DeleteBot(b.ID))
+	if got := must(s.Routines("")); len(got) != 0 {
+		t.Fatal("routines outlived their bot")
+	}
+	if s.LastUserMessage() != 0 {
+		t.Fatal("no messages yet")
+	}
+}

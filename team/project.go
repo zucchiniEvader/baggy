@@ -31,9 +31,17 @@ func nameOf(byID map[string]store.Bot, id string) string {
 func Project(entries []store.Entry, botID string, bots []store.Bot) []agent.Message {
 	byID := botNames(bots)
 	var out []agent.Message
-	for _, e := range compacted(entries) {
+	es := compacted(entries)
+	for i, e := range es {
 		m := e.Msg
 		switch {
+		case m.Kind == KindNotice:
+		case e.Meta.Routine != "":
+			answered := false // the bot spoke after it: the run is over
+			for _, later := range es[i+1:] {
+				answered = answered || later.Author == botID
+			}
+			out = append(out, withID(textMessage(routineView(e.Meta.RoutineName, textOf(m), e.Meta.Found, !answered)), e))
 		case m.Kind == KindCompaction:
 			out = append(out, m)
 		case e.Author == botID:

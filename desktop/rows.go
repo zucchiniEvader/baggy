@@ -123,6 +123,10 @@ func entryRows(e store.Entry) []row {
 	switch {
 	case m.Kind == team.KindCompaction:
 		return []row{{kind: rowNotice, seq: e.Seq, text: L("Earlier messages were summarized to save context.")}}
+	case m.Kind == team.KindNotice:
+		return []row{{kind: rowNotice, seq: e.Seq, text: messageText(m)}}
+	case e.Meta.Routine != "":
+		return []row{{kind: rowNotice, seq: e.Seq, text: L("Routine · %s", e.Meta.RoutineName)}}
 	case m.Role == agent.RoleUser:
 		r := row{kind: rowUser, author: e.Author, from: e.Meta.From, seq: e.Seq, text: messageText(m), quote: e.Meta.ReplyTo}
 		for _, p := range m.Parts {

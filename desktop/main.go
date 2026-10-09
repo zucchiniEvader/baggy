@@ -8,6 +8,7 @@
 package main
 
 import (
+	"context"
 	"log"
 	"os"
 	"path/filepath"
@@ -50,6 +51,7 @@ func main() {
 	a.locale = mygo.App.Locale()
 	a.readImage = func() []byte { return mygo.Clipboard.ReadImage() }
 	tm.Approve = a.approvals.approve
+	tm.StartRoutines(context.Background())
 	a.applyPrefs()
 
 	mygo.App.WhenReady(func() {

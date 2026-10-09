@@ -26,6 +26,10 @@ Each opened chat has a `chatView`: rows built from its stored entries (`buildRow
 - **Sheets**: New/Edit Bot (name, description, provider, model, thinking), New/Edit Group (name, description, members), Settings (providers with Make Default, Edit…, Delete, Add Provider…, and the preferences), a provider (name, protocol, base URL, key, models, web search for the Messages API and Responses, on by default, and the protocol's reasoning switch), confirmations for deletes.
 - **Command palette** (Cmd+K): the chats and the commands, filtered as typed; it owns the keyboard, so its highlight is the accent. Cmd+N new bot, Cmd+, Settings, Cmd+1–9 a chat, Escape stops the chat shown.
 
+## Routines
+
+The app starts the routine scheduler with the window; a bot's inspector lists its routines and opens a routine's sheet (`routines.md`).
+
 ## Memory
 
 Bots run with memory and compaction on (`GOBOT_MEMORY=0` turns memory off, `GOBOT_MEMORY_FLUSH=0` the flush). The bot inspector's Memory rows show how much of `MEMORY.md` loads against the budget, Edit… opens it in an editor (saved through `memory.Save`, so a change the bot made meanwhile stops the save with Reload and Overwrite), and Show Folder opens the workspace. A compaction shows in the transcript as a note.

@@ -21,6 +21,9 @@ const MaxMembers = 6
 // User is the author of the user's messages.
 const User = "user"
 
+// System is the author of routine runs and notices.
+const System = "system"
+
 type Chat struct {
 	ID          string   `json:"id"`
 	Kind        string   `json:"kind"`
@@ -279,6 +282,11 @@ type Meta struct {
 	// KeepID, on a compaction summary, is the id of the first message kept
 	// after it (team.Project).
 	KeepID string `json:"keep_id,omitempty"`
+	// Routine names the routine whose run this message started.
+	Routine     string `json:"routine,omitempty"`
+	RoutineName string `json:"routine_name,omitempty"`
+	// Found is what the routine's check returned, read as data.
+	Found string `json:"found,omitempty"`
 }
 
 // Quote is the message a reply answers, kept with the reply.

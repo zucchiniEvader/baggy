@@ -62,6 +62,9 @@ type Team struct {
 	// Retry asks a failed model call again (agent.DefaultRetry is a fair
 	// choice); nil tries once.
 	Retry *agent.Retry
+	// Checks, when set, runs a routine's check (a script) and returns what
+	// it found; "" means nothing new, so no turn runs. Codemode sets it.
+	Checks func(ctx context.Context, r store.Routine) (string, error)
 	// Now is the clock (time.Now when nil).
 	Now func() time.Time
 	// Approve, when set, runs before each tool call of a turn and may block
@@ -89,6 +92,7 @@ type run struct {
 	pending   map[string]store.Meta // DM: queued messages by id, with who sent them
 	authors   map[string]string
 	restart   bool     // group: a new user message arrived
+	routine   string   // DM: the routine whose run started this turn
 	mentions  []string // group: its mentions
 	hops      int
 }
@@ -181,7 +185,7 @@ func (t *Team) deliver(chatID, author string, meta store.Meta, msg agent.Message
 		return nil
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	r = &run{cancel: cancel, steering: agent.NewQueue(agent.QueueAll), interrupt: agent.NewInterrupt(), pending: map[string]store.Meta{}, authors: map[string]string{}, mentions: meta.Mentions, hops: meta.Hops}
+	r = &run{cancel: cancel, steering: agent.NewQueue(agent.QueueAll), interrupt: agent.NewInterrupt(), pending: map[string]store.Meta{}, authors: map[string]string{}, mentions: meta.Mentions, hops: meta.Hops, routine: meta.Routine}
 	t.runs[chatID] = r
 	t.emit(Event{Kind: EventRunStart, ChatID: chatID})
 	t.active.Add(1)
@@ -207,7 +211,11 @@ func (t *Team) work(ctx context.Context, chatID string, r *run, replyTo string) 
 		if err != nil {
 			t.emit(Event{Kind: EventError, ChatID: chatID, Err: err})
 		} else if chat.Kind == store.DM {
-			t.turn(ctx, chat, chat.Owner, r, "")
+			stored := t.turn(ctx, chat, chat.Owner, r, "")
+			if r.routine != "" {
+				t.finishRoutine(chat.ID, chat.Owner, r.routine, stored)
+				r.routine = ""
+			}
 		} else {
 			t.room(ctx, chat, r, replyTo)
 		}
@@ -277,7 +285,11 @@ func (t *Team) turn(ctx context.Context, chat store.Chat, botID string, r *run, 
 		tools = t.Tools(b, ws)
 	}
 	tools = append(tools, t.teamTools(b, chat, r)...)
+	tools = append(tools, t.routinesTool(b))
 	system := SystemPrompt(b, chat, bots, ws)
+	if rs, err := t.Store.Routines(b.ID); err == nil {
+		system += "\n\n" + RoutinesPrompt(rs, t.now())
+	}
 	if t.Memory {
 		tools = append(tools, t.MemoryTools(b, chat)...)
 		system += "\n\n" + t.memoryOf(b).Prompt()

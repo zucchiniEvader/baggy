@@ -443,6 +443,12 @@ func (a *app) sheets(c *ui.Context) {
 			a.confirm = nil
 		}
 	}
+	if a.routine != nil {
+		a.routineSheetView(c)
+		if a.routine != nil && !a.routine.open {
+			a.routine = nil
+		}
+	}
 	if a.memSheet != nil {
 		a.memorySheetView(c)
 		if !a.memSheet.open {
@@ -455,5 +461,5 @@ func (a *app) sheets(c *ui.Context) {
 }
 
 func (a *app) hasSheet() bool {
-	return a.botSheet != nil || a.groupSheet != nil || a.provSheet != nil || a.settings || a.confirm != nil || a.palette != nil || a.memSheet != nil
+	return a.botSheet != nil || a.groupSheet != nil || a.provSheet != nil || a.settings || a.confirm != nil || a.palette != nil || a.memSheet != nil || a.routine != nil
 }

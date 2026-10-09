@@ -60,6 +60,10 @@ With `Team.Compaction` set, every model call of a turn goes through `agent.Optio
 
 With `Memory` on, a turn gets `MemoryTools` (`memory_update`, `memory_log`, `recall`) and the bot's `memory.Prompt()` after its system prompt; after the transcript, the **recent-work brief**: the newest thing the bot said in each of its other chats over two days, newest first, at most ten lines and about 350 tokens (`- today 09:05 · your chat with the user · you said: "…"`), kept out of the system prompt so the cache holds. Each finished turn adds a diary line (`in group "Trip" · said "…" · used shell, read_file`); a pass with no tools adds none. `recall(query, days)` searches the memory files, the diary, and every chat the bot is in for messages holding every word, newest first, at most 20, naming the chat and the speaker.
 
+## Routines
+
+`StartRoutines` runs the bots' scheduled tasks in their DMs, and every turn has the `routines` tool and a Routines section in its system prompt: see `routines.md`.
+
 ## Team tools
 
 - `message_bot(bot, text)`: by id or a name only one bot has; delivers into that bot's DM, where it answers. It refuses the bot itself and a member of the current group (talk there). Each delivery carries `Hops`, one more than the message that started the sender's turn (a user message resets it); past `MaxHops` (eight) it refuses, so two bots cannot loop.

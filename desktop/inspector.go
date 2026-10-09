@@ -118,6 +118,7 @@ func (a *app) botDetails(c *ui.Context, id string) {
 	if ui.Button(c.Key("edit-bot"), L("Edit…")).Clicked() {
 		a.editBot(id)
 	}
+	a.routinesDetails(c, b)
 	a.memoryDetails(c, b)
 	if dm, err := a.st.DMOf(id); err == nil {
 		a.spentRow(c, dm)

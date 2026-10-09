@@ -85,6 +85,19 @@ CREATE TABLE messages (
 	PRIMARY KEY (chat_id, seq)
 );
 CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+`, `
+CREATE TABLE routines (
+	id TEXT PRIMARY KEY,
+	bot_id TEXT NOT NULL REFERENCES bots(id) ON DELETE CASCADE,
+	name TEXT NOT NULL, prompt TEXT NOT NULL, schedule TEXT NOT NULL,
+	timezone TEXT NOT NULL DEFAULT '', missed TEXT NOT NULL DEFAULT 'coalesce',
+	check_code TEXT NOT NULL DEFAULT '',
+	enabled INTEGER NOT NULL DEFAULT 1, paused_reason TEXT NOT NULL DEFAULT '',
+	last_scheduled_at INTEGER NOT NULL DEFAULT 0, last_run_at INTEGER NOT NULL DEFAULT 0,
+	last_outcome TEXT NOT NULL DEFAULT '', last_check_at INTEGER NOT NULL DEFAULT 0,
+	last_check TEXT NOT NULL DEFAULT '',
+	created INTEGER NOT NULL, enabled_at INTEGER NOT NULL
+);
 `}
 
 func (s *Store) migrate() error {

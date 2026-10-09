@@ -36,6 +36,7 @@ type app struct {
 	confirm    *confirmation
 	palette    *paletteState
 	memSheet   *memoryForm
+	routine    *routineSheet
 	approvals  *approvals
 	prefs      *prefs
 

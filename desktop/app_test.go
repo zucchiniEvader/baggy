@@ -377,3 +377,36 @@ func TestSearchRowsFromEntryAndEvents(t *testing.T) {
 		t.Fatal("result not applied")
 	}
 }
+
+func TestRoutineInspectorAndSheet(t *testing.T) {
+	ran := make(chan struct{}, 1)
+	h := newHarness(t, script(func(bot string, msgs []agent.Message) agent.Message {
+		select {
+		case ran <- struct{}{}:
+		default:
+		}
+		return say("PASS")
+	}))
+	chef := h.a.bots[0]
+	r, _ := h.st.SaveRoutine(store.Routine{BotID: chef.ID, Name: "Brief", Prompt: "Summarize", Schedule: "0 8 * * 1-5", Timezone: "UTC", Enabled: true})
+	h.a.inspector = true
+	h.tt.Frame()
+	if !h.tt.HasText("Brief") || !h.tt.HasText("Weekdays at 8:00 · next ") {
+		t.Fatalf("inspector: %q", h.tt.Texts())
+	}
+	h.tt.Click("Brief")
+	h.tt.Frame()
+	if h.a.routine == nil || !h.tt.HasText("Run Now") {
+		t.Fatalf("no sheet: %q", h.tt.Texts())
+	}
+	h.tt.Click("Pause")
+	h.tt.Frame()
+	if got, _ := h.st.Routine(r.ID); got.Enabled {
+		t.Fatal("not paused")
+	}
+	h.tt.Click("Run Now")
+	h.pump("the run", func() bool { return len(ran) == 1 && h.idle() && h.tt.HasText("Routine · Brief") })
+	if h.tt.HasText("PASS") {
+		t.Fatal("a pass shows")
+	}
+}
