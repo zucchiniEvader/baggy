@@ -40,8 +40,7 @@ docs/       one doc per subject, written as the system is
 
 ## Next
 
-1. `provider/openaicompat` adapter, and a shared transcript transform (`../lorca/crates/agent/src/transform.rs`) for both adapters.
-2. A `Model` implementation over `provider.Provider` (the loop's `Model` is its only dependency).
-3. More tools (edit, find, grep); a shared transcript transform.
-4. SQLite store; bots and DMs; then group chat and handoff.
-5. MyGo UI over `agent.Event`; compaction and memory.
+1. A shared transcript transform (`../lorca/crates/agent/src/transform.rs`), then `provider/openaicompat`.
+2. More tools (edit, find, grep).
+3. SQLite store; bots and DMs; then group chat and handoff.
+4. MyGo UI over `agent.Event`; compaction and memory.
