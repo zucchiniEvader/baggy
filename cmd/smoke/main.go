@@ -1,7 +1,8 @@
-// Command smoke runs a multi-tool task against a real Anthropic-protocol API,
-// in a scratch directory:
+// Command smoke runs a multi-tool task against a real API, in a scratch
+// directory. The provider comes from the environment (connect.FromEnv):
 //
 //	ANTHROPIC_API_KEY=... go run ./cmd/smoke [model]
+//	GOBOT_API=chat GOBOT_BASE_URL=https://api.deepseek.com GOBOT_API_KEY=... go run ./cmd/smoke deepseek-chat
 package main
 
 import (
@@ -11,26 +12,30 @@ import (
 
 	"github.com/spike/gobot/agent"
 	"github.com/spike/gobot/provider"
-	"github.com/spike/gobot/provider/anthropic"
+	"github.com/spike/gobot/provider/connect"
 	"github.com/spike/gobot/tool"
 )
 
 func main() {
-	key := os.Getenv("ANTHROPIC_API_KEY")
-	if key == "" {
-		fmt.Fprintln(os.Stderr, "set ANTHROPIC_API_KEY")
+	cfg := connect.FromEnv("claude-sonnet-5-5")
+	if len(os.Args) > 1 {
+		cfg.Model = os.Args[1]
+	}
+	if cfg.APIKey == "" {
+		fmt.Fprintln(os.Stderr, "set GOBOT_API_KEY (or ANTHROPIC_API_KEY)")
 		os.Exit(2)
 	}
-	model := "claude-sonnet-5-5"
-	if len(os.Args) > 1 {
-		model = os.Args[1]
+	p, err := connect.New(cfg)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(2)
 	}
 	dir, err := os.MkdirTemp("", "gobot-smoke-")
 	if err != nil {
 		panic(err)
 	}
 	defer os.RemoveAll(dir)
-	m := provider.Model{Provider: anthropic.New("anthropic", os.Getenv("ANTHROPIC_BASE_URL"), key, model)}
+	m := provider.Model{Provider: p, Thinking: provider.ThinkingLevel(os.Getenv("GOBOT_THINKING"))}
 	user := agent.Message{Role: agent.RoleUser, Parts: []agent.Part{{Kind: agent.PartText, Text: "Write notes/a.txt containing the numbers 1 to 3, one per line, and notes/b.txt containing the word done. Then, in one step, use the shell to count the lines of both files, and tell me the counts."}}}
 	out := agent.Run(context.Background(), m, []agent.Message{user}, agent.Options{
 		Tools: []tool.Tool{tool.Shell{Dir: dir}, tool.ReadFile{Dir: dir}, tool.WriteFile{Dir: dir}},

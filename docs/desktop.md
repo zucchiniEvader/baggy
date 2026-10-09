@@ -9,7 +9,7 @@ go test ./...                              # views run in MyGo's offscreen Teste
 GOBOT_RENDER=<folder> go test -run TestRender ./...   # writes chat-light.png and chat-dark.png
 ```
 
-`GOBOT_MODEL` picks the model (default `claude-sonnet-5-5`), `ANTHROPIC_BASE_URL` another server speaking the Messages API (DeepSeek's `https://api.deepseek.com/anthropic`). Tools are `shell`, `read_file` and `write_file` in the directory the app starts in. There is no settings screen yet.
+The provider comes from the environment through `connect.FromEnv` (see `providers.md`): `GOBOT_API` picks the protocol (`anthropic`, `chat` or `responses`), `GOBOT_MODEL` the model (default `claude-sonnet-5-5`), `GOBOT_BASE_URL` and `GOBOT_API_KEY` the server; for the Anthropic API, `ANTHROPIC_API_KEY` and `ANTHROPIC_BASE_URL` work too (DeepSeek's `https://api.deepseek.com/anthropic`). Tools are `shell`, `read_file` and `write_file` in the directory the app starts in. There is no settings screen yet.
 
 ## State and threads
 

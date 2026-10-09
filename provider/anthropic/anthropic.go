@@ -4,21 +4,18 @@
 package anthropic
 
 import (
-	"bufio"
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"net/http"
-	"regexp"
-	"strconv"
 	"strings"
 	"time"
 
 	"github.com/spike/gobot/agent"
 	"github.com/spike/gobot/provider"
+	"github.com/spike/gobot/provider/internal/wire"
 )
 
 const (
@@ -84,15 +81,7 @@ func (p *Provider) Stream(ctx context.Context, req provider.Request) <-chan prov
 }
 
 func (p *Provider) fail(ctx context.Context, partial agent.Message, err error) agent.Message {
-	partial.Role = agent.RoleAssistant
-	partial.Provider, partial.Model = p.id, p.model
-	if ctx.Err() != nil {
-		partial.StopReason = agent.StopAborted
-		return partial
-	}
-	partial.StopReason = agent.StopError
-	partial.Parts = append(partial.Parts, agent.Part{Kind: agent.PartText, Text: err.Error(), IsError: true})
-	return partial
+	return wire.Fail(ctx, partial, p.id, p.model, err)
 }
 
 func (p *Provider) run(ctx context.Context, req provider.Request, emit func(provider.Event)) agent.Message {
@@ -122,52 +111,9 @@ func (p *Provider) run(ctx context.Context, req provider.Request, emit func(prov
 	return s.msg
 }
 
-// post retries a request that fails before it streams: 408, 409, 429, 5xx, or
-// a connection error, up to maxRetries times.
 func (p *Provider) post(ctx context.Context, body []byte) (*http.Response, error) {
-	delay := p.Backoff
-	for attempt := 0; ; attempt++ {
-		hreq, err := http.NewRequestWithContext(ctx, http.MethodPost, p.messagesURL(), bytes.NewReader(body))
-		if err != nil {
-			return nil, err
-		}
-		hreq.Header.Set("content-type", "application/json")
-		hreq.Header.Set("x-api-key", p.apiKey)
-		hreq.Header.Set("anthropic-version", "2023-06-01")
-		hreq.Header.Set("accept", "text/event-stream")
-
-		resp, err := p.client.Do(hreq)
-		wait := delay
-		switch {
-		case err != nil:
-			if ctx.Err() != nil || attempt >= maxRetries {
-				return nil, err
-			}
-		case resp.StatusCode/100 == 2:
-			return resp, nil
-		default:
-			msg := apiError(resp)
-			retryable := resp.StatusCode == 408 || resp.StatusCode == 409 || resp.StatusCode == 429 || resp.StatusCode >= 500
-			if ra := retryAfter(resp); ra > 0 {
-				wait = ra
-			}
-			resp.Body.Close()
-			if !retryable || attempt >= maxRetries {
-				return nil, fmt.Errorf("%d: %s", resp.StatusCode, msg)
-			}
-			if wait > p.MaxRetryDelay {
-				return nil, fmt.Errorf("%d: %s (retry after %s)", resp.StatusCode, msg, wait)
-			}
-		}
-		select {
-		case <-ctx.Done():
-			return nil, ctx.Err()
-		case <-time.After(wait):
-		}
-		if delay *= 2; delay > 8*time.Second {
-			delay = 8 * time.Second
-		}
-	}
+	headers := map[string]string{"x-api-key": p.apiKey, "anthropic-version": "2023-06-01"}
+	return wire.Post(ctx, p.client, p.messagesURL(), headers, body, wire.Retry{Max: maxRetries, Backoff: p.Backoff, MaxDelay: p.MaxRetryDelay})
 }
 
 func (p *Provider) messagesURL() string {
@@ -175,36 +121,6 @@ func (p *Provider) messagesURL() string {
 		return p.base + "/messages"
 	}
 	return p.base + "/v1/messages"
-}
-
-func apiError(resp *http.Response) string {
-	b, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<16))
-	var e struct {
-		Error struct {
-			Message string `json:"message"`
-		} `json:"error"`
-	}
-	if json.Unmarshal(b, &e) == nil && e.Error.Message != "" {
-		return e.Error.Message
-	}
-	if s := strings.TrimSpace(string(b)); s != "" {
-		return s
-	}
-	return resp.Status
-}
-
-func retryAfter(resp *http.Response) time.Duration {
-	v := resp.Header.Get("retry-after")
-	if v == "" {
-		return 0
-	}
-	if secs, err := strconv.ParseFloat(v, 64); err == nil {
-		return time.Duration(secs * float64(time.Second))
-	}
-	if t, err := http.ParseTime(v); err == nil {
-		return time.Until(t)
-	}
-	return 0
 }
 
 // ---- request ----
@@ -216,19 +132,8 @@ type wireMessage struct {
 	Content []block `json:"content"`
 }
 
-var idUnsafe = regexp.MustCompile(`[^a-zA-Z0-9_-]`)
-
 // callID gives a tool call id from another model the shape this API wants.
-func callID(id string) string {
-	id = idUnsafe.ReplaceAllString(id, "_")
-	if len(id) > 64 {
-		id = id[:64]
-	}
-	if id == "" {
-		id = "call"
-	}
-	return id
-}
+func callID(id string) string { return wire.CallID(id) }
 
 func (p *Provider) buildBody(req provider.Request) map[string]any {
 	transformed, origins := agent.Transform(req.Messages, agent.TransformOptions{Provider: p.id, Model: p.model, SupportsImages: true})
@@ -507,25 +412,12 @@ func (s *streamState) addUsage(u wireUsage) {
 
 func (s *streamState) read(r io.Reader) error {
 	s.blocks = map[int]*openBlock{}
-	br := bufio.NewReaderSize(r, 1<<16)
-	for {
-		line, err := br.ReadString('\n')
-		line = strings.TrimRight(line, "\r\n")
-		if data, ok := strings.CutPrefix(line, "data:"); ok {
-			if herr := s.handle(strings.TrimSpace(data)); herr != nil {
-				return herr
-			}
-			if s.stopped || s.errMsg != "" {
-				return nil
-			}
+	return wire.ReadSSE(r, func(_, data string) (bool, error) {
+		if err := s.handle(data); err != nil {
+			return false, err
 		}
-		if err != nil {
-			if err == io.EOF {
-				return nil
-			}
-			return err
-		}
-	}
+		return s.stopped || s.errMsg != "", nil
+	})
 }
 
 func (s *streamState) handle(data string) error {
@@ -622,13 +514,7 @@ func (s *streamState) finishBlock(ob *openBlock) {
 	}
 }
 
-func inputJSON(s string) json.RawMessage {
-	s = strings.TrimSpace(s)
-	if s == "" {
-		return json.RawMessage(`{}`)
-	}
-	return json.RawMessage(s)
-}
+func inputJSON(s string) json.RawMessage { return wire.Args(s) }
 
 func (s *streamState) setStop() error {
 	switch s.stop {

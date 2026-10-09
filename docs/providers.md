@@ -30,11 +30,67 @@ From the stream: `text_delta` and `thinking_delta` become events; `signature_del
 
 A request that fails before it streams (connection error, 408, 409, 429, 5xx) is retried twice, waiting `retry-after` or a backoff from `Backoff` (500 ms) doubling to 8 s; a wait above `MaxRetryDelay` (60 s) fails instead. Tests run against `httptest` servers.
 
+## What the adapters share (`provider/internal/wire`)
+
+`wire.Post` sends the request with the retries above (`wire.Retry{Max, Backoff, MaxDelay}`, `DefaultRetry` is 2, 500 ms, 60 s) and turns an HTTP error into `"<status>: <error.message>"`. `wire.ReadSSE` reads server-sent events. `wire.Fail` makes the `StopError`/`StopAborted` message. `wire.Args` turns streamed tool arguments into a part's `Args`: empty is `{}`, and text that is not JSON (local models emit it) is kept as a JSON string, so the transcript always marshals and argument validation gives the model an error result. `wire.CallID` reduces a call id to `[a-zA-Z0-9_-]{1,64}`, which every API takes.
+
+## OpenAI Chat Completions (`provider/openai`, `Chat`)
+
+`openai.NewChat(id, base, apiKey, model)` speaks `POST {base}/chat/completions` with bearer auth, `stream: true` and `stream_options.include_usage`. An empty base is `https://api.openai.com/v1`; any server with the API works (DeepSeek's `https://api.deepseek.com`, OpenRouter, Ollama's `/v1`, vLLM).
+
+| Transcript | Request |
+| --- | --- |
+| System prompt | A `system` message, when not blank |
+| User text | `content` as a string (text parts joined by newlines) |
+| User text and images | `content` parts, images as `image_url` `data:` URLs |
+| Assistant text, tool calls | `content` (null when there is none) and `tool_calls`; arguments as the JSON text, or the model's original text when it was not JSON |
+| Own thinking | `reasoning_content`, only with `ReplayReasoning`; otherwise not sent |
+| Server blocks | Not sent |
+| Tool results | One `tool` message per result, `(no tool output)` when the text is blank |
+
+`NoImages` swaps images for a note (the shared transform). `MaxTokensField` names the output cap: `max_tokens` by default, `max_completion_tokens` for OpenAI's reasoning models; it is sent only when `MaxTokens` is set. A thinking level of low, medium or high is `reasoning_effort`; default and off send nothing.
+
+From the stream: `content` deltas are text, `reasoning_content` or `reasoning` deltas thinking (an unsigned thinking part first), `tool_calls` deltas collect by `index` (id and name arrive once), and each call is emitted as a `tool_call` event at the end. Usage comes in a last chunk with no choices: `prompt_cache_hit_tokens` (DeepSeek) or `prompt_tokens_details.cached_tokens` is `CacheRead` and is taken off `prompt_tokens` for `Input`; `completion_tokens_details.reasoning_tokens` is `Reasoning`. An `error` object in a chunk ends the call with its message.
+
+| `finish_reason` | Becomes |
+| --- | --- |
+| `length` | `StopLength` |
+| `tool_calls`, `function_call`, or any reason when the reply has calls | `StopToolUse` |
+| `content_filter` | `StopError` |
+| anything else | `StopEnd` |
+| none before `[DONE]` or the end | `StopError` |
+
+`GOBOT_API=chat GOBOT_BASE_URL=https://api.deepseek.com GOBOT_API_KEY=… go run ./cmd/smoke deepseek-chat` has passed against DeepSeek, and so has `deepseek-reasoner` with `ReplayReasoning` on and off (DeepSeek takes both).
+
+## OpenAI Responses (`provider/openai`, `Responses`)
+
+`openai.NewResponses(id, base, apiKey, model)` speaks `POST {base}/responses` with bearer auth, stateless: `store: false`, the whole transcript as `input` each time.
+
+| Transcript | Request |
+| --- | --- |
+| System prompt | `instructions`, when not blank |
+| User text and images | A `user` `message` of `input_text` and `input_image` (`data:` URL) parts |
+| Assistant text | An `assistant` `message` of `output_text` per run of text, in order with the items below |
+| Tool calls | A `function_call` item with `call_id`, `name`, `arguments` (no `id`) |
+| Own reasoning | The reasoning item verbatim, only with `EncryptedReasoning` and when it has `encrypted_content` |
+| Tool results | One `function_call_output` per result, `(no tool output)` when blank |
+| Tools | `function` tools with `strict: false`, `tool_choice: auto`, `parallel_tool_calls: true` |
+
+`MaxTokens` is `max_output_tokens`. A thinking level of low, medium or high is `reasoning: {effort, summary: "auto"}` (the summary is what streams as thinking); default and off send nothing, since a model without reasoning refuses the field. `EncryptedReasoning` adds `include: ["reasoning.encrypted_content"]`; the finished reasoning item is kept as the thinking part's `Raw`, its `encrypted_content` as `Signature`, so it replays to the same model only. It is off by default because not every Responses server takes `include`.
+
+From the stream, item by item in `output_item.added` order: `output_text.delta` is text, `reasoning_summary_text.delta` and `reasoning_text.delta` thinking (summary parts separated by a blank line), `function_call_arguments.delta` a call's arguments (the `arguments` of `output_item.done` when no delta came). `response.completed` ends the call with `StopEnd`, or `StopToolUse` when the reply has calls, or `StopLength` when its status is `incomplete`; `response.incomplete` is `StopLength`; `response.failed` and `error` are `StopError` with their message; a stream that ends before any of them is `StopError`. Usage: `input_tokens_details.cached_tokens` is `CacheRead`, taken off `input_tokens`; `output_tokens_details.reasoning_tokens` is `Reasoning`.
+
+This adapter is tested against `httptest` servers only: it has not been run against a live Responses server, and encrypted reasoning replay is unchecked.
+
+## Choosing a provider (`provider/connect`)
+
+`connect.New(Config{API, ID, BaseURL, APIKey, Model, ReplayReasoning, EncryptedReasoning})` builds the adapter for `API`: `anthropic` (or empty), `chat`, or `responses`. `connect.FromEnv(defaultModel)` fills a Config from `GOBOT_API`, `GOBOT_PROVIDER`, `GOBOT_BASE_URL`, `GOBOT_API_KEY`, `GOBOT_MODEL`, `GOBOT_REPLAY_REASONING=1` and `GOBOT_ENCRYPTED_REASONING=1`; for the Anthropic API the key and base URL fall back to `ANTHROPIC_API_KEY` and `ANTHROPIC_BASE_URL`. `cmd/smoke` and the desktop app use it until providers are stored settings.
+
 ## Model bridge (`provider.Model`)
 
 `provider.Model{Provider, MaxTokens, Thinking}` implements `agent.Model`, so `agent.Run` drives any provider. Each call builds a `Request` from the system prompt, transcript and tools (`tool.Tool` becomes a `ToolSpec` with its schema), and marks the whole transcript as a cache point, since the loop's next call sends it again. `text_delta` and `thinking_delta` stream events are forwarded as `agent.Event`s of the same kinds; `tool_call` events are not (the final message carries the calls); the `done` message is returned. A stream that ends without `done` yields a `StopError` message, or `StopAborted` when the context is cancelled.
 
-`go run ./cmd/smoke [model]` runs a multi-tool task (see `tools.md`) against a real Anthropic-protocol API (`ANTHROPIC_API_KEY`, optional `ANTHROPIC_BASE_URL`). It has been run against DeepSeek's endpoint (`ANTHROPIC_BASE_URL=https://api.deepseek.com/anthropic`, model `deepseek-chat`): streamed text, parallel and sequential tool calls, cache reads. Thinking signature replay is not covered by that run.
+`go run ./cmd/smoke [model]` runs a multi-tool task (see `tools.md`) against a real API chosen by `connect.FromEnv`; `GOBOT_THINKING` sets the thinking level. It has been run against DeepSeek's endpoint (`ANTHROPIC_BASE_URL=https://api.deepseek.com/anthropic`, model `deepseek-chat`): streamed text, parallel and sequential tool calls, cache reads. Thinking signature replay is not covered by that run.
 
 ## Transcript transform (`agent.Transform`)
 
@@ -51,4 +107,4 @@ Every adapter runs the transcript through `agent.Transform(msgs, TransformOption
 
 ## Not yet
 
-Limiting the images one request carries (`../lorca`'s `MAX_REQUEST_IMAGES`), thinking bound to the system prompt and tools on newer models (`drop_bound_thinking` in `../lorca`), tool result images, the model catalog and cost.
+A live check of the Responses adapter, limiting the images one request carries (`../lorca`'s `MAX_REQUEST_IMAGES`), thinking bound to the system prompt and tools on newer models (`drop_bound_thinking` in `../lorca`), tool result images, the model catalog and cost.
