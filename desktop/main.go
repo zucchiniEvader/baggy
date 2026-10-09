@@ -12,14 +12,17 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
 	"github.com/spike/gobot/agent"
 	"github.com/spike/gobot/mcp"
 	"github.com/spike/gobot/provider/connect"
+	"github.com/spike/gobot/shellenv"
 	"github.com/spike/gobot/store"
 	"github.com/spike/gobot/team"
+	"github.com/spike/gobot/terminal"
 	"github.com/spike/gobot/tool"
 )
 
@@ -50,6 +53,11 @@ func main() {
 	defer tm.Plugins.Close()
 	tm.Codemode = true
 	tm.Checks = tm.RunCheck
+	mcp.Env = shellenv.Env
+	tm.Terminals = terminal.NewManager()
+	tm.Terminals.Env = shellenv.Env
+	defer tm.Terminals.StopAll()
+	tm.WakeOnExit()
 	pending := make(chan func(), 1024) // events before the window is up
 	a = newApp(st, tm, func(fn func()) { pending <- fn })
 	a.fallback = fallback
@@ -78,6 +86,13 @@ func main() {
 		for len(pending) > 0 {
 			win.Update(<-pending)
 		}
+		go func() { // running commands' cards and tasks show their output as it comes
+			for range time.Tick(time.Second) {
+				if len(tm.Terminals.Running("")) > 0 {
+					win.Update(func() {})
+				}
+			}
+		}()
 		win.OnClose(func(e *mygo.CloseEvent) {
 			if a.prefs.keepRunning {
 				e.PreventDefault()

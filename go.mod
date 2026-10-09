@@ -3,6 +3,7 @@ module github.com/spike/gobot
 go 1.27
 
 require (
+	github.com/creack/pty v1.1.24
 	github.com/dop251/goja v0.0.0-20260923012348-67663e7a3b97
 	modernc.org/sqlite v1.60.1
 )

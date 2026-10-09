@@ -44,6 +44,8 @@ func Project(entries []store.Entry, botID string, bots []store.Bot) []agent.Mess
 			out = append(out, withID(textMessage(routineView(e.Meta.RoutineName, textOf(m), e.Meta.Found, !answered)), e))
 		case m.Kind == KindCompaction:
 			out = append(out, m)
+		case e.Author == store.System && m.Role == agent.RoleUser: // a note for the bot, as a finished command
+			out = append(out, m)
 		case e.Author == botID:
 			out = append(out, m)
 		case e.Author == store.User && m.Role == agent.RoleUser:

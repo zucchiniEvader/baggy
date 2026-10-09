@@ -28,6 +28,7 @@ type app struct {
 
 	side      listNav
 	inspector bool
+	tasksOpen bool
 	sideWidth float32
 
 	botSheet   *botForm

@@ -9,6 +9,7 @@ require (
 )
 
 require (
+	github.com/creack/pty v1.1.24 // indirect
 	github.com/dlclark/regexp2/v2 v2.8.1 // indirect
 	github.com/dop251/goja v0.0.0-20260923012348-67663e7a3b97 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect

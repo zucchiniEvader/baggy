@@ -6,6 +6,7 @@ package team
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"sync"
 	"time"
@@ -13,6 +14,7 @@ import (
 	"github.com/spike/gobot/agent"
 	"github.com/spike/gobot/mcp"
 	"github.com/spike/gobot/store"
+	"github.com/spike/gobot/terminal"
 	"github.com/spike/gobot/tool"
 )
 
@@ -63,6 +65,10 @@ type Team struct {
 	// Retry asks a failed model call again (agent.DefaultRetry is a fair
 	// choice); nil tries once.
 	Retry *agent.Retry
+	// Terminals, when set (and terminal.Supported), run the bots' shell
+	// commands in terminal sessions: shell, shell_input, shell_output stand
+	// in for a "shell" tool of Tools.
+	Terminals *terminal.Manager
 	// Plugins, when set, are the user's MCP servers, reached from the
 	// codemode tool, which every turn then has.
 	Plugins *mcp.Manager
@@ -120,6 +126,9 @@ func (t *Team) Busy(chatID string) bool {
 func (t *Team) Stop(chatID string) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
+	if t.Terminals != nil {
+		t.Terminals.StopChat(chatID)
+	}
 	if r := t.runs[chatID]; r != nil {
 		r.cancel()
 		r.steering.Clear()
@@ -290,6 +299,16 @@ func (t *Team) turn(ctx context.Context, chat store.Chat, botID string, r *run, 
 	if t.Tools != nil {
 		tools = t.Tools(b, ws)
 	}
+	terminals := t.Terminals != nil && terminal.Supported
+	if terminals {
+		kept := tools[:0]
+		for _, tl := range tools {
+			if tl.Name() != "shell" {
+				kept = append(kept, tl)
+			}
+		}
+		tools = append(kept, t.Terminals.Tools(chat.ID, b.ID, ws)...)
+	}
 	tools = append(tools, t.teamTools(b, chat, r)...)
 	tools = append(tools, t.routinesTool(b))
 	if t.Memory {
@@ -302,6 +321,9 @@ func (t *Team) turn(ctx context.Context, chat store.Chat, botID string, r *run, 
 		tools = append(tools, t.codemodeTool(b, chat, tools, hooks, plugins))
 	}
 	system := SystemPrompt(b, chat, bots, ws)
+	if terminals {
+		system += "\n\n" + terminalsPrompt
+	}
 	if rs, err := t.Store.Routines(b.ID); err == nil {
 		system += "\n\n" + RoutinesPrompt(rs, t.now())
 	}
@@ -378,4 +400,20 @@ func modelID(m agent.Model, b store.Bot) string {
 		return pm.ModelID()
 	}
 	return b.Model
+}
+
+const terminalsPrompt = "## Commands\n\nshell runs each command in a terminal of its own on this computer. A command that asks (a password, [Y/n]) returns with a session id: answer with shell_input. Start what should keep running (a dev server, a watcher, a long build) with background: true, never with & or nohup; you hear when it ends by itself."
+
+// WakeOnExit tells a bot when a command it left in the background ends by
+// itself, in the chat it started it in.
+func (t *Team) WakeOnExit() {
+	if t.Terminals == nil {
+		return
+	}
+	t.Terminals.OnExit = func(s *terminal.Session) {
+		_, how := s.Done()
+		text := fmt.Sprintf("[Your background command `%s` (session %s) %s by itself. Its last lines:\n%s]", s.Command, s.ID, how, s.Last(15))
+		msg := agent.Message{ID: store.NewID("msg"), Role: agent.RoleUser, Parts: []agent.Part{{Kind: agent.PartText, Text: text}}}
+		t.deliver(s.Chat, store.System, store.Meta{}, msg)
+	}
 }

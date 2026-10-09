@@ -127,6 +127,12 @@ func entryRows(e store.Entry) []row {
 		return []row{{kind: rowNotice, seq: e.Seq, text: messageText(m)}}
 	case e.Meta.Routine != "":
 		return []row{{kind: rowNotice, seq: e.Seq, text: L("Routine · %s", e.Meta.RoutineName)}}
+	case e.Author == store.System && m.Role == agent.RoleUser: // a note for the bot
+		text := messageText(m)
+		if i := strings.IndexByte(text, '\n'); i >= 0 {
+			text = text[:i]
+		}
+		return []row{{kind: rowNotice, seq: e.Seq, text: strings.Trim(text, "[]")}}
 	case m.Role == agent.RoleUser:
 		r := row{kind: rowUser, author: e.Author, from: e.Meta.From, seq: e.Seq, text: messageText(m), quote: e.Meta.ReplyTo}
 		for _, p := range m.Parts {

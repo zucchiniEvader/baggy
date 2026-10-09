@@ -233,6 +233,7 @@ func (a *app) header(c *ui.Context, ch store.Chat) {
 				ui.Text(c, sub).FontSize(12).TextColor(t.TextMuted).SingleLine()
 			}
 		})
+		a.tasksButton(c, ch)
 		if a.busy[ch.ID] {
 			if ui.Button(c.Key("stop"), L("Stop")).Tooltip(L("Stop (Esc)")).Clicked() {
 				a.stop()
@@ -381,6 +382,15 @@ func (a *app) drawTool(c *ui.Context, ch store.Chat, r row) {
 		}
 		if r.pending {
 			a.approvalButtons(c, ch.ID, r.call.CallID)
+		}
+		if r.result == nil && !r.pending {
+			if sess := a.sessionOf(ch.ID, r.call); sess != nil {
+				if last := sess.Last(8); strings.TrimSpace(last) != "" {
+					ui.Column(c).Padding(6, 8).Radius(6).Background(t.Background).Children(func() {
+						ui.Text(c, last).Font(monoFont).FontSize(11).Selectable()
+					})
+				}
+			}
 		}
 		if r.result != nil {
 			ui.Text(c, tail(r.result.Text, 12)).Selectable().FontSize(12)

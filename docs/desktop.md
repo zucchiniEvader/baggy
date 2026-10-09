@@ -30,6 +30,10 @@ Each opened chat has a `chatView`: rows built from its stored entries (`buildRow
 
 The app starts the routine scheduler with the window; a bot's inspector lists its routines and opens a routine's sheet (`routines.md`).
 
+## Commands
+
+On macOS and Linux bots' commands run in terminal sessions with the login shell's environment; their cards show live output, and the header's Tasks (n) lists what runs (`terminal.md`).
+
 ## Plugins
 
 The app keeps an `mcp.Manager` over `mcp.json` in its data folder, turns codemode on, and runs routine checks through it; Settings has the MCP Servers section (`plugins.md`).

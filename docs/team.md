@@ -64,6 +64,10 @@ With `Memory` on, a turn gets `MemoryTools` (`memory_update`, `memory_log`, `rec
 
 `StartRoutines` runs the bots' scheduled tasks in their DMs, and every turn has the `routines` tool and a Routines section in its system prompt: see `routines.md`.
 
+## Commands
+
+With `Terminals` set, a turn's shell commands run in terminal sessions (`shell`, `shell_input`, `shell_output`), Stop ends the chat's commands but those in the background, and `WakeOnExit` tells a bot when a background command ends by itself: see `terminal.md`. `Project` gives the bot such a note from `store.System` as it is.
+
 ## Plugins
 
 With `Plugins` (an `mcp.Manager`) or `Codemode` set, every turn has the `codemode` tool and a Plugins section in its system prompt: see `plugins.md`.
