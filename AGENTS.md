@@ -51,6 +51,52 @@ docs/       one doc per subject, written as the system is
 - Tool arguments are checked against the tool's JSON Schema before a call runs; a failure is an error result the model reads.
 - `go vet ./... && go test ./...` pass before a change is done, in the root and in `desktop/`.
 
+## Desktop design: native, restrained, quiet
+
+After `../tsubomi` (whose `AGENTS.md`, `theme.go` and `controls.go` set it out, Kopi's style). The app should feel like the system's own apps (Finder, Notes, Xcode), not a web page or Electron: quiet, layered by space and light and shade rather than borders and color blocks. The content leads; the chrome steps back.
+
+**Principles**
+1. **The system's things**: the system font (SF Pro; code in SF Mono), the system accent (no brand blue), light and dark mode, native menus and context menus, native pop-up menus for every choice (a pill or button with `Menu`, never a drawn drop-down or `ui.Select`), the sidebar's vibrancy, a hidden title bar whose content keeps clear of the traffic lights (`c.TitleBar()`, never fixed coordinates).
+2. **Neutral gray for states**: hover and choice lay a translucent neutral gray `rgba(127,127,127,α)` over whatever is below, the same in light and dark: hover α 0.08, pressed 0.16, chosen with the pointer or without the focus 0.20. The accent marks only the row the keyboard is moving the choice to (the list has the focus and the arrows moved it); a click shows gray, so moving the focus never flashes blue. Popups that own the keyboard (the palette, the `@` menu) may keep the accent.
+3. **Few borders**: areas part by their background. A border, when one is needed, is 1px `rgba(17,17,17,0.10)` (dark `rgba(230,230,230,0.10)`).
+4. **Few colors, fixed meanings**: red is an error or a delete, green is added or done, orange is a reference, a type or a warning, teal is tests. Other text has two levels only: text and muted (about 48% opacity). Bots are told apart by their icon and name, not by colors.
+
+**Tokens** (`desktop/theme.go`)
+
+| Token | Light | Dark |
+| --- | --- | --- |
+| appBg (window, chat) | #f8f8f6 | #141414 |
+| surface (cards, composer) | #ffffff | #1c1c1c |
+| header | #ffffff | #232323 |
+| sidebar (no vibrancy) | #ececea | #1f1f1f |
+| text | #111111 | #c8c8c8 |
+| muted | rgba(17,17,17,.48) | rgba(230,230,230,.48) |
+| border | rgba(17,17,17,.10) | rgba(230,230,230,.10) |
+| pill, field fill | rgba(127,127,127,.11) | rgba(127,127,127,.16) |
+| code background | #f0f0ee | #202020 |
+| user bubble | #ececea | #262626 |
+| red (text / bar) | #b8312f / #ff2e3f | #ee7e7e / #ff6762 |
+| green (text / bar) | #1f7a44 / #0dbe4e | #6fd094 / #5ecc71 |
+| orange | #c56e0e | #eb9a3d |
+| teal | #13867a | #4ec9b0 |
+
+**Sizes**: type 13 for body and lists, 12 secondary, 11 captions and paths, 10 badges, 15–17 titles; weights 400, 600, 700 only. Rows 28, compact buttons 26, buttons and fields 30, the title bar 40. Radii 5–6 for rows and small buttons, 8–12 for cards and popovers, 14–16 for large panels, capsules for counts. Spacing on multiples of 4 (gaps 2, 4, 6, 8, 10), list rows 1px apart, the sidebar's padding 8. Icons are Lucide line icons at 12–14, muted, taking the text's color when chosen.
+
+**Components** (`desktop/controls.go`; every field, button, row and pill comes from there)
+- **Sidebar**: vibrancy (or the sidebar color), a title-bar row with the sidebar toggle and New, a search field, the chats as rounded rows (not full-width highlights), names shrinking to one line with "…", counts as monospaced capsules on the right, Settings at the foot. Resizable between a minimum and a maximum, collapsing below it, sliding open and closed with a clip.
+- **Buttons**: primary (the accent, the action a dialog is for, last in its row), secondary (pill gray), ghost (no fill until hovered: the icon buttons of bars), round (the composer's send and stop). A disabled button is gray with a muted label, never a faded accent.
+- **Fields**: filled with the pill gray, borderless, a focus ring around the box.
+- **The conversation**: at most 760 wide, centered. The user's messages in a neutral bubble on the right; a bot's replies as text, under its icon and name at the start of a turn; thinking closed under a "Thinking" line that opens it; a run of tool calls as one card of rows (disclosure arrow, icon, label, a muted summary, the status: a spinner, a check, a red mark), each opening on its arguments and result in code blocks; an error as a pill-gray row of red text with an alert icon, not a red block.
+- **Composer**: a card (surface, border, radius 12) holding the text, a hint line ("↩ Send · ⇧↩ New line"), and a round send button that becomes stop while the chat works.
+- **Empty states**: centered: a small icon in a gray tile, a line, one or two actions or a few suggestions. No long explanations.
+- **Dialogs**: a 17 bold title over a 12 muted line, fields in a `ui.Form`, Cancel and the primary action at the bottom right; confirmations are `ui.AlertDialog`.
+
+**Motion**: 150–220ms, ease-in-out; the sidebar slides and clips; under Reduce Motion everything completes at once; no bounces, no scaled entrances, no skeletons.
+
+**Layout**: all text shrinks in a narrow space (`MinWidth(0)` and one line with an ellipsis), never spilling over other controls; secondary text that does not fit hides whole rather than leaving a lone "…".
+
+**Don't**: gradients, big shadows, colored background blocks, thick borders, brand-colored buttons, web-style hover underlines, drawn scroll bars, a toast for everything, emoji as icons, a card around every section.
+
 ## Roadmap
 
 One machine, one user; no Runners, relay, phone app or marketplace. Milestones run in order; each ends with tests and its docs.
