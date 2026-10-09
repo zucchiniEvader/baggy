@@ -209,3 +209,31 @@ func TestRefusalIsError(t *testing.T) {
 		t.Fatalf("bad refusal: %+v", msg)
 	}
 }
+
+func TestBuildBodyTransformsTranscript(t *testing.T) {
+	p := New("anthropic", "", "k", "m")
+	user := func(s string) agent.Message {
+		return agent.Message{Role: agent.RoleUser, Parts: []agent.Part{{Kind: agent.PartText, Text: s}}}
+	}
+	failed := agent.Message{Role: agent.RoleAssistant, Provider: "anthropic", Model: "m", StopReason: agent.StopError,
+		Parts: []agent.Part{{Kind: agent.PartText, Text: "boom", IsError: true}}}
+	foreign := agent.Message{Role: agent.RoleAssistant, Provider: "other", Model: "x", StopReason: agent.StopEnd,
+		Parts: []agent.Part{{Kind: agent.PartThinking, Text: "reasoned", Signature: "alien"}, {Kind: agent.PartText, Text: "ok"}}}
+	body := p.buildBody(provider.Request{
+		Messages:    []agent.Message{user("a"), failed, user("b"), foreign, user("c")},
+		CachePoints: []int{4}, // through the foreign reply, which sits at index 2 once the failed turn is gone
+	})
+	b, _ := json.Marshal(body["messages"])
+	s := string(b)
+	if strings.Contains(s, "boom") || strings.Contains(s, "alien") || strings.Contains(s, `"thinking"`) || !strings.Contains(s, "reasoned") {
+		t.Fatalf("transcript not transformed: %s", s)
+	}
+	var msgs []struct {
+		Role    string
+		Content []map[string]any
+	}
+	json.Unmarshal(b, &msgs)
+	if len(msgs) != 3 || msgs[2].Content[0]["cache_control"] == nil || msgs[1].Content[len(msgs[1].Content)-1]["cache_control"] == nil {
+		t.Fatalf("cache marks: %s", s)
+	}
+}

@@ -40,7 +40,7 @@ docs/       one doc per subject, written as the system is
 
 ## Next
 
-1. A shared transcript transform (`../lorca/crates/agent/src/transform.rs`), then `provider/openaicompat`.
+1. `provider/openaicompat` (Chat Completions), using `agent.Transform`.
 2. More tools (edit, find, grep).
 3. SQLite store; bots and DMs; then group chat and handoff.
 4. MyGo UI over `agent.Event`; compaction and memory.

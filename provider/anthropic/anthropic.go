@@ -231,7 +231,8 @@ func callID(id string) string {
 }
 
 func (p *Provider) buildBody(req provider.Request) map[string]any {
-	msgs, ends := convert(req.Messages)
+	transformed, origins := agent.Transform(req.Messages, agent.TransformOptions{Provider: p.id, Model: p.model, SupportsImages: true})
+	msgs, ends := convert(transformed)
 
 	marks := 0
 	mark := func(m *wireMessage) {
@@ -271,7 +272,7 @@ func (p *Provider) buildBody(req provider.Request) map[string]any {
 		mark(&msgs[n-1])
 	}
 	for i := len(req.CachePoints) - 1; i >= 0; i-- {
-		if cp := req.CachePoints[i]; cp > 0 && cp <= len(ends) {
+		if cp := agent.PrefixLen(origins, req.CachePoints[i]); cp > 0 && cp <= len(ends) {
 			mark(&msgs[ends[cp-1]])
 		}
 	}

@@ -36,6 +36,19 @@ A request that fails before it streams (connection error, 408, 409, 429, 5xx) is
 
 `go run ./cmd/smoke [model]` runs a multi-tool task (see `tools.md`) against a real Anthropic-protocol API (`ANTHROPIC_API_KEY`, optional `ANTHROPIC_BASE_URL`). It has been run against DeepSeek's endpoint (`ANTHROPIC_BASE_URL=https://api.deepseek.com/anthropic`, model `deepseek-chat`): streamed text, parallel and sequential tool calls, cache reads. Thinking signature replay is not covered by that run.
 
+## Transcript transform (`agent.Transform`)
+
+Every adapter runs the transcript through `agent.Transform(msgs, TransformOptions{Provider, Model, SupportsImages, NormalizeToolCallID})` before converting it; the input is not modified. A message is "own" when its `Provider` and `Model` equal the target's.
+
+- Thinking: own and signed is kept; empty is dropped; own and unsigned is kept (the adapter decides how to send it); another model's becomes a text part.
+- `PartServer` blocks are kept only when own.
+- Failed turns (`StopError`, `StopAborted`) are left out.
+- Every tool call gets a result before the next assistant message, the next user message, or the end; a missing one is an error result "No result provided", in one `RoleTool` message.
+- With `SupportsImages` false, each run of images becomes one note (`NonVisionUserImage`, or `NonVisionToolImage` in a tool message).
+- Another model's tool call ids go through `NormalizeToolCallID` (when set) and their results follow. The Anthropic adapter leaves this nil because it reduces every id itself.
+
+`Transform` also returns `origins`, the index in the input each output message comes from (a made-up result takes the index of the message it follows). `agent.PrefixLen(origins, n)` turns a prefix length of the original transcript, such as a `Request.CachePoints` entry, into the same prefix of the transformed one.
+
 ## Not yet
 
-The shared transcript transform (another model's thinking as text, failed turns left out, a result for every call), thinking bound to the system prompt and tools on newer models (`drop_bound_thinking` in `../lorca`), tool result images, the model catalog and cost.
+Limiting the images one request carries (`../lorca`'s `MAX_REQUEST_IMAGES`), thinking bound to the system prompt and tools on newer models (`drop_bound_thinking` in `../lorca`), tool result images, the model catalog and cost.
