@@ -96,7 +96,11 @@ func execute(ctx context.Context, tools map[string]tool.Tool, h Hooks, c Part) t
 	if !ok {
 		return tool.Result{Text: "unknown tool " + c.Name, IsError: true}
 	}
-	r := t.Execute(ctx, c.Args)
+	args, err := tool.ValidateArgs(t.Name(), t.Schema(), c.Args)
+	if err != nil {
+		return tool.Result{Text: err.Error(), IsError: true}
+	}
+	r := t.Execute(ctx, args)
 	if h.AfterToolCall != nil {
 		r = h.AfterToolCall(c, r)
 	}
