@@ -27,6 +27,7 @@ agent/      transcript types (Message, Part, Usage) and the loop (Run, Hooks, Ev
 provider/   Provider interface, Request, stream Events; one adapter per wire protocol
   anthropic/  the Messages API adapter (docs/providers.md)
 tool/       Tool interface and Result, argument validation, shell and file tools
+desktop/    the MyGo app, its own module (docs/desktop.md)
 docs/       one doc per subject, written as the system is
 ```
 
@@ -36,11 +37,11 @@ docs/       one doc per subject, written as the system is
 - The agent package imports no vendor code and no UI. Providers convert to and from `agent.Message`; the UI observes `agent.Event`s.
 - The transcript keeps thinking signatures and vendor server blocks verbatim (`Part.Signature`, `PartServer`) so a turn can continue after a tool call.
 - Tool arguments are checked against the tool's JSON Schema before a call runs; a failure is an error result the model reads.
-- `go vet ./... && go test ./...` pass before a change is done.
+- `go vet ./... && go test ./...` pass before a change is done, in the root and in `desktop/`.
 
 ## Next
 
-1. A minimal MyGo window over `agent.Event` (prompt box, streamed text, tool cards), to learn what MyGo asks of the core. Windows is the platform but not the first target.
+1. Grow the window: markdown, a settings screen, interrupting a step. Windows is the platform but not the first target.
 2. SQLite store; bots and DMs; then group chat and handoff.
 3. Compaction and memory; interrupting a step for steering.
 4. `provider/openaicompat` (Chat Completions, uses `agent.Transform`); the model catalog and cost; more tools (edit, find, grep); a shell for Windows.
