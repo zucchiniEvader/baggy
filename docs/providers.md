@@ -34,7 +34,7 @@ A request that fails before it streams (connection error, 408, 409, 429, 5xx) is
 
 `provider.Model{Provider, MaxTokens, Thinking}` implements `agent.Model`, so `agent.Run` drives any provider. Each call builds a `Request` from the system prompt, transcript and tools (`tool.Tool` becomes a `ToolSpec` with its schema), and marks the whole transcript as a cache point, since the loop's next call sends it again. `text_delta` and `thinking_delta` stream events are forwarded as `agent.Event`s of the same kinds; `tool_call` events are not (the final message carries the calls); the `done` message is returned. A stream that ends without `done` yields a `StopError` message, or `StopAborted` when the context is cancelled.
 
-`go run ./cmd/smoke [model]` runs one tool round trip against the real API (`ANTHROPIC_API_KEY`, optional `ANTHROPIC_BASE_URL`). It has not been run yet.
+`go run ./cmd/smoke [model]` runs one tool round trip against the real API (`ANTHROPIC_API_KEY`, optional `ANTHROPIC_BASE_URL`). It has been run against DeepSeek's Anthropic endpoint (`ANTHROPIC_BASE_URL=https://api.deepseek.com/anthropic`, model `deepseek-chat`): streamed text, one tool round trip, cache reads. Thinking signature replay is not covered by that run.
 
 ## Not yet
 
