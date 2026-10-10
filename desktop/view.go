@@ -8,6 +8,7 @@ import (
 	"github.com/egoist/mygo/ui"
 	"github.com/spike/gobot/agent"
 	"github.com/spike/gobot/store"
+	"github.com/spike/gobot/team"
 )
 
 // root is the window: the chats beside the chat shown, and the sheets.
@@ -37,6 +38,10 @@ func (a *app) main(c *ui.Context) {
 	}
 	v := a.view(ch.ID)
 	a.toolbar(c, ch)
+	if !a.hasProvider() && len(v.rows) == 0 {
+		a.setupView(c)
+		return
+	}
 	if len(v.rows) == 0 && !a.busy[ch.ID] {
 		a.welcome(c, *ch, v)
 	} else {
@@ -199,6 +204,10 @@ func firstLine(s string) string {
 	return oneLine(s, 100)
 }
 
+// shortThought is the length under which a reply's thinking goes unshown:
+// a passing note is not worth a line of its own.
+const shortThought = 160
+
 // item is what one entry of the transcript list draws: a row, or a run of
 // tool rows drawn as one card.
 type item struct {
@@ -258,7 +267,7 @@ func (a *app) transcript(c *ui.Context, ch store.Chat, v *chatView) {
 			}
 			a.drawRow(c, ch, v, rows[it.rows[0]], it.first)
 		})
-	}).Grow(1).MinHeight(0).Padding(12, 0, 28).Gap(16).Justify(ui.End).Children(func() {
+	}).Grow(1).MinHeight(0).Padding(12, 0, 28).Gap(16).Children(func() {
 		if a.busy[ch.ID] && v.working != "" && !a.streaming(v) {
 			ui.Column(c).MaxWidth(contentWidth).FillWidth().Margin(0, ui.Auto).Padding(0, 28).Children(func() {
 				thinking(c, L("%s is thinking…", a.name(v.working)))
@@ -316,12 +325,12 @@ func (a *app) drawRow(c *ui.Context, ch store.Chat, v *chatView, r row, first bo
 			for _, s := range r.searches {
 				a.searchLine(c, s)
 			}
-			if strings.TrimSpace(r.thinking) != "" && a.prefs.showThinking {
+			if len([]rune(strings.TrimSpace(r.thinking))) >= shortThought && a.prefs.showThinking {
 				a.reasoning(c, v, r)
 			}
 			switch {
 			case r.failed:
-				errorRow(c, r.text)
+				a.failedReply(c, ch, v, r)
 			case r.text != "":
 				markdown(c, r.text)
 			case !r.stopped && r.seq == 0 && len(r.searches) == 0 && r.thinking == "":
@@ -334,6 +343,33 @@ func (a *app) drawRow(c *ui.Context, ch store.Chat, v *chatView, r row, first bo
 	case rowNotice:
 		ui.Text(c, r.text).Selectable().FontSize(11).TextColor(t.TextMuted).TextAlign(ui.Center).FillWidth()
 	}
+}
+
+// failedReply is a reply that failed: what went wrong in words a person
+// reads, and what to do about it. Only the chat's last row offers Retry.
+func (a *app) failedReply(c *ui.Context, ch store.Chat, v *chatView, r row) {
+	text := r.text
+	noModel := strings.Contains(text, team.ErrNoProvider.Error())
+	if noModel {
+		text = L("No model is set up yet. Add a provider in Settings, then retry.")
+	}
+	last := len(v.rows) > 0 && v.rows[len(v.rows)-1].seq == r.seq && r.seq != 0
+	ui.Column(c).Gap(8).Children(func() {
+		errorRow(c, text)
+		if !last || a.busy[ch.ID] {
+			return
+		}
+		ui.Row(c).Gap(6).Children(func() {
+			if noModel || !a.hasProvider() {
+				if smallButton(c.Key("open-settings"), L("Open Settings"), secondary).Clicked() {
+					a.settings = true
+				}
+			}
+			if smallButton(c.Key("retry"), L("Retry"), secondary).Disabled(!a.hasProvider()).Clicked() {
+				a.do(a.team.Continue(ch.ID))
+			}
+		})
+	})
 }
 
 // errorRow says what went wrong in red words on a gray row, not a red block.

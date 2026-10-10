@@ -140,6 +140,30 @@ func (t *Team) Stop(chatID string) {
 	}
 }
 
+// Continue runs a chat again from its transcript as it stands, with no new
+// message: a retry after a failed reply (which the model never sees again).
+// A chat at work is left as it is.
+func (t *Team) Continue(chatID string) error {
+	if _, err := t.Store.Chat(chatID); err != nil {
+		return err
+	}
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if t.runs == nil {
+		t.runs = map[string]*run{}
+	}
+	if t.runs[chatID] != nil {
+		return nil
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	r := &run{cancel: cancel, steering: agent.NewQueue(agent.QueueAll), interrupt: agent.NewInterrupt(), pending: map[string]store.Meta{}, authors: map[string]string{}}
+	t.runs[chatID] = r
+	t.emit(Event{Kind: EventRunStart, ChatID: chatID})
+	t.active.Add(1)
+	go t.work(ctx, chatID, r, "")
+	return nil
+}
+
 // Interrupt cuts the step under way in a chat short, so what was just sent
 // is read at once; it reports whether a step was under way.
 func (t *Team) Interrupt(chatID string) bool {

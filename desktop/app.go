@@ -48,6 +48,7 @@ type app struct {
 	palette    *paletteState
 	memSheet   *memoryForm
 	routine    *routineSheet
+	setup      *setup
 	approvals  *approvals
 	prefs      *prefs
 
@@ -56,6 +57,7 @@ type app struct {
 	readImage  func() []byte   // the clipboard's image as PNG, or nil
 	pickImage  func() []string // asks for image files
 	openFolder func(path string)
+	onLanguage func()       // the language changed: the menu bar is made again
 	mcpPath    string       // the user's mcp.json
 	servers    []mcp.Status // as the last check left them
 	checking   bool

@@ -75,6 +75,7 @@ func main() {
 
 	mygo.App.WhenReady(func() {
 		mygo.App.SetMenu(buildMenu(a, func(fn func()) { a.post(fn) }))
+		a.onLanguage = func() { mygo.App.SetMenu(buildMenu(a, func(fn func()) { a.post(fn) })) }
 		win := mygo.NewWindow(mygo.WindowOptions{
 			Title:          "gobot",
 			Width:          1180,

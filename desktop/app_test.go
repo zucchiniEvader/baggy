@@ -13,6 +13,7 @@ import (
 
 	"github.com/egoist/mygo/ui"
 	"github.com/spike/gobot/agent"
+	"github.com/spike/gobot/provider/connect"
 	"github.com/spike/gobot/store"
 	"github.com/spike/gobot/team"
 	"github.com/spike/gobot/tool"
@@ -71,6 +72,7 @@ func newHarness(t *testing.T, m agent.Model) *harness {
 	tm := &team.Team{Store: st, Model: func(store.Bot) (agent.Model, error) { return m, nil },
 		Tools: func(store.Bot, string) []tool.Tool { return []tool.Tool{echoTool{}} }}
 	h.a = newApp(st, tm, func(fn func()) { h.posts <- fn })
+	h.a.fallback = connect.Config{APIKey: "test"} // a provider, so the chat shows rather than the setup
 	tm.Emit = func(e team.Event) { h.a.post(func() { h.a.apply(e) }) }
 	tm.Approve = h.a.approvals.approve
 	h.a.applyPrefs()
@@ -122,6 +124,7 @@ func TestSendShowsReplyAndRestores(t *testing.T) {
 
 	// A new app over the same store shows the same transcript.
 	b := newApp(h.st, h.a.team, func(fn func()) { fn() })
+	b.fallback = h.a.fallback
 	b.applyPrefs()
 	tt := ui.NewTester(b.root, 1000, 700)
 	if !tt.HasText("hello") || !tt.HasText(" from Chef, re: hello") {
@@ -327,6 +330,16 @@ func TestRender(t *testing.T) {
 		png.Encode(f, h.tt.Image())
 		f.Close()
 	}
+	// The setup, before any model.
+	dmScout, _ := h.st.DMOf(scout.ID)
+	h.a.selectChat(dmScout.ID)
+	h.a.inspector = false
+	h.a.fallback = connect.Config{}
+	h.tt.SetDark(false)
+	h.tt.Frame()
+	f, _ := os.Create(filepath.Join(dir, "setup-light.png"))
+	png.Encode(f, h.tt.Image())
+	f.Close()
 	_ = strings.TrimSpace
 }
 
@@ -472,4 +485,67 @@ func TestAutoReviewAndAlwaysAllow(t *testing.T) {
 	}
 	h.send("rm -rf build") // allowed by the rule, no question
 	h.pump("rm ran again", func() bool { return h.idle() && len(h.a.approvals.in(h.a.sel)) == 0 })
+}
+
+func TestSetupThenRetry(t *testing.T) {
+	h := newHarness(t, script(func(bot string, msgs []agent.Message) agent.Message { return say("ready") }))
+	h.a.fallback = connect.Config{}
+	h.tt.Frame()
+	if !h.tt.HasText("Set up a model") {
+		t.Fatalf("no setup: %q", h.tt.Texts())
+	}
+	h.tt.Type("sk-test")
+	h.tt.Frame()
+	if err := h.tt.Click("Start"); err != nil {
+		t.Fatal(err)
+	}
+	h.tt.Frame()
+	ps, _ := h.st.Providers()
+	if len(ps) != 1 || ps[0].Name != "DeepSeek" || ps[0].APIKey != "sk-test" || !ps[0].Options["web_search"] || h.st.Setting(team.SettingDefaultProvider) != ps[0].ID {
+		t.Fatalf("providers %+v", ps)
+	}
+	if h.tt.HasText("Set up a model") {
+		t.Fatal("setup still shown")
+	}
+
+	// A reply that failed for want of a model offers Retry, which runs it again.
+	failing := true
+	h.a.team.Model = func(store.Bot) (agent.Model, error) {
+		if failing {
+			return nil, team.ErrNoProvider
+		}
+		return script(func(string, []agent.Message) agent.Message { return say("here now") }), nil
+	}
+	h.send("hello")
+	h.pump("the failure", func() bool { return h.idle() && h.tt.HasText("Retry") })
+	if !h.tt.HasText("No model is set up yet. Add a provider in Settings, then retry.") || !h.tt.HasText("Open Settings") {
+		t.Fatalf("texts %q", h.tt.Texts())
+	}
+	failing = false
+	h.tt.Click("Retry")
+	h.pump("the retried reply", func() bool { return h.idle() && h.tt.HasText("here now") })
+	if h.tt.HasText("Retry") {
+		t.Fatal("Retry stays on an older failure")
+	}
+}
+
+func TestLanguageInSettings(t *testing.T) {
+	defer setLanguage("English", "")
+	h := newHarness(t, script(func(string, []agent.Message) agent.Message { return say("ok") }))
+	h.a.settings = true
+	h.tt.Frame()
+	if !h.tt.HasText("General") || !h.tt.HasText("Follow System") {
+		t.Fatalf("no language field: %q", h.tt.Texts())
+	}
+	if err := h.tt.Click("Follow System"); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.tt.ChooseMenuItem("简体中文"); err != nil {
+		t.Fatal(err)
+	}
+	h.tt.Frame()
+	h.tt.Frame()
+	if h.a.prefs.language != "中文" || !h.tt.HasText("设置") || h.st.Setting("pref.language") != "中文" {
+		t.Fatalf("language %q texts %q", h.a.prefs.language, h.tt.Texts())
+	}
 }

@@ -9,6 +9,9 @@ import (
 	"github.com/spike/gobot/store"
 )
 
+// ErrNoProvider is a bot's model when no provider is set up.
+var ErrNoProvider = errors.New("no model is set up yet: add a provider in Settings")
+
 // SettingDefaultProvider names the provider a bot without one runs on.
 const SettingDefaultProvider = "default_provider"
 
@@ -37,7 +40,7 @@ func Config(st *store.Store, b store.Bot, fallback connect.Config) (connect.Conf
 	}
 	if p == nil {
 		if fallback.APIKey == "" {
-			return connect.Config{}, errors.New("no provider: add one in Settings")
+			return connect.Config{}, ErrNoProvider
 		}
 		if b.Model != "" {
 			fallback.Model = b.Model

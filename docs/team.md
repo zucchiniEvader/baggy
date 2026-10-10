@@ -16,7 +16,7 @@ tm.Send(chatID, "plan the launch", mentions, replyTo)
 
 ## Runs and events
 
-A chat at work has one run. A message delivered to an idle chat is stored and starts a run in a goroutine; deciding to stop and leaving the run map happen under one lock, so a message arriving at that moment is either taken or starts a new run. `Stop` cancels the run's context at once. `Busy` and `Wait` report on runs.
+A chat at work has one run. A message delivered to an idle chat is stored and starts a run in a goroutine; deciding to stop and leaving the run map happen under one lock, so a message arriving at that moment is either taken or starts a new run. `Stop` cancels the run's context at once. `Continue(chat)` runs a chat again from its transcript with no new message, a retry after a failed reply (which providers leave out). A bot with no provider to run on fails with `ErrNoProvider`. `Busy` and `Wait` report on runs.
 
 | Event | Means |
 | --- | --- |

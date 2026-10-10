@@ -18,7 +18,18 @@ type prefs struct {
 	inspector    bool
 }
 
+// languages are the stored choices; languageLabel names them.
 var languages = []string{"Auto", "English", "中文"}
+
+func languageLabel(l string) string {
+	switch l {
+	case "English":
+		return "English"
+	case "中文":
+		return "简体中文"
+	}
+	return L("Follow System")
+}
 
 func loadPrefs(st *store.Store) *prefs {
 	p := &prefs{st: st, showThinking: true, keepRunning: true, language: "Auto", sideWidth: 240}
@@ -86,11 +97,6 @@ func (a *app) prefsView(c *ui.Context) {
 		}).Description(L("Before a shell command or a plugin action that changes something: run it, ask every time, or let the bot's model review it and ask only when in doubt. Always Allow keeps an exact command."))
 		ui.Field(c, L("Keep running when closed"), func() { changed = ui.Switch(c, &p.keepRunning).Changed() || changed }).
 			Description(L("Bots keep working; the tray icon opens the window again."))
-		ui.Field(c, L("Language"), func() {
-			was := p.language
-			popup(c, &p.language, languages)
-			changed = changed || p.language != was
-		})
 	})
 	if changed {
 		p.save()
@@ -133,4 +139,30 @@ func modeOf(label string) string {
 		}
 	}
 	return ModeRun
+}
+
+// generalView is Settings' first section: the app's language.
+func (a *app) generalView(c *ui.Context) {
+	p := a.prefs
+	sectionTitle(c, L("General"))
+	ui.Form(c, func() {
+		ui.Field(c, L("Language"), func() {
+			labels := make([]string, len(languages))
+			for i, l := range languages {
+				labels[i] = languageLabel(l)
+			}
+			choice := languageLabel(p.language)
+			popup(c, &choice, labels)
+			for i, l := range labels {
+				if l == choice && languages[i] != p.language {
+					p.language = languages[i]
+					p.save()
+					a.applyPrefs()
+					if a.onLanguage != nil {
+						a.onLanguage()
+					}
+				}
+			}
+		}).Description(L("The language of the app; bots answer in the language you write in."))
+	})
 }

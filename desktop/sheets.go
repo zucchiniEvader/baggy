@@ -355,6 +355,7 @@ func (a *app) settingsView(c *ui.Context) {
 			dialogTitle(c, L("Settings"), "")
 			ui.Scroll(c).MaxHeight(560).Children(func() {
 				ui.Column(c).Gap(6).Padding(0, 12, 0, 0).Children(func() {
+					a.generalView(c)
 					sectionTitle(c, L("Providers"))
 					ps, _ := a.st.Providers()
 					def := a.st.Setting(team.SettingDefaultProvider)

@@ -406,3 +406,28 @@ func (s sysWrap) Call(ctx context.Context, system string, msgs []agent.Message, 
 	m.Role, m.StopReason = agent.RoleAssistant, agent.StopEnd
 	return m
 }
+
+func TestContinueRetriesAFailedReply(t *testing.T) {
+	fail := true
+	var saw []agent.Message
+	f := setup(t, nil)
+	f.team.Model = func(store.Bot) (agent.Model, error) {
+		if fail {
+			return nil, ErrNoProvider
+		}
+		return script(func(bot string, msgs []agent.Message) agent.Message { saw = msgs; return say("hello") }), nil
+	}
+	a := f.bot(t, "A")
+	dm, _ := f.st.DMOf(a.ID)
+	f.team.Send(dm.ID, "hi", nil, nil)
+	f.team.Wait()
+	fail = false
+	if err := f.team.Continue(dm.ID); err != nil {
+		t.Fatal(err)
+	}
+	f.team.Wait()
+	// The failed reply stays in the chat; providers leave it out (agent.Transform).
+	if got := f.texts(t, dm.ID); got[len(got)-1] != "A: hello" || lastUser(saw) != "hi" {
+		t.Fatalf("transcript %q, the model saw %d messages", got, len(saw))
+	}
+}
