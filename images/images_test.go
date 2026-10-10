@@ -72,3 +72,10 @@ func TestFitTurnsAPhotoUpright(t *testing.T) {
 		t.Fatalf("got %s %dx%d %q", mt, cfg.Width, cfg.Height, note)
 	}
 }
+
+func TestThumbnail(t *testing.T) {
+	img, err := Thumbnail(pngOf(900, 300), "a.png", 240)
+	if err != nil || img.Bounds().Dx() != 240 || img.Bounds().Dy() != 80 {
+		t.Fatalf("%v %v", img.Bounds(), err)
+	}
+}

@@ -1,8 +1,10 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"image"
 	"image/png"
 	"io"
 	"net/http"
@@ -333,6 +335,10 @@ func TestRender(t *testing.T) {
 	add(scout.ID, agent.Message{Role: agent.RoleTool, Parts: []agent.Part{{Kind: agent.PartToolResult, CallID: "c", Text: "#12 crash\n#14 typo\n#15 slow start"}}})
 	add(scout.ID, agent.Message{Role: agent.RoleAssistant, StopReason: agent.StopEnd, Parts: []agent.Part{{Kind: agent.PartText, Text: "Three bugs:\n\n1. **#12** crash on start\n2. `#14` typo\n3. #15 slow start"}}})
 	add(chef.ID, agent.Message{Role: agent.RoleAssistant, StopReason: agent.StopEnd, Parts: []agent.Part{{Kind: agent.PartText, Text: "Plan: fix #12 first. I own the release."}}})
+	h.st.Append(g.ID, store.User, "", store.Meta{Files: []store.File{{ID: "file-1", Name: "crash-report.log", Size: 48213}, {ID: "file-2", Name: "screenshot.png", Size: 812000}}},
+		agent.Message{Role: agent.RoleUser, Parts: []agent.Part{{Kind: agent.PartText, Text: "Logs from this morning."}}})
+	dm, _ := h.st.DMOf(scout.ID)
+	h.st.SetPinned(dm.ID, true)
 	h.a.reload()
 	h.a.selectChat(g.ID)
 	h.a.inspector = true
@@ -811,5 +817,90 @@ func TestContextSettings(t *testing.T) {
 	}
 	if p := loadPrefs(h.st); p.compactCold != 0.3 || p.compactWarm != 0.8 || p.cacheTTL != 5*time.Minute {
 		t.Fatalf("reloaded %+v", p)
+	}
+}
+
+func TestSidebarPreviewPinAndRename(t *testing.T) {
+	h := newHarness(t, script(func(string, []agent.Message) agent.Message { return say("Soup tonight.") }))
+	scout, _ := h.st.CreateBot(store.Bot{Name: "Scout", Description: "Finds things."})
+	h.a.reload()
+	h.send("dinner?")
+	h.pump("the reply", func() bool { return h.tt.HasText("Soup tonight.") && h.idle() })
+	h.tt.Frame()
+	if !h.tt.HasText("No messages yet") || !h.tt.HasText(time.Now().Format("15:04")) {
+		t.Fatalf("previews: %q", h.tt.Texts())
+	}
+
+	// Pinning Scout puts it first, under Pinned.
+	if err := h.tt.RightClick("Scout"); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.tt.ChooseMenuItem("Pin"); err != nil {
+		t.Fatal(err)
+	}
+	h.tt.Frame()
+	if list := h.a.shownChats(); list[0].Owner != scout.ID || !h.tt.HasText("Pinned") {
+		t.Fatalf("not pinned first: %+v", list)
+	}
+
+	// A double-click renames in place; Return saves.
+	r, _ := h.tt.Find("Scout")
+	h.tt.ClickAt(r.X+4, r.Y+4)
+	h.tt.ClickAt(r.X+4, r.Y+4)
+	h.tt.Frame()
+	if h.a.renaming == nil {
+		t.Fatal("no rename field")
+	}
+	h.a.renaming.text = "Scouty"
+	h.tt.Frame()
+	h.tt.Key(0, ui.KeyEnter)
+	h.tt.Frame()
+	if b, _ := h.st.Bot(scout.ID); b.Name != "Scouty" || h.a.renaming != nil {
+		t.Fatalf("name %q, renaming %v", b.Name, h.a.renaming)
+	}
+	// Escape puts the name back.
+	h.a.startRename(*h.a.chat(h.a.shownChats()[0].ID))
+	h.tt.Frame()
+	h.a.renaming.text = "Nope"
+	h.tt.Frame()
+	h.tt.Key(0, ui.KeyEscape)
+	h.tt.Frame()
+	if b, _ := h.st.Bot(scout.ID); b.Name != "Scouty" {
+		t.Fatalf("escape saved %q", b.Name)
+	}
+}
+
+func TestStamp(t *testing.T) {
+	now := time.Date(2026, 10, 10, 15, 0, 0, 0, time.Local) // a Saturday
+	for _, c := range []struct {
+		t    time.Time
+		want string
+	}{
+		{now.Add(-time.Hour), "14:00"},
+		{now.AddDate(0, 0, -1), "Yesterday"},
+		{now.AddDate(0, 0, -3), "Wed"},
+		{now.AddDate(0, -1, 0), "9/10"},
+		{now.AddDate(-1, 0, 0), "25/10/10"},
+	} {
+		if got := stamp(now, c.t); got != c.want {
+			t.Errorf("stamp(%v) = %q, want %q", c.t, got, c.want)
+		}
+	}
+}
+
+func TestAttachedPictureShowsAsAThumbnail(t *testing.T) {
+	h := newHarness(t, script(func(string, []agent.Message) agent.Message { return say("nice") }))
+	var buf bytes.Buffer
+	png.Encode(&buf, image.NewRGBA(image.Rect(0, 0, 1200, 600)))
+	if err := h.a.team.SendFiles(h.a.sel, "", []team.Attachment{{Name: "wide.png", Data: buf.Bytes()}}, nil, nil); err != nil {
+		t.Fatal(err)
+	}
+	h.pump("the reply", func() bool { return h.tt.HasText("nice") && h.idle() })
+	es, _ := h.st.Messages(h.a.sel, 0)
+	id := es[0].Meta.Files[0].ID
+	h.pump("the thumbnail", func() bool { return h.a.thumbs[id] != nil })
+	h.tt.Frame()
+	if r, ok := h.tt.Find("wide.png"); !ok || r.W != 240 || r.H != 120 {
+		t.Fatalf("thumbnail at %+v %v", r, ok)
 	}
 }

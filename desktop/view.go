@@ -3,10 +3,12 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/egoist/mygo/ui"
 	"github.com/spike/gobot/agent"
+	"github.com/spike/gobot/images"
 	"github.com/spike/gobot/store"
 	"github.com/spike/gobot/team"
 )
@@ -314,23 +316,9 @@ func (a *app) drawRow(c *ui.Context, ch store.Chat, v *chatView, r row, first bo
 				})
 			}
 			if len(r.files) > 0 {
-				ui.Row(c).Wrap().Gap(6).Justify(ui.End).Children(func() {
+				ui.Column(c).Gap(6).AlignItems(ui.End).MinWidth(0).Children(func() {
 					for _, f := range r.files {
-						chip := fileChip(c.Key(f.ID), f.Name, f.Size, nil).Cursor(ui.CursorPointer)
-						if f.Note != "" {
-							chip.Tooltip(f.Note)
-						}
-						if chip.Clicked() && a.openFolder != nil {
-							a.openFolder(a.st.FilePath(f))
-						}
-						chip.ContextMenu(func(m *ui.Menu) {
-							if m.Item(L("Open")).Chosen() && a.openFolder != nil {
-								a.openFolder(a.st.FilePath(f))
-							}
-							if m.Item(L("Show in Finder")).Chosen() && a.revealFile != nil {
-								a.revealFile(a.st.FilePath(f))
-							}
-						})
+						a.fileView(c, f)
 					}
 				})
 			}
@@ -599,4 +587,64 @@ func scriptOf(call agent.Part) (string, bool) {
 		return "", false
 	}
 	return strings.TrimSpace(a.Code), true
+}
+
+// thumbSide is the longest side of an attached picture in the transcript.
+const thumbSide = 240
+
+// fileView is an attached file in the transcript: a picture's thumbnail,
+// or a chip; a click opens the file.
+func (a *app) fileView(c *ui.Context, f store.File) {
+	var el ui.Element
+	if b := a.thumb(f); b != nil {
+		w, h := b.Size()
+		k := min(1, float32(thumbSide)/float32(max(w, h)))
+		el = ui.Box(c.Key(f.ID)).Size(float32(w)*k, float32(h)*k).Radius(cardRadius).Clip().Label(f.Name)
+		el.Children(func() { ui.Image(c, b).Fill().Fit(ui.Cover) })
+	} else {
+		el = fileChip(c.Key(f.ID), f.Name, f.Size, nil)
+	}
+	el.Cursor(ui.CursorPointer).Tooltip(strings.TrimSpace(f.Name + "\n" + f.Note))
+	path := a.st.FilePath(f)
+	if el.Clicked() && a.openFolder != nil {
+		a.openFolder(path)
+	}
+	el.ContextMenu(func(m *ui.Menu) {
+		if m.Item(L("Open")).Chosen() && a.openFolder != nil {
+			a.openFolder(path)
+		}
+		if m.Item(L("Show in Finder")).Chosen() && a.revealFile != nil {
+			a.revealFile(path)
+		}
+	})
+}
+
+// thumb is an attached picture's thumbnail, made off the frame the first
+// time it shows at twice its size, for a Retina screen; nil until then,
+// and for a file that is not a picture.
+func (a *app) thumb(f store.File) *ui.Bitmap {
+	if !f.Image {
+		return nil
+	}
+	if b, ok := a.thumbs[f.ID]; ok {
+		return b
+	}
+	if a.thumbs == nil {
+		a.thumbs = map[string]*ui.Bitmap{}
+	}
+	a.thumbs[f.ID] = nil
+	path := a.st.FilePath(f)
+	go func() {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return
+		}
+		img, err := images.Thumbnail(data, f.Name, 2*thumbSide)
+		if err != nil {
+			return
+		}
+		b := ui.NewBitmap(img)
+		a.post(func() { a.thumbs[f.ID] = b })
+	}()
+	return nil
 }

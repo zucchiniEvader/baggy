@@ -128,6 +128,39 @@ func Fit(data []byte, name string) (out []byte, mediaType, note string, err erro
 	return buf.Bytes(), "image/jpeg", strings.Join(notes, ", "), nil
 }
 
+// Thumbnail is data as a picture at most side pixels on a side, upright.
+func Thumbnail(data []byte, name string, side int) (image.Image, error) {
+	mt := typeOf(data, name)
+	if mt == "" {
+		return nil, ErrNotImage
+	}
+	var err error
+	if mt == "image/heic" {
+		if data, err = fromHEIC(data); err != nil {
+			return nil, err
+		}
+	}
+	img, _, err := image.Decode(bytes.NewReader(data))
+	if err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrNotImage, err)
+	}
+	if o := Orientation(data); o != 1 {
+		img = upright(img, o)
+	}
+	b := img.Bounds()
+	w, h := b.Dx(), b.Dy()
+	if w <= side && h <= side {
+		return img, nil
+	}
+	nw, nh := side, max(h*side/w, 1)
+	if h > w {
+		nw, nh = max(w*side/h, 1), side
+	}
+	dst := image.NewRGBA(image.Rect(0, 0, nw, nh))
+	draw.ApproxBiLinear.Scale(dst, dst.Bounds(), img, b, draw.Src, nil)
+	return dst, nil
+}
+
 // fromHEIC converts a HEIC to a JPEG with the Mac's sips.
 func fromHEIC(data []byte) ([]byte, error) {
 	if runtime.GOOS != "darwin" {

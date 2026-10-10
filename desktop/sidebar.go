@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"runtime"
+	"sort"
 	"strings"
 	"time"
 
@@ -152,25 +153,29 @@ func (a *app) hasProvider() bool {
 	return len(ps) > 0 || a.fallback.APIKey != ""
 }
 
-// shownChats are the chats the list shows, filtered by the search.
+// shownChats are the chats the list shows, filtered by the search: the
+// pinned ones first, in the order they were pinned, then the rest by their
+// last activity.
 func (a *app) shownChats() []store.Chat {
 	q := strings.ToLower(strings.TrimSpace(a.filter))
-	if q == "" {
-		return a.chats
-	}
-	var out []store.Chat
+	var pinned, rest []store.Chat
 	for _, ch := range a.chats {
-		if strings.Contains(strings.ToLower(a.title(ch)), q) {
-			out = append(out, ch)
+		if q != "" && !strings.Contains(strings.ToLower(a.title(ch)), q) && !strings.Contains(strings.ToLower(a.previews[ch.ID].Text), q) {
+			continue
+		}
+		if ch.Pinned != 0 {
+			pinned = append(pinned, ch)
+		} else {
+			rest = append(rest, ch)
 		}
 	}
-	return out
+	sort.SliceStable(pinned, func(i, j int) bool { return pinned[i].Pinned < pinned[j].Pinned })
+	return append(pinned, rest...)
 }
 
 // chatGroup names when a chat was last active, as Today.
 func chatGroup(now, t time.Time) string {
-	day := func(t time.Time) time.Time { y, m, d := t.Date(); return time.Date(y, m, d, 0, 0, 0, 0, t.Location()) }
-	days := int(day(now).Sub(day(t)).Hours() / 24)
+	days := daysBetween(t, now)
 	switch {
 	case days <= 0:
 		return L("Today")
@@ -184,6 +189,83 @@ func chatGroup(now, t time.Time) string {
 	return L("Earlier")
 }
 
+func daysBetween(t, now time.Time) int {
+	day := func(t time.Time) time.Time { y, m, d := t.Date(); return time.Date(y, m, d, 0, 0, 0, 0, t.Location()) }
+	return int(day(now).Sub(day(t)).Hours() / 24)
+}
+
+// stamp is when a chat was last active, as a row says it: the time today,
+// Yesterday, the weekday this week, else the date.
+func stamp(now, t time.Time) string {
+	switch days := daysBetween(t, now); {
+	case days <= 0:
+		return t.Format("15:04")
+	case days == 1:
+		return L("Yesterday")
+	case days < 7:
+		return L(t.Weekday().String()[:3])
+	case t.Year() == now.Year():
+		return fmt.Sprintf("%d/%d", t.Month(), t.Day())
+	}
+	return fmt.Sprintf("%d/%d/%d", t.Year()%100, t.Month(), t.Day())
+}
+
+// previewLine is a chat's last words with who said them, when that is not
+// plain: "You: …" for the user, "Name: …" for a bot in a group.
+func (a *app) previewLine(ch store.Chat) string {
+	p, ok := a.previews[ch.ID]
+	if !ok {
+		return ""
+	}
+	switch {
+	case p.Author == store.User:
+		return L("You: %s", p.Text)
+	case ch.Kind == store.Group:
+		return a.name(p.Author) + ": " + p.Text
+	}
+	return p.Text
+}
+
+// rename is a chat's name being edited in its row.
+type rename struct {
+	chatID  string
+	text    string
+	focus   bool // take the focus in the next frame
+	focused bool // the field had it in the last frame
+}
+
+func (a *app) startRename(ch store.Chat) {
+	a.renaming = &rename{chatID: ch.ID, text: a.title(ch), focus: true}
+}
+
+// finishRename saves the name typed: a DM's bot's or a group's title.
+func (a *app) finishRename(save bool) {
+	r := a.renaming
+	a.renaming = nil
+	a.side.focus = true
+	name := strings.TrimSpace(r.text)
+	ch := a.chat(r.chatID)
+	if !save || ch == nil || name == "" || name == a.title(*ch) {
+		return
+	}
+	if ch.Kind == store.DM {
+		b, err := a.st.Bot(ch.Owner)
+		if err == nil {
+			b.Name = name
+			err = a.st.UpdateBot(b)
+		}
+		a.do(err)
+	} else {
+		a.do(a.st.SetGroupInfo(ch.ID, name, ch.Description))
+	}
+	a.reload()
+}
+
+func (a *app) togglePin(ch store.Chat) {
+	a.do(a.st.SetPinned(ch.ID, ch.Pinned == 0))
+	a.reload()
+}
+
 // chatList lists the chats. It takes the focus as a whole, its rows do
 // not: the arrows, Home and End move the choice, Enter goes on to the
 // composer.
@@ -191,7 +273,7 @@ func (a *app) chatList(c *ui.Context) {
 	t := c.Theme()
 	list := a.shownChats()
 	box := ui.Column(c.Key("chats")).Gap(1).Focusable().FocusRing(false).Label(L("Chats")).Role(ui.RoleList)
-	if a.side.focus {
+	if a.side.focus && a.renaming == nil {
 		box.Focus()
 		a.side.focus = false
 	}
@@ -205,38 +287,59 @@ func (a *app) chatList(c *ui.Context) {
 			chosen = i
 		}
 	}
-	a.side.keys(box, chosen, len(list), func(i int) { a.sel = list[i].ID; a.markRead() }) // the keys stay in the list
-	if box.Shortcut(0, ui.KeyEnter) && a.sel != "" {
-		a.view(a.sel).focus = true
+	if a.renaming == nil {
+		a.side.keys(box, chosen, len(list), func(i int) { a.sel = list[i].ID; a.markRead() }) // the keys stay in the list
+		if box.Shortcut(0, ui.KeyEnter) && a.sel != "" {
+			a.view(a.sel).focus = true
+		}
 	}
 	now := time.Now()
 	group := ""
 	var action func()
 	box.Children(func() {
 		for _, ch := range list {
-			if g := chatGroup(now, time.UnixMilli(ch.Updated)); g != group {
+			g := L("Pinned")
+			if ch.Pinned == 0 {
+				g = chatGroup(now, time.UnixMilli(ch.Updated))
+			}
+			if g != group {
 				group = g
 				ui.Text(c, g).Key("g:"+g).FontSize(11).FontWeight(600).TextColor(t.TextMuted).Padding(10, 8, 4)
 			}
 			ch := ch
 			st := a.side.state(ch.ID == a.sel, focused)
 			title := a.title(ch)
+			editing := a.renaming != nil && a.renaming.chatID == ch.ID
 			// A plain row, not a button: a click leaves the focus with the
 			// list, so the arrows go on from there.
-			row := ui.Row(c.Key(ch.ID)).Height(rowHeight).Padding(0, 8, 0, 6).Gap(8).Radius(rowRadius).AlignItems(ui.Center).Label(title).Role(ui.RoleListItem)
+			row := ui.Row(c.Key(ch.ID)).Height(chatRowHeight).Padding(0, 8, 0, 8).Gap(8).Radius(rowRadius).AlignItems(ui.Center).Label(title).Role(ui.RoleListItem)
 			styleRow(row, t, st)
-			if row.Pressed() || row.Clicked() {
+			if !editing && (row.Pressed() || row.Clicked()) {
 				a.side.keyboard = false
 				a.side.focus = true
 				if ch.ID != a.sel {
 					action = func() { a.sel = ch.ID; a.markRead() }
 				}
 			}
+			if !editing && row.DoubleClicked() {
+				action = func() { a.sel = ch.ID; a.startRename(ch) }
+			}
 			if st != rowPlain && a.side.reveal {
 				row.ScrollIntoView()
 				a.side.reveal = false
 			}
 			row.ContextMenu(func(m *ui.Menu) {
+				pin := L("Pin")
+				if ch.Pinned != 0 {
+					pin = L("Unpin")
+				}
+				if m.Item(pin).Chosen() {
+					action = func() { a.togglePin(ch) }
+				}
+				if m.Item(L("Rename")).Chosen() {
+					action = func() { a.startRename(ch) }
+				}
+				m.Separator()
 				if ch.Kind == store.DM {
 					if m.Item(L("Edit Bot…")).Chosen() {
 						action = func() { a.editBot(ch.Owner) }
@@ -253,15 +356,34 @@ func (a *app) chatList(c *ui.Context) {
 					action = func() { a.deleteChat(ch) }
 				}
 			})
+			onAccent := st == rowKeyboard
 			row.Children(func() {
-				a.chatIcon(c, ch, st == rowKeyboard)
-				ui.Text(c, title).FontSize(13).SingleLine().Grow(1).MinWidth(0)
-				switch {
-				case a.busy[ch.ID]:
-					ui.Spinner(c).Size(12, 12).Shrink(0)
-				case a.unread[ch.ID] > 0 && ch.ID != a.sel:
-					badge(c, fmt.Sprint(a.unread[ch.ID])).Label(L("%d unread", a.unread[ch.ID]))
-				}
+				a.chatIcon(c, ch, onAccent)
+				ui.Column(c).Grow(1).MinWidth(0).Gap(1).Children(func() {
+					ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
+						if editing {
+							a.renameField(c)
+						} else {
+							ui.Text(c, title).FontSize(13).SingleLine().Grow(1).MinWidth(0)
+						}
+						if p, ok := a.previews[ch.ID]; ok && !editing {
+							muted(ui.Text(c, stamp(now, time.UnixMilli(p.At))).FontSize(11).SingleLine().Shrink(0), t, onAccent)
+						}
+					})
+					ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
+						line := a.previewLine(ch)
+						if line == "" {
+							line = L("No messages yet")
+						}
+						muted(ui.Text(c, line).FontSize(12).SingleLine().Grow(1).MinWidth(0), t, onAccent)
+						switch {
+						case a.busy[ch.ID]:
+							ui.Spinner(c).Size(12, 12).Shrink(0)
+						case a.unread[ch.ID] > 0 && ch.ID != a.sel:
+							badge(c, fmt.Sprint(a.unread[ch.ID])).Label(L("%d unread", a.unread[ch.ID]))
+						}
+					})
+				})
 			})
 		}
 		if len(list) == 0 {
@@ -271,6 +393,39 @@ func (a *app) chatList(c *ui.Context) {
 	if action != nil {
 		action()
 	}
+}
+
+// renameField is the name being edited in a row: Return saves it, Escape
+// puts it back, and leaving the field saves it.
+func (a *app) renameField(c *ui.Context) {
+	r := a.renaming
+	in := ui.TextInputBase(c.Key("rename"), &r.text).Label(L("Name")).FontSize(13).Grow(1).MinWidth(0).
+		Background(c.Theme().Background).Radius(4).Padding(1, 4)
+	focusRing(in, c.Theme())
+	if r.focus {
+		in.Focus()
+		r.focus = false
+		return
+	}
+	switch {
+	case in.Shortcut(0, ui.KeyEscape):
+		a.finishRename(false)
+	case in.Submitted():
+		a.finishRename(true)
+	case r.focused && !in.Focused():
+		a.finishRename(true)
+	default:
+		r.focused = in.Focused()
+	}
+}
+
+// muted gives secondary text of a row its color, unless the row shows in
+// the accent.
+func muted(e ui.Element, t *ui.Theme, onAccent bool) ui.Element {
+	if !onAccent {
+		e.TextColor(t.TextMuted)
+	}
+	return e
 }
 
 // chatIcon is a chat's mark in a row: its bot's icon, or a group's.

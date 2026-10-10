@@ -31,6 +31,9 @@ type app struct {
 	runFrom map[string]int64
 
 	side         listNav
+	previews     map[string]store.Preview // the chats' last words
+	thumbs       map[string]*ui.Bitmap    // attached pictures by file id; nil while made or unreadable
+	renaming     *rename                  // the chat whose name is being edited
 	sidebarShown bool
 	dragWidth    float32
 	resizing     bool
@@ -123,6 +126,7 @@ func (a *app) reload() {
 		a.byID[b.ID] = b
 	}
 	a.chats, _ = a.st.Chats()
+	a.previews, _ = a.st.Previews()
 	a.countUnread()
 	if a.sel != "" && a.chat(a.sel) == nil {
 		a.sel = ""

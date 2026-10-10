@@ -6,7 +6,7 @@
 | --- | --- |
 | `providers` | `store.Provider`: id, name, `api` (`connect.Anthropic`, `Chat`, `Responses`), base URL, API key, models (JSON list, the first is the default), options (`replay_reasoning`, `encrypted_reasoning`) |
 | `bots` | `store.Bot`: id, name, description (its system prompt), provider id (empty: the default), model (empty: the provider's first), thinking level, look (an icon name, kept in the `emoji` column) |
-| `chats` | `store.Chat`: id, kind (`dm` or `group`), title and description (groups), owner, created, updated (the last message), read mark (`ReadSeq`) |
+| `chats` | `store.Chat`: id, kind (`dm` or `group`), title and description (groups), owner, created, updated (the last message), read mark (`ReadSeq`), when the user pinned it (`Pinned`, 0 when not; `SetPinned`) |
 | `members` | the bots of a chat in turn order |
 | `messages` | `store.Entry`: chat, sequence, author (`store.User` or a bot id), turn id, `Meta` (mentions, the quote replied to, `From` and `Hops` for `message_bot`, the attached `Files`), the `agent.Message` as JSON, created |
 | `routines` | `store.Routine` (`routines.md`) |
@@ -14,6 +14,8 @@
 | `settings` | key and value: the default provider, the desktop's preferences and Always Allow rules, `seeded` |
 
 API keys sit in the providers table in plain text, as the app's config file would hold them, until a keychain is worth it.
+
+`Previews()` gives each chat's last words for a list, from its newest twelve user and assistant messages: the newest with text (collapsed to one line, at most 160 characters) or attached files (their names), past failed and stopped turns, notes for the bots and compaction summaries; a routine's run shows its name.
 
 ## Rules
 

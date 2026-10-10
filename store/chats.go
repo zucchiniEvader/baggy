@@ -34,6 +34,7 @@ type Chat struct {
 	Created     int64    `json:"created"`
 	Updated     int64    `json:"updated"`  // last message
 	ReadSeq     int64    `json:"read_seq"` // the newest message the user has seen
+	Pinned      int64    `json:"pinned"`   // when the user pinned it; 0 when not
 }
 
 func (s *Store) Chat(id string) (Chat, error) {
@@ -73,14 +74,14 @@ func (s *Store) ChatsOf(botID string) ([]Chat, error) {
 }
 
 func (s *Store) queryChats(where string, args ...any) ([]Chat, error) {
-	rows, err := s.db.Query(`SELECT id, kind, title, description, owner, created, updated, read_seq FROM chats `+where, args...)
+	rows, err := s.db.Query(`SELECT id, kind, title, description, owner, created, updated, read_seq, pinned FROM chats `+where, args...)
 	if err != nil {
 		return nil, err
 	}
 	var out []Chat
 	for rows.Next() {
 		var c Chat
-		if err := rows.Scan(&c.ID, &c.Kind, &c.Title, &c.Description, &c.Owner, &c.Created, &c.Updated, &c.ReadSeq); err != nil {
+		if err := rows.Scan(&c.ID, &c.Kind, &c.Title, &c.Description, &c.Owner, &c.Created, &c.Updated, &c.ReadSeq, &c.Pinned); err != nil {
 			rows.Close()
 			return nil, err
 		}

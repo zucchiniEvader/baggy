@@ -116,6 +116,7 @@ const (
 	// titleBarHeight centers the bars' controls on the traffic lights.
 	titleBarHeight = 40
 	rowHeight      = 28
+	chatRowHeight  = 46 // a chat's row: its name over its last words
 	rowRadius      = 6
 	cardRadius     = 10
 	// contentWidth is the widest the conversation reads comfortably.
