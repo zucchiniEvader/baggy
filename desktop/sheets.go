@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
@@ -22,6 +23,9 @@ type botForm struct {
 	providerName, model string
 	thinking            string
 	icon                string // a botIcons name
+	color               string // a botColors name; "" until one is picked
+	avatar              string // its picture (store.Bot.Avatar); "" for the icon
+	stored              string // the picture it had, kept until it saves
 	err                 string
 }
 
@@ -54,7 +58,7 @@ func (a *app) providerName(id string) string {
 }
 
 func (a *app) newBot() {
-	a.botSheet = &botForm{open: true, providerName: L("Default"), thinking: "Default", icon: "bot"}
+	a.botSheet = &botForm{open: true, providerName: L("Default"), thinking: "Default", icon: "bot", color: colorName(store.Bot{ID: store.NewID("bot")})}
 }
 
 func (a *app) editBot(id string) {
@@ -69,7 +73,7 @@ func (a *app) editBot(id string) {
 		}
 	}
 	a.botSheet = &botForm{open: true, id: b.ID, name: b.Name, description: b.Description, providerName: a.providerName(b.Provider), model: b.Model, thinking: th,
-		icon: b.Icon}
+		icon: b.Icon, color: colorName(b), avatar: b.Avatar, stored: b.Avatar}
 }
 
 func (a *app) saveBot(f *botForm) bool {
@@ -78,7 +82,7 @@ func (a *app) saveBot(f *botForm) bool {
 		th = ""
 	}
 	b := store.Bot{ID: f.id, Name: f.name, Description: f.description, Provider: a.providerID(f.providerName), Model: strings.TrimSpace(f.model), Thinking: th,
-		Icon: f.icon}
+		Icon: f.icon, Color: f.color, Avatar: f.avatar}
 	var err error
 	if f.id == "" {
 		b, err = a.st.CreateBot(b)
@@ -96,7 +100,16 @@ func (a *app) saveBot(f *botForm) bool {
 		f.err = err.Error()
 		return false
 	}
+	f.stored = f.avatar
 	return true
+}
+
+// dropPicture forgets a picture chosen in the form and not saved.
+func (a *app) dropPicture(f *botForm) {
+	if f.avatar != "" && f.avatar != f.stored {
+		os.Remove(a.st.AvatarPath(f.avatar))
+	}
+	f.avatar = f.stored
 }
 
 func (a *app) botSheetView(c *ui.Context) {
@@ -109,9 +122,9 @@ func (a *app) botSheetView(c *ui.Context) {
 		}
 		dialogBody(c, 480, 18).Children(func() {
 			dialogTitle(c, title, L("A bot is a name, a description (its system prompt), the model it runs on, and a workspace folder of its own."))
+			a.avatarEditor(c, f)
 			ui.Form(c, func() {
 				ui.Field(c, L("Name"), func() { textField(c, &f.name, L("For example Scout")).AutoFocus() })
-				ui.Field(c, L("Look"), func() { a.iconPicker(c, &f.icon) })
 				ui.Field(c, L("Description"), func() { textArea(c, &f.description, L("What it does and how: its system prompt."), 4, 10) })
 				ui.Field(c, L("Provider"), func() { popup(c, &f.providerName, a.providerNames()) })
 				ui.Field(c, L("Model"), func() { textField(c, &f.model, a.modelHint(f.providerName)) })
@@ -125,9 +138,66 @@ func (a *app) botSheetView(c *ui.Context) {
 			}
 		})
 	})
+	if !f.open {
+		a.dropPicture(f)
+	}
 }
 
-// iconPicker chooses a bot's look among the icons, as a row of tiles.
+// avatarEditor is the bot's avatar as it will look, beside what makes it:
+// its own picture, or an icon on a color.
+func (a *app) avatarEditor(c *ui.Context, f *botForm) {
+	t := c.Theme()
+	l := look{icon: botIcon(f.icon), color: colorOf(f.color)}
+	if f.avatar != "" {
+		l.picture = a.st.AvatarPath(f.avatar)
+	}
+	ui.Row(c).Gap(16).AlignItems(ui.Start).Children(func() {
+		a.avatarOf(c, l, 64).Label(L("Avatar"))
+		ui.Column(c).Grow(1).MinWidth(0).Gap(10).Children(func() {
+			ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
+				if a.pickImage != nil && smallButton(c.Key("pick-picture"), L("Choose Picture…"), secondary).Clicked() {
+					a.pickImage(func(path string) {
+						if err := a.setPicture(f, path); err != nil {
+							f.err = err.Error()
+						} else if f.avatar != f.stored {
+							f.err = ""
+						}
+					})
+				}
+				if f.avatar != "" && smallButton(c.Key("drop-picture"), L("Use Icon"), ghost).Clicked() {
+					if f.avatar != f.stored {
+						os.Remove(a.st.AvatarPath(f.avatar))
+					}
+					f.avatar = ""
+				}
+			})
+			if f.avatar != "" {
+				ui.Text(c, L("The picture shows in place of the icon.")).FontSize(11).TextColor(t.TextMuted)
+				return
+			}
+			a.iconPicker(c, &f.icon)
+			a.colorPicker(c, &f.color)
+		})
+	})
+}
+
+// colorPicker chooses an avatar's color, as a row of dots.
+func (a *app) colorPicker(c *ui.Context, name *string) {
+	ui.Row(c).Gap(6).Wrap().FocusGroup(ui.Horizontal).Children(func() {
+		for _, bc := range botColors {
+			chosen := *name == bc.name
+			dot := ui.ButtonBase(c.Key("color-"+bc.name)).Size(20, 20).Radius(10).Center().Background(bc.color).Label(L(bc.name)).Tooltip(L(bc.name)).Role(ui.RoleRadio).Checked(chosen)
+			if chosen { // a ring of the dialog inside one of its own color
+				dot.Border(2, pal(c).surface).Shadow(0, 0, 0, 1.5, bc.color)
+			}
+			if dot.Clicked() {
+				*name = bc.name
+			}
+		}
+	})
+}
+
+// iconPicker chooses a bot's icon, as a row of tiles.
 func (a *app) iconPicker(c *ui.Context, name *string) {
 	t := c.Theme()
 	ui.Row(c).Gap(4).Wrap().FocusGroup(ui.Horizontal).Children(func() {
@@ -228,7 +298,7 @@ func (a *app) groupSheetView(c *ui.Context) {
 							f.picked[b.ID] = !on
 						}
 						row.Children(func() {
-							iconTile(c, botIcon(b.Icon), 20)
+							a.avatar(c, b.ID, 20)
 							ui.Text(c, b.Name).FontSize(13).Shrink(0)
 							ui.Text(c, firstLine(b.Description)).FontSize(12).TextColor(t.TextMuted).SingleLine().Shrink(1).MinWidth(0)
 							ui.Spacer(c)

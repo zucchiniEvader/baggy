@@ -3,17 +3,11 @@ package main
 import (
 	"fmt"
 
-	"github.com/egoist/mygo/ui"
 	"github.com/spike/gobot/agent"
 	"github.com/spike/gobot/provider/catalog"
 	"github.com/spike/gobot/store"
 	"github.com/spike/gobot/team"
 )
-
-// avatar is a bot's look: its icon in a gray tile, size high.
-func (a *app) avatar(c *ui.Context, botID string, size float32) {
-	iconTile(c, botIcon(a.byID[botID].Icon), size).Label(a.name(botID))
-}
 
 // contextLine is how full the chat's last request was: tokens against the
 // model's window.

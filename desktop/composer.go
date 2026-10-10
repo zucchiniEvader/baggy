@@ -233,10 +233,7 @@ func (a *app) composer(c *ui.Context, ch store.Chat, v *chatView) {
 							v.pick(b)
 						}
 						item.Children(func() {
-							ic := ui.Icon(c, botIcon(b.Icon)).FontSize(12).Shrink(0)
-							if st != rowKeyboard {
-								ic.TextColor(t.TextMuted)
-							}
+							a.avatar(c, b.ID, 18)
 							ui.Text(c, "@"+b.Name).FontSize(13).FontWeight(600).Shrink(0)
 							ui.Text(c, firstLine(b.Description)).FontSize(11).SingleLine().Shrink(1).MinWidth(0).MaxWidth(220)
 						})

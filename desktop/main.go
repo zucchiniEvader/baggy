@@ -156,6 +156,15 @@ func main() {
 				}
 			}()
 		}
+		a.pickImage = func(done func(path string)) {
+			go func() {
+				paths, _ := mygo.Dialog.Open(mygo.OpenDialogOptions{Parent: win, Title: L("Choose Picture"),
+					Filters: []mygo.FileFilter{{Name: L("Images"), Extensions: []string{"png", "jpg", "jpeg", "gif", "webp", "heic"}}}})
+				if len(paths) > 0 {
+					win.Update(func() { done(paths[0]) })
+				}
+			}()
+		}
 		for len(pending) > 0 {
 			win.Update(<-pending)
 		}

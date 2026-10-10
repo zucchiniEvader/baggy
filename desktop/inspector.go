@@ -26,7 +26,7 @@ func (a *app) inspectorPane(c *ui.Context, ch store.Chat) {
 func (a *app) groupDetails(c *ui.Context, ch store.Chat) {
 	t := c.Theme()
 	ui.Row(c).Gap(10).AlignItems(ui.Center).Padding(0, 0, 8).Children(func() {
-		iconTile(c, iconUsers, 32)
+		a.chatAvatar(c, ch, 36, pal(c).appBg)
 		ui.Column(c).Grow(1).MinWidth(0).Children(func() {
 			ui.Text(c, ch.Title).FontSize(15).Bold().SingleLine().MinWidth(0)
 			ui.Text(c, L("%d bots", len(ch.Members))).FontSize(12).TextColor(t.TextMuted)
@@ -113,7 +113,7 @@ func (a *app) memberRow(c *ui.Context, ch store.Chat, id string) {
 	styleRow(row, t, rowPlain)
 	row.ContextMenu(menu)
 	row.Children(func() {
-		ui.Icon(c, botIcon(a.byID[id].Icon)).FontSize(iconSize).TextColor(t.TextMuted).Shrink(0)
+		a.avatar(c, id, 20)
 		ui.Text(c, name).FontSize(13).SingleLine().Grow(1).MinWidth(0)
 		if ch.Owner == id {
 			badge(c, L("Owner"))
@@ -132,7 +132,7 @@ func (a *app) botDetails(c *ui.Context, id string) {
 		return
 	}
 	ui.Row(c).Gap(10).AlignItems(ui.Center).Padding(0, 0, 8).Children(func() {
-		a.avatar(c, b.ID, 32)
+		a.avatar(c, b.ID, 36)
 		ui.Column(c).Grow(1).MinWidth(0).Children(func() {
 			ui.Text(c, b.Name).FontSize(15).Bold().SingleLine().MinWidth(0)
 			model := b.Model

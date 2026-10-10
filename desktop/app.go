@@ -32,8 +32,7 @@ type app struct {
 
 	side         listNav
 	previews     map[string]store.Preview // the chats' last words
-	thumbs       map[string]*ui.Bitmap    // attached pictures by file id; nil while made or unreadable
-	renaming     *rename                  // the chat whose name is being edited
+	bitmaps      map[string]*ui.Bitmap    // pictures by path (avatars, attachments); nil while made or unreadable
 	sidebarShown bool
 	dragWidth    float32
 	resizing     bool
@@ -65,7 +64,8 @@ type app struct {
 	fallback       connect.Config                  // the provider when none is stored
 	locale         string                          // the system's language
 	readImage      func() []byte                   // the clipboard's image as PNG, or nil
-	pickFiles      func(done func(paths []string)) // asks for image files; done runs on the main thread with the ones chosen
+	pickFiles      func(done func(paths []string)) // asks for files to attach; done runs on the main thread with the ones chosen
+	pickImage      func(done func(path string))    // asks for a picture, as pickFiles
 	openFolder     func(path string)
 	revealFile     func(path string) // shows a file in Finder
 	onLanguage     func()            // the language changed: the menu bar is made again

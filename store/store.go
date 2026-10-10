@@ -109,6 +109,8 @@ ALTER TABLE bots ADD COLUMN color TEXT NOT NULL DEFAULT '';
 ALTER TABLE chats ADD COLUMN read_seq INTEGER NOT NULL DEFAULT 0;
 `, `
 ALTER TABLE chats ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0;
+`, `
+ALTER TABLE bots ADD COLUMN avatar TEXT NOT NULL DEFAULT '';
 `}
 
 func (s *Store) migrate() error {
@@ -245,14 +247,16 @@ type Bot struct {
 	Model       string `json:"model"`    // "" is the provider's first model
 	Thinking    string `json:"thinking"` // a provider.ThinkingLevel
 	Icon        string `json:"icon"`     // its look: an icon's name (the desktop's set); "" is the default
+	Color       string `json:"color"`    // its avatar's color, a name of the desktop's set; "" is one picked by its id
+	Avatar      string `json:"avatar"`   // its own picture, a file in avatars/ (SaveAvatar); "" is its icon
 	Created     int64  `json:"created"`
 }
 
-const botCols = `id, name, description, provider, model, thinking, emoji, created` // emoji holds the icon
+const botCols = `id, name, description, provider, model, thinking, emoji, color, avatar, created` // emoji holds the icon
 
 func scanBot(sc interface{ Scan(...any) error }) (Bot, error) {
 	var b Bot
-	err := sc.Scan(&b.ID, &b.Name, &b.Description, &b.Provider, &b.Model, &b.Thinking, &b.Icon, &b.Created)
+	err := sc.Scan(&b.ID, &b.Name, &b.Description, &b.Provider, &b.Model, &b.Thinking, &b.Icon, &b.Color, &b.Avatar, &b.Created)
 	if errors.Is(err, sql.ErrNoRows) {
 		err = ErrNotFound
 	}
@@ -277,8 +281,8 @@ func (s *Store) CreateBot(b Bot) (Bot, error) {
 		return Bot{}, err
 	}
 	defer tx.Rollback()
-	if _, err := tx.Exec(`INSERT INTO bots(`+botCols+`) VALUES(?,?,?,?,?,?,?,?)`,
-		b.ID, b.Name, b.Description, b.Provider, b.Model, b.Thinking, b.Icon, b.Created); err != nil {
+	if _, err := tx.Exec(`INSERT INTO bots(`+botCols+`) VALUES(?,?,?,?,?,?,?,?,?,?)`,
+		b.ID, b.Name, b.Description, b.Provider, b.Model, b.Thinking, b.Icon, b.Color, b.Avatar, b.Created); err != nil {
 		return Bot{}, err
 	}
 	chat := NewID("chat")
@@ -296,10 +300,34 @@ func (s *Store) UpdateBot(b Bot) error {
 	if strings.TrimSpace(b.Name) == "" {
 		return errors.New("a bot needs a name")
 	}
-	res, err := s.db.Exec(`UPDATE bots SET name=?, description=?, provider=?, model=?, thinking=?, emoji=? WHERE id=?`,
-		strings.TrimSpace(b.Name), b.Description, b.Provider, b.Model, b.Thinking, b.Icon, b.ID)
-	return notFound(res, err)
+	old, err := s.Bot(b.ID)
+	if err != nil {
+		return err
+	}
+	res, err := s.db.Exec(`UPDATE bots SET name=?, description=?, provider=?, model=?, thinking=?, emoji=?, color=?, avatar=? WHERE id=?`,
+		strings.TrimSpace(b.Name), b.Description, b.Provider, b.Model, b.Thinking, b.Icon, b.Color, b.Avatar, b.ID)
+	if err := notFound(res, err); err != nil {
+		return err
+	}
+	if old.Avatar != "" && old.Avatar != b.Avatar {
+		os.Remove(s.AvatarPath(old.Avatar))
+	}
+	return nil
 }
+
+// SaveAvatar keeps a picture for a bot's avatar and gives the name a Bot's
+// Avatar takes; a new name each time, so a changed picture is never read
+// from a cache.
+func (s *Store) SaveAvatar(png []byte) (string, error) {
+	name := NewID("avatar") + ".png"
+	if err := os.MkdirAll(filepath.Join(s.dir, "avatars"), 0o755); err != nil {
+		return "", err
+	}
+	return name, os.WriteFile(s.AvatarPath(name), png, 0o644)
+}
+
+// AvatarPath is where an avatar picture is kept.
+func (s *Store) AvatarPath(name string) string { return filepath.Join(s.dir, "avatars", filepath.Base(name)) }
 
 func notFound(res sql.Result, err error) error {
 	if err != nil {
@@ -356,6 +384,7 @@ func (s *Store) DeleteBot(id string) error {
 	if err != nil {
 		return err
 	}
+	old, _ := s.Bot(id) // its avatar goes with it
 	tx, err := s.db.Begin()
 	if err != nil {
 		return err
@@ -376,7 +405,13 @@ func (s *Store) DeleteBot(id string) error {
 	if err := notFound(res, err); err != nil {
 		return err
 	}
-	return tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	if old.Avatar != "" {
+		os.Remove(s.AvatarPath(old.Avatar))
+	}
+	return nil
 }
 
 // ChefDescription is the first bot's description.
@@ -391,7 +426,7 @@ func (s *Store) Seed() (bool, error) {
 	if s.Setting("seeded") != "" {
 		return false, nil // the user deleted every bot; don't bring Chef back
 	}
-	if _, err := s.CreateBot(Bot{Name: "Chef", Description: ChefDescription}); err != nil {
+	if _, err := s.CreateBot(Bot{Name: "Chef", Description: ChefDescription, Color: "orange"}); err != nil {
 		return false, err
 	}
 	return true, s.SetSetting("seeded", "1")

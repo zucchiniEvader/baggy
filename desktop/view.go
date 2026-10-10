@@ -3,7 +3,6 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"os"
 	"strings"
 
 	"github.com/egoist/mygo/ui"
@@ -163,17 +162,18 @@ func (a *app) noChat(c *ui.Context) {
 // try.
 func (a *app) welcome(c *ui.Context, ch store.Chat, v *chatView) {
 	t := c.Theme()
-	svg, title, sub := iconUsers, a.title(ch), L("Write to the group. @Name asks a member first.")
+	p := pal(c)
+	title, sub := a.title(ch), L("Write to the group. @Name asks a member first.")
 	suggestions := []string{L("Introduce yourselves in one line each."), L("Plan a weekend trip together.")}
 	if ch.Kind == store.DM {
 		b := a.byID[ch.Owner]
-		svg, title, sub = botIcon(b.Icon), L("Hi, I'm %s", b.Name), firstLine(b.Description)
+		title, sub = L("Hi, I'm %s", b.Name), firstLine(b.Description)
 		suggestions = []string{L("What can you do?"), L("Look at what is in your workspace."), L("Every weekday at 8, give me a short brief.")}
 	}
 	ui.Scroll(c).Grow(1).MinHeight(0).Children(func() {
 		ui.Column(c).Grow(1).Center().Padding(48, 28).Children(func() {
 			ui.Column(c).MaxWidth(420).FillWidth().Gap(16).AlignItems(ui.Center).Children(func() {
-				iconTile(c, svg, 40)
+				a.chatAvatar(c, ch, 56, p.appBg)
 				ui.Column(c).Gap(4).AlignItems(ui.Center).Children(func() {
 					ui.Text(c, title).FontSize(17).Bold()
 					if sub != "" {
@@ -214,27 +214,14 @@ const shortThought = 160
 // tool rows drawn as one card.
 type item struct {
 	rows  []int // indexes into the view's rows
-	first bool  // an assistant row that starts its author's turn: under its name
+	first bool  // a bot's row that starts its turn: beside its avatar, under its name
 }
 
 func items(rows []row) []item {
 	var out []item
 	for i := 0; i < len(rows); {
-		if rows[i].kind == rowTool {
-			j := i
-			for j < len(rows) && rows[j].kind == rowTool && rows[j].author == rows[i].author {
-				j++
-			}
-			idx := make([]int, 0, j-i)
-			for k := i; k < j; k++ {
-				idx = append(idx, k)
-			}
-			out = append(out, item{rows: idx})
-			i = j
-			continue
-		}
 		first := false
-		if rows[i].kind == rowAssistant {
+		if rows[i].kind == rowAssistant || rows[i].kind == rowTool {
 			first = true
 			for k := i - 1; k >= 0; k-- {
 				if rows[k].kind == rowNotice {
@@ -244,11 +231,27 @@ func items(rows []row) []item {
 				break
 			}
 		}
+		if rows[i].kind == rowTool {
+			j := i
+			for j < len(rows) && rows[j].kind == rowTool && rows[j].author == rows[i].author {
+				j++
+			}
+			idx := make([]int, 0, j-i)
+			for k := i; k < j; k++ {
+				idx = append(idx, k)
+			}
+			out = append(out, item{rows: idx, first: first})
+			i = j
+			continue
+		}
 		out = append(out, item{rows: []int{i}, first: first})
 		i++
 	}
 	return out
 }
+
+// avatarGutter is the width of the column a bot's avatar stands in.
+const avatarGutter = 28
 
 func (a *app) transcript(c *ui.Context, ch store.Chat, v *chatView) {
 	rows := v.rows
@@ -263,11 +266,29 @@ func (a *app) transcript(c *ui.Context, ch store.Chat, v *chatView) {
 	ui.List(c, &v.list, len(its), func(i int) {
 		ui.Column(c).MaxWidth(contentWidth).FillWidth().Margin(0, ui.Auto).Padding(0, 28).Children(func() {
 			it := its[i]
-			if rows[it.rows[0]].kind == rowTool {
-				a.toolGroup(c, ch, v, it.rows)
+			r := rows[it.rows[0]]
+			if r.kind != rowAssistant && r.kind != rowTool {
+				a.drawRow(c, ch, v, r, false)
 				return
 			}
-			a.drawRow(c, ch, v, rows[it.rows[0]], it.first)
+			// A bot's rows: its avatar at the start of its turn, in a column of
+			// its own, the words beside it.
+			ui.Row(c).Gap(10).AlignItems(ui.Start).Children(func() {
+				gutter := ui.Box(c).Width(avatarGutter).Shrink(0)
+				if it.first {
+					gutter.Children(func() { a.avatar(c, r.author, avatarGutter) })
+				}
+				ui.Column(c).Grow(1).MinWidth(0).Gap(8).Children(func() {
+					if it.first {
+						ui.Text(c, a.name(r.author)).FontSize(13).FontWeight(600).SingleLine().MinWidth(0).Margin(5, 0, 0)
+					}
+					if r.kind == rowTool {
+						a.toolGroup(c, ch, v, it.rows)
+					} else {
+						a.drawRow(c, ch, v, r, it.first)
+					}
+				})
+			})
 		})
 	}).Grow(1).MinHeight(0).Padding(12, 0, 28).Gap(16).Children(func() {
 		if a.busy[ch.ID] && v.working != "" && !a.streaming(v) {
@@ -327,12 +348,6 @@ func (a *app) drawRow(c *ui.Context, ch store.Chat, v *chatView, r row, first bo
 		col := ui.Column(c).Gap(8)
 		a.rowMenu(col, r)
 		col.Children(func() {
-			if first {
-				ui.Row(c).Gap(6).AlignItems(ui.Center).TextColor(t.TextMuted).Children(func() {
-					ui.Icon(c, botIcon(a.byID[r.author].Icon)).FontSize(12)
-					ui.Text(c, a.name(r.author)).FontSize(12).FontWeight(600)
-				})
-			}
 			for _, s := range r.searches {
 				a.searchLine(c, s)
 			}
@@ -459,13 +474,6 @@ func (a *app) toolGroup(c *ui.Context, ch store.Chat, v *chatView, idx []int) {
 	t := c.Theme()
 	p := pal(c)
 	ui.Column(c).Radius(cardRadius).Background(p.surface).Border(1, p.border).Padding(4).Gap(1).Clip().Children(func() {
-		if ch.Kind == store.Group {
-			ui.Row(c).Gap(6).Padding(4, 8, 2).AlignItems(ui.Center).TextColor(t.TextMuted).Children(func() {
-				r := v.rows[idx[0]]
-				ui.Icon(c, botIcon(a.byID[r.author].Icon)).FontSize(11)
-				ui.Text(c, a.name(r.author)).FontSize(11).FontWeight(600)
-			})
-		}
 		for _, i := range idx {
 			r := v.rows[i]
 			key := "tool-" + r.call.CallID
@@ -626,25 +634,11 @@ func (a *app) thumb(f store.File) *ui.Bitmap {
 	if !f.Image {
 		return nil
 	}
-	if b, ok := a.thumbs[f.ID]; ok {
-		return b
-	}
-	if a.thumbs == nil {
-		a.thumbs = map[string]*ui.Bitmap{}
-	}
-	a.thumbs[f.ID] = nil
-	path := a.st.FilePath(f)
-	go func() {
-		data, err := os.ReadFile(path)
-		if err != nil {
-			return
-		}
+	return a.bitmap(a.st.FilePath(f), func(data []byte) (*ui.Bitmap, error) {
 		img, err := images.Thumbnail(data, f.Name, 2*thumbSide)
 		if err != nil {
-			return
+			return nil, err
 		}
-		b := ui.NewBitmap(img)
-		a.post(func() { a.thumbs[f.ID] = b })
-	}()
-	return nil
+		return ui.NewBitmap(img), nil
+	})
 }

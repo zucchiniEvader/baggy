@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -326,7 +327,7 @@ func TestRender(t *testing.T) {
 		t.Skip("set GOBOT_RENDER to a folder")
 	}
 	h := newHarness(t, script(func(string, []agent.Message) agent.Message { return say("ok") }))
-	scout, _ := h.st.CreateBot(store.Bot{Name: "Scout", Description: "Finds things."})
+	scout, _ := h.st.CreateBot(store.Bot{Name: "Scout", Description: "Finds things.", Icon: "search", Color: "blue"})
 	chef := h.a.bots[0]
 	g, _ := h.st.CreateGroup("Launch", "Ship the beta", []string{chef.ID, scout.ID})
 	add := func(author string, m agent.Message) { h.st.Append(g.ID, author, "", store.Meta{}, m) }
@@ -820,7 +821,7 @@ func TestContextSettings(t *testing.T) {
 	}
 }
 
-func TestSidebarPreviewPinAndRename(t *testing.T) {
+func TestSidebarPreviewAndPin(t *testing.T) {
 	h := newHarness(t, script(func(string, []agent.Message) agent.Message { return say("Soup tonight.") }))
 	scout, _ := h.st.CreateBot(store.Bot{Name: "Scout", Description: "Finds things."})
 	h.a.reload()
@@ -843,30 +844,56 @@ func TestSidebarPreviewPinAndRename(t *testing.T) {
 		t.Fatalf("not pinned first: %+v", list)
 	}
 
-	// A double-click renames in place; Return saves.
-	r, _ := h.tt.Find("Scout")
-	h.tt.ClickAt(r.X+4, r.Y+4)
-	h.tt.ClickAt(r.X+4, r.Y+4)
-	h.tt.Frame()
-	if h.a.renaming == nil {
-		t.Fatal("no rename field")
+	if err := h.tt.RightClick("Scout"); err != nil {
+		t.Fatal(err)
 	}
-	h.a.renaming.text = "Scouty"
-	h.tt.Frame()
-	h.tt.Key(0, ui.KeyEnter)
-	h.tt.Frame()
-	if b, _ := h.st.Bot(scout.ID); b.Name != "Scouty" || h.a.renaming != nil {
-		t.Fatalf("name %q, renaming %v", b.Name, h.a.renaming)
+	if slices.Contains(h.tt.Menu(), "Rename") || !slices.Contains(h.tt.Menu(), "Unpin") {
+		t.Fatalf("menu %q", h.tt.Menu())
 	}
-	// Escape puts the name back.
-	h.a.startRename(*h.a.chat(h.a.shownChats()[0].ID))
+	h.tt.CloseMenu()
+}
+
+func TestBotAvatarPicture(t *testing.T) {
+	h := newHarness(t, script(func(string, []agent.Message) agent.Message { return say("ok") }))
+	chef := h.a.bots[0]
+	if colorName(chef) == "" || colorName(store.Bot{ID: chef.ID, Color: "teal"}) != "teal" {
+		t.Fatal("colors")
+	}
+	pic := filepath.Join(t.TempDir(), "me.png")
+	var buf bytes.Buffer
+	png.Encode(&buf, image.NewRGBA(image.Rect(0, 0, 900, 600)))
+	os.WriteFile(pic, buf.Bytes(), 0o644)
+	h.a.pickImage = func(done func(string)) { h.a.post(func() { done(pic) }) }
+	h.a.editBot(chef.ID)
 	h.tt.Frame()
-	h.a.renaming.text = "Nope"
+	if err := h.tt.Click("Choose Picture…"); err != nil {
+		t.Fatal(err)
+	}
+	h.pump("the picture", func() bool { return h.a.botSheet.avatar != "" })
+	if err := h.tt.Click("Save"); err != nil {
+		t.Fatal(err)
+	}
 	h.tt.Frame()
-	h.tt.Key(0, ui.KeyEscape)
+	b, _ := h.st.Bot(chef.ID)
+	data, err := os.ReadFile(h.st.AvatarPath(b.Avatar))
+	cfg, _, _ := image.DecodeConfig(bytes.NewReader(data))
+	if err != nil || cfg.Width != 512 || cfg.Height != 512 {
+		t.Fatalf("avatar %q %dx%d %v", b.Avatar, cfg.Width, cfg.Height, err)
+	}
+	h.pump("the bitmap", func() bool { return h.a.picture(h.st.AvatarPath(b.Avatar)) != nil })
+
+	// Use Icon, then Cancel: the stored picture stays.
+	h.a.editBot(chef.ID)
 	h.tt.Frame()
-	if b, _ := h.st.Bot(scout.ID); b.Name != "Scouty" {
-		t.Fatalf("escape saved %q", b.Name)
+	h.tt.Click("Use Icon")
+	h.tt.Frame()
+	h.tt.Click("Cancel")
+	h.tt.Frame()
+	if b2, _ := h.st.Bot(chef.ID); b2.Avatar != b.Avatar {
+		t.Fatalf("cancel changed the avatar to %q", b2.Avatar)
+	}
+	if _, err := os.Stat(h.st.AvatarPath(b.Avatar)); err != nil {
+		t.Fatal("cancel removed the stored picture")
 	}
 }
 
@@ -897,8 +924,7 @@ func TestAttachedPictureShowsAsAThumbnail(t *testing.T) {
 	}
 	h.pump("the reply", func() bool { return h.tt.HasText("nice") && h.idle() })
 	es, _ := h.st.Messages(h.a.sel, 0)
-	id := es[0].Meta.Files[0].ID
-	h.pump("the thumbnail", func() bool { return h.a.thumbs[id] != nil })
+	h.pump("the thumbnail", func() bool { return h.a.thumb(es[0].Meta.Files[0]) != nil })
 	h.tt.Frame()
 	if r, ok := h.tt.Find("wide.png"); !ok || r.W != 240 || r.H != 120 {
 		t.Fatalf("thumbnail at %+v %v", r, ok)

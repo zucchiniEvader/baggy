@@ -161,6 +161,29 @@ func Thumbnail(data []byte, name string, side int) (image.Image, error) {
 	return dst, nil
 }
 
+// Square is data as a square PNG at most side pixels across, upright and
+// cut from the middle of the picture, as an avatar.
+func Square(data []byte, name string, side int) ([]byte, error) {
+	img, err := Thumbnail(data, name, 1<<30) // decoded and upright
+	if err != nil {
+		return nil, err
+	}
+	b := img.Bounds()
+	short := min(b.Dx(), b.Dy())
+	if short <= 0 {
+		return nil, ErrNotImage
+	}
+	crop := image.Rect(0, 0, short, short).Add(b.Min).Add(image.Pt((b.Dx()-short)/2, (b.Dy()-short)/2))
+	n := min(side, short)
+	dst := image.NewNRGBA(image.Rect(0, 0, n, n))
+	draw.CatmullRom.Scale(dst, dst.Bounds(), img, crop, draw.Src, nil)
+	var buf bytes.Buffer
+	if err := png.Encode(&buf, dst); err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
+}
+
 // fromHEIC converts a HEIC to a JPEG with the Mac's sips.
 func fromHEIC(data []byte) ([]byte, error) {
 	if runtime.GOOS != "darwin" {

@@ -226,41 +226,6 @@ func (a *app) previewLine(ch store.Chat) string {
 	return p.Text
 }
 
-// rename is a chat's name being edited in its row.
-type rename struct {
-	chatID  string
-	text    string
-	focus   bool // take the focus in the next frame
-	focused bool // the field had it in the last frame
-}
-
-func (a *app) startRename(ch store.Chat) {
-	a.renaming = &rename{chatID: ch.ID, text: a.title(ch), focus: true}
-}
-
-// finishRename saves the name typed: a DM's bot's or a group's title.
-func (a *app) finishRename(save bool) {
-	r := a.renaming
-	a.renaming = nil
-	a.side.focus = true
-	name := strings.TrimSpace(r.text)
-	ch := a.chat(r.chatID)
-	if !save || ch == nil || name == "" || name == a.title(*ch) {
-		return
-	}
-	if ch.Kind == store.DM {
-		b, err := a.st.Bot(ch.Owner)
-		if err == nil {
-			b.Name = name
-			err = a.st.UpdateBot(b)
-		}
-		a.do(err)
-	} else {
-		a.do(a.st.SetGroupInfo(ch.ID, name, ch.Description))
-	}
-	a.reload()
-}
-
 func (a *app) togglePin(ch store.Chat) {
 	a.do(a.st.SetPinned(ch.ID, ch.Pinned == 0))
 	a.reload()
@@ -273,7 +238,7 @@ func (a *app) chatList(c *ui.Context) {
 	t := c.Theme()
 	list := a.shownChats()
 	box := ui.Column(c.Key("chats")).Gap(1).Focusable().FocusRing(false).Label(L("Chats")).Role(ui.RoleList)
-	if a.side.focus && a.renaming == nil {
+	if a.side.focus {
 		box.Focus()
 		a.side.focus = false
 	}
@@ -287,11 +252,9 @@ func (a *app) chatList(c *ui.Context) {
 			chosen = i
 		}
 	}
-	if a.renaming == nil {
-		a.side.keys(box, chosen, len(list), func(i int) { a.sel = list[i].ID; a.markRead() }) // the keys stay in the list
-		if box.Shortcut(0, ui.KeyEnter) && a.sel != "" {
-			a.view(a.sel).focus = true
-		}
+	a.side.keys(box, chosen, len(list), func(i int) { a.sel = list[i].ID; a.markRead() }) // the keys stay in the list
+	if box.Shortcut(0, ui.KeyEnter) && a.sel != "" {
+		a.view(a.sel).focus = true
 	}
 	now := time.Now()
 	group := ""
@@ -309,20 +272,16 @@ func (a *app) chatList(c *ui.Context) {
 			ch := ch
 			st := a.side.state(ch.ID == a.sel, focused)
 			title := a.title(ch)
-			editing := a.renaming != nil && a.renaming.chatID == ch.ID
 			// A plain row, not a button: a click leaves the focus with the
 			// list, so the arrows go on from there.
 			row := ui.Row(c.Key(ch.ID)).Height(chatRowHeight).Padding(0, 8, 0, 8).Gap(8).Radius(rowRadius).AlignItems(ui.Center).Label(title).Role(ui.RoleListItem)
 			styleRow(row, t, st)
-			if !editing && (row.Pressed() || row.Clicked()) {
+			if row.Pressed() || row.Clicked() {
 				a.side.keyboard = false
 				a.side.focus = true
 				if ch.ID != a.sel {
 					action = func() { a.sel = ch.ID; a.markRead() }
 				}
-			}
-			if !editing && row.DoubleClicked() {
-				action = func() { a.sel = ch.ID; a.startRename(ch) }
 			}
 			if st != rowPlain && a.side.reveal {
 				row.ScrollIntoView()
@@ -335,9 +294,6 @@ func (a *app) chatList(c *ui.Context) {
 				}
 				if m.Item(pin).Chosen() {
 					action = func() { a.togglePin(ch) }
-				}
-				if m.Item(L("Rename")).Chosen() {
-					action = func() { a.startRename(ch) }
 				}
 				m.Separator()
 				if ch.Kind == store.DM {
@@ -358,15 +314,11 @@ func (a *app) chatList(c *ui.Context) {
 			})
 			onAccent := st == rowKeyboard
 			row.Children(func() {
-				a.chatIcon(c, ch, onAccent)
+				a.chatAvatar(c, ch, chatAvatarSize, pal(c).sidebar)
 				ui.Column(c).Grow(1).MinWidth(0).Gap(1).Children(func() {
 					ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
-						if editing {
-							a.renameField(c)
-						} else {
-							ui.Text(c, title).FontSize(13).SingleLine().Grow(1).MinWidth(0)
-						}
-						if p, ok := a.previews[ch.ID]; ok && !editing {
+						ui.Text(c, title).FontSize(13).SingleLine().Grow(1).MinWidth(0)
+						if p, ok := a.previews[ch.ID]; ok {
 							muted(ui.Text(c, stamp(now, time.UnixMilli(p.At))).FontSize(11).SingleLine().Shrink(0), t, onAccent)
 						}
 					})
@@ -395,30 +347,6 @@ func (a *app) chatList(c *ui.Context) {
 	}
 }
 
-// renameField is the name being edited in a row: Return saves it, Escape
-// puts it back, and leaving the field saves it.
-func (a *app) renameField(c *ui.Context) {
-	r := a.renaming
-	in := ui.TextInputBase(c.Key("rename"), &r.text).Label(L("Name")).FontSize(13).Grow(1).MinWidth(0).
-		Background(c.Theme().Background).Radius(4).Padding(1, 4)
-	focusRing(in, c.Theme())
-	if r.focus {
-		in.Focus()
-		r.focus = false
-		return
-	}
-	switch {
-	case in.Shortcut(0, ui.KeyEscape):
-		a.finishRename(false)
-	case in.Submitted():
-		a.finishRename(true)
-	case r.focused && !in.Focused():
-		a.finishRename(true)
-	default:
-		r.focused = in.Focused()
-	}
-}
-
 // muted gives secondary text of a row its color, unless the row shows in
 // the accent.
 func muted(e ui.Element, t *ui.Theme, onAccent bool) ui.Element {
@@ -426,18 +354,6 @@ func muted(e ui.Element, t *ui.Theme, onAccent bool) ui.Element {
 		e.TextColor(t.TextMuted)
 	}
 	return e
-}
-
-// chatIcon is a chat's mark in a row: its bot's icon, or a group's.
-func (a *app) chatIcon(c *ui.Context, ch store.Chat, onAccent bool) {
-	svg := iconUsers
-	if ch.Kind == store.DM {
-		svg = botIcon(a.byID[ch.Owner].Icon)
-	}
-	ic := ui.Icon(c, svg).FontSize(iconSize).Shrink(0)
-	if !onAccent {
-		ic.TextColor(c.Theme().TextMuted)
-	}
 }
 
 // sidebarResizer is the sidebar's inner edge, which the user drags. It draws

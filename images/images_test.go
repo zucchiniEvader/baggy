@@ -79,3 +79,14 @@ func TestThumbnail(t *testing.T) {
 		t.Fatalf("%v %v", img.Bounds(), err)
 	}
 }
+
+func TestSquare(t *testing.T) {
+	out, err := Square(pngOf(900, 300), "a.png", 512)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg, _, _ := image.DecodeConfig(bytes.NewReader(out))
+	if cfg.Width != 300 || cfg.Height != 300 {
+		t.Fatalf("%dx%d", cfg.Width, cfg.Height)
+	}
+}
