@@ -292,4 +292,7 @@ var zh = map[string]string{
 	"Name a model first.":     "请先填一个模型。",
 	"No answer.":              "没有回应。",
 	"Connected: %s answered.": "已连接:%s 有回应。",
+	"Back to %s":              "返回%s",
+	"Back (Esc)":              "返回(Esc)",
+	"The services your bots think with. A bot that names none runs on the default.": "你的 bot 用来思考的服务。没有指定的 bot 会用默认的那个。",
 }

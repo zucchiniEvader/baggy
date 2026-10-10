@@ -336,8 +336,12 @@ func TestRender(t *testing.T) {
 	// Settings: Models with two providers, and General.
 	h.st.SaveProvider(store.Provider{Name: "DeepSeek", API: "anthropic", BaseURL: "https://api.deepseek.com/anthropic", APIKey: "sk-x", Models: []string{"deepseek-flash", "deepseek-v4-pro"}, Options: map[string]bool{"web_search": true}})
 	h.st.SaveProvider(store.Provider{Name: "Ollama", API: "chat", BaseURL: "http://localhost:11434/v1", APIKey: "ollama", Models: []string{"qwen3"}})
-	for _, pane := range []string{paneModels, paneGeneral} {
-		h.a.set.pane = pane
+	for _, pane := range []string{paneModels, paneModels + "-detail", paneGeneral} {
+		h.a.set.pane, h.a.set.provSel, h.a.set.prov = strings.TrimSuffix(pane, "-detail"), "", nil
+		if strings.HasSuffix(pane, "-detail") {
+			ps, _ := h.st.Providers()
+			h.a.set.provSel = ps[0].ID
+		}
 		st := ui.NewTester(h.a.settingsRoot, 800, 580)
 		st.Frame()
 		f, _ := os.Create(filepath.Join(dir, "settings-"+pane+".png"))
@@ -577,7 +581,9 @@ func TestSettingsModelsAndCommands(t *testing.T) {
 	if !st.HasText("Add a provider to give your bots a model.") {
 		t.Fatalf("models: %q", st.Texts())
 	}
-	st.Click("Add Provider")
+	if err := st.Click("Add Provider…"); err != nil {
+		t.Fatal(err)
+	}
 	st.Frame()
 	h.a.set.prov.name, h.a.set.prov.key, h.a.set.prov.models = "DeepSeek", "sk-x", "deepseek-flash, deepseek-v4-pro"
 	st.Frame()
@@ -586,9 +592,21 @@ func TestSettingsModelsAndCommands(t *testing.T) {
 	}
 	st.Frame()
 	ps, _ := h.st.Providers()
-	if len(ps) != 1 || len(ps[0].Models) != 2 || h.st.Setting(team.SettingDefaultProvider) != ps[0].ID || !st.HasText("Saved") || !st.HasText("Default") || !st.HasText("deepseek-flash · Anthropic") {
+	if len(ps) != 1 || len(ps[0].Models) != 2 || h.st.Setting(team.SettingDefaultProvider) != ps[0].ID || !st.HasText("Saved") || !st.HasText("Default") {
 		t.Fatalf("providers %+v texts %q", ps, st.Texts())
 	}
+	// Back to the list, and into the provider again.
+	if err := st.Click("Back to Models"); err != nil {
+		t.Fatal(err)
+	}
+	st.Frame()
+	if !st.HasText("deepseek-flash, deepseek-v4-pro · Anthropic Messages") || st.HasText("Test Connection") {
+		t.Fatalf("list: %q", st.Texts())
+	}
+	if err := st.Click("DeepSeek"); err != nil {
+		t.Fatal(err)
+	}
+	st.Frame()
 	h.a.set.prov.models = "deepseek-flash"
 	st.Frame()
 	if !st.HasText("Revert") || st.HasText("Saved") {
@@ -599,7 +617,7 @@ func TestSettingsModelsAndCommands(t *testing.T) {
 	if h.a.set.prov.models != "deepseek-flash, deepseek-v4-pro" {
 		t.Fatal("not reverted")
 	}
-	if err := st.Click("Delete Provider"); err != nil {
+	if err := st.Click("Delete"); err != nil {
 		t.Fatal(err)
 	}
 	st.Frame()

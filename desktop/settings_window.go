@@ -47,7 +47,8 @@ var settingsPanes = []settingsPane{
 type settingsState struct {
 	pane    string
 	nav     listNav
-	provSel string        // the provider shown in Models: an id, or "new"
+	provSel string        // the provider whose page shows in Models: an id, "new", or "" for the list
+	provHi  string        // the list's row the keys are on
 	prov    *providerForm // its form
 	provNav listNav
 	confirm *confirmation
@@ -88,7 +89,26 @@ func (a *app) settingsRoot(c *ui.Context) {
 					title = sp.label()
 				}
 			}
-			ui.Row(c).Height(titleBarHeight).Shrink(0).Padding(0, 16+c.TitleBar().Right, 0, 20).AlignItems(ui.Center).DragWindow().Children(func() {
+			detail := a.set.pane == paneModels && a.set.provSel != ""
+			ui.Row(c).Height(titleBarHeight).Shrink(0).Padding(0, 16+c.TitleBar().Right, 0, 20).Gap(4).AlignItems(ui.Center).DragWindow().Children(func() {
+				if detail {
+					back := ui.ButtonBase(c.Key("back")).Height(compactHeight).Padding(0, 8, 0, 4).Gap(2).Radius(rowRadius).AlignItems(ui.Center).Label(L("Back to %s", title)).Tooltip(L("Back (Esc)")).Shrink(0)
+					styleButton(back, c.Theme(), ghost, false)
+					back.Children(func() {
+						ui.Icon(c, iconChevronLeft).FontSize(iconSize)
+						ui.Text(c, title).FontSize(13)
+					})
+					if back.Clicked() || c.Shortcut(0, ui.KeyEscape) || c.Shortcut(ui.Cmd, ui.KeyBracketLeft) {
+						a.set.provSel, a.set.prov = "", nil
+					}
+					ui.Text(c, "/").FontSize(13).TextColor(c.Theme().TextMuted)
+					name := L("New Provider")
+					if a.set.prov != nil && strings.TrimSpace(a.set.prov.name) != "" {
+						name = a.set.prov.name
+					}
+					ui.Text(c, name).FontSize(13).FontWeight(600).SingleLine().MinWidth(0).Padding(0, 0, 0, 4)
+					return
+				}
 				ui.Text(c, title).FontSize(13).FontWeight(600).SingleLine().MinWidth(0)
 			})
 			switch a.set.pane {
@@ -314,16 +334,13 @@ func apiShort(id string) string {
 	return "Anthropic"
 }
 
+// modelsPane is the providers as a list, or one of them as a page of its
+// own, as macOS's settings drill into a network or an account.
 func (a *app) modelsPane(c *ui.Context) {
-	t := c.Theme()
-	p := pal(c)
 	ps, _ := a.st.Providers()
 	def := a.st.Setting(team.SettingDefaultProvider)
 	if def == "" && len(ps) > 0 {
 		def = ps[0].ID
-	}
-	if a.set.provSel == "" && len(ps) > 0 {
-		a.set.provSel = ps[0].ID
 	}
 	var chosen *store.Provider
 	for i := range ps {
@@ -331,101 +348,131 @@ func (a *app) modelsPane(c *ui.Context) {
 			chosen = &ps[i]
 		}
 	}
-	// The form follows the choice.
 	switch {
 	case a.set.provSel == "new":
 		if a.set.prov == nil || a.set.prov.id != "" {
 			a.set.prov = &providerForm{api: apiLabels[0], web: true}
 		}
 	case chosen == nil:
-		a.set.prov = nil
+		a.set.provSel, a.set.prov = "", nil
 	case a.set.prov == nil || a.set.prov.id != chosen.ID:
 		a.set.prov = formOf(*chosen)
 	}
-	ui.Row(c).Grow(1).MinHeight(0).AlignItems(ui.Stretch).Padding(4, 28, 24, 28).Gap(16).Children(func() {
-		// The list, with + and − at its foot as macOS's.
-		ui.Column(c).Width(providerListW).Shrink(0).Radius(cardRadius).Background(p.surface).Border(1, p.border).Clip().Children(func() {
-			box := ui.Column(c.Key("providers")).Grow(1).MinHeight(0).Padding(4).Gap(1).Focusable().FocusRing(false).Label(L("Providers")).Role(ui.RoleList)
+	if a.set.prov == nil {
+		a.providerList(c, ps, def)
+		return
+	}
+	f := a.set.prov
+	ui.Scroll(c).Grow(1).MinHeight(0).Children(func() {
+		ui.Column(c).MaxWidth(620).FillWidth().Margin(0, ui.Auto).Padding(4, 28, 16).Children(func() {
+			a.providerDetail(c, f, chosen, def)
+		})
+	})
+	ui.Column(c).Shrink(0).BorderWidth(1, 0, 0, 0).BorderColor(pal(c).border).Children(func() {
+		ui.Column(c).MaxWidth(620).FillWidth().Margin(0, ui.Auto).Padding(0, 28, 12).Children(func() {
+			a.providerActions(c, f, chosen)
+		})
+	})
+}
+
+// providerList is the Models pane's first page: every provider as a row
+// that opens it.
+func (a *app) providerList(c *ui.Context, ps []store.Provider, def string) {
+	t := c.Theme()
+	p := pal(c)
+	ui.Scroll(c).Grow(1).MinHeight(0).Children(func() {
+		ui.Column(c).MaxWidth(620).FillWidth().Margin(0, ui.Auto).Padding(4, 28, 28).Gap(6).Children(func() {
+			ui.Text(c, L("The services your bots think with. A bot that names none runs on the default.")).FontSize(12).LineHeight(1.5).TextColor(t.TextMuted).Padding(0, 0, 8)
+			if len(ps) == 0 {
+				ui.Column(c).Radius(cardRadius).Background(p.surface).Border(1, p.border).Padding(32, 16).Gap(12).AlignItems(ui.Center).Children(func() {
+					iconTile(c, iconSparkle, 40)
+					ui.Text(c, L("Add a provider to give your bots a model.")).FontSize(12).TextColor(t.TextMuted)
+					if smallButton(c.Key("first-provider"), L("Add Provider…"), primary).Clicked() {
+						a.set.provSel = "new"
+					}
+				})
+				return
+			}
+			box := ui.Column(c.Key("providers")).Radius(cardRadius).Background(p.surface).Border(1, p.border).Clip().
+				Focusable().FocusRing(false).Label(L("Providers")).Role(ui.RoleList)
 			focused := box.FocusWithin()
 			if !focused {
 				a.set.provNav.keyboard = false
 			}
 			at := -1
 			for i, pr := range ps {
-				if pr.ID == a.set.provSel {
+				if pr.ID == a.set.provHi {
 					at = i
 				}
 			}
-			a.set.provNav.keys(box, at, len(ps), func(i int) { a.set.provSel = ps[i].ID })
+			a.set.provNav.keys(box, at, len(ps), func(i int) { a.set.provHi = ps[i].ID })
+			if box.Shortcut(0, ui.KeyEnter) && a.set.provHi != "" {
+				a.set.provSel = a.set.provHi
+			}
 			if a.set.provNav.focus {
 				box.Focus()
 				a.set.provNav.focus = false
 			}
+			var action func()
 			box.Children(func() {
-				for _, pr := range ps {
+				for i, pr := range ps {
 					pr := pr
-					st := a.set.provNav.state(pr.ID == a.set.provSel, focused)
-					row := ui.Row(c.Key("prov-"+pr.ID)).Height(40).Padding(0, 8).Gap(8).Radius(rowRadius).AlignItems(ui.Center).Label(pr.Name).Role(ui.RoleListItem)
-					styleRow(row, t, st)
-					if row.Pressed() || row.Clicked() {
-						a.set.provNav.keyboard, a.set.provNav.focus = false, true
-						a.set.provSel = pr.ID
+					st := a.set.provNav.state(pr.ID == a.set.provHi && focused && a.set.provNav.keyboard, focused)
+					row := ui.Row(c.Key("prov-"+pr.ID)).Height(52).Padding(0, 12, 0, 12).Gap(12).AlignItems(ui.Center).Label(pr.Name).Role(ui.RoleListItem)
+					if i > 0 {
+						row.BorderWidth(1, 0, 0, 0).BorderColor(p.border)
 					}
-					row.Children(func() {
-						sub := t.TextMuted
-						ic := ui.Icon(c, iconPlug).FontSize(iconSize).Shrink(0)
-						if st == rowKeyboard {
-							sub = t.AccentText
-						} else {
-							ic.TextColor(t.TextMuted)
+					styleRow(row, t, st)
+					if row.Clicked() {
+						a.set.provHi = pr.ID
+						action = func() { a.set.provSel = pr.ID }
+					}
+					row.ContextMenu(func(m *ui.Menu) {
+						if m.Item(L("Edit…")).Chosen() {
+							action = func() { a.set.provSel = pr.ID }
 						}
-						ui.Column(c).Grow(1).MinWidth(0).Children(func() {
+						if m.Item(L("Make Default")).Disabled(pr.ID == def).Chosen() {
+							action = func() { a.st.SetSetting(team.SettingDefaultProvider, pr.ID) }
+						}
+						m.Separator()
+						if m.Item(L("Delete")).Chosen() {
+							action = func() { a.askDeleteProvider(pr) }
+						}
+					})
+					row.Children(func() {
+						iconTile(c, iconPlug, 30)
+						ui.Column(c).Grow(1).MinWidth(0).Gap(2).Children(func() {
 							ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
-								ui.Text(c, pr.Name).FontSize(13).SingleLine().Shrink(1).MinWidth(0)
+								ui.Text(c, pr.Name).FontSize(13).FontWeight(600).SingleLine().Shrink(1).MinWidth(0)
 								if pr.ID == def {
 									tag(c, L("Default"))
 								}
 							})
-							line := apiShort(pr.API)
+							line := apiLabel(pr.API)
 							if len(pr.Models) > 0 {
-								line = pr.Models[0] + " · " + line
+								line = strings.Join(pr.Models, ", ") + " · " + line
+							}
+							sub := t.TextMuted
+							if st == rowKeyboard {
+								sub = t.AccentText
 							}
 							ui.Text(c, line).FontSize(11).TextColor(sub).SingleLine().MinWidth(0)
 						})
-					})
-				}
-				if a.set.provSel == "new" {
-					row := ui.Row(c.Key("prov-new")).Height(40).Padding(0, 8).Gap(8).Radius(rowRadius).AlignItems(ui.Center)
-					styleRow(row, t, rowChosen)
-					row.Children(func() {
-						ui.Icon(c, iconPlus).FontSize(iconSize).TextColor(t.TextMuted)
-						ui.Text(c, L("New Provider")).FontSize(13).SingleLine().MinWidth(0)
+						ic := ui.Icon(c, iconChevronRight).FontSize(12).Shrink(0)
+						if st != rowKeyboard {
+							ic.TextColor(t.TextMuted)
+						}
 					})
 				}
 			})
-			ui.Row(c).Height(30).Shrink(0).Padding(0, 4).Gap(2).AlignItems(ui.Center).BorderWidth(1, 0, 0, 0).BorderColor(p.border).Children(func() {
-				if iconButton(c.Key("add-provider"), iconPlus, L("Add Provider")).Clicked() {
-					a.set.provSel, a.set.prov = "new", &providerForm{api: apiLabels[0], web: true}
-				}
-				minus := iconButton(c.Key("remove-provider"), iconMinus, L("Delete Provider")).Disabled(chosen == nil)
-				if minus.Clicked() && chosen != nil {
-					a.askDeleteProvider(*chosen)
-				}
-			})
-		})
-		ui.Column(c).Grow(1).MinWidth(0).Children(func() {
-			if a.set.prov == nil {
-				ui.Column(c).Grow(1).Center().Gap(12).Padding(60, 0).Children(func() {
-					iconTile(c, iconSparkle, 40)
-					ui.Text(c, L("Add a provider to give your bots a model.")).FontSize(12).TextColor(t.TextMuted)
-					if smallButton(c.Key("first-provider"), L("Add Provider"), primary).Clicked() {
-						a.set.provSel, a.set.prov = "new", &providerForm{api: apiLabels[0], web: true}
-					}
-				})
-				return
+			if action != nil {
+				action()
 			}
-			ui.Scroll(c).Grow(1).MinHeight(0).Children(func() { a.providerDetail(c, a.set.prov, chosen, def) })
-			a.providerActions(c, a.set.prov, chosen)
+			ui.Row(c).Justify(ui.End).Padding(6, 0, 0).Children(func() {
+				if smallButton(c.Key("add-provider"), L("Add Provider…"), secondary).Clicked() {
+					a.set.provSel = "new"
+				}
+			})
 		})
 	})
 }
@@ -465,7 +512,7 @@ func (f *providerForm) dirty(stored *store.Provider) bool {
 // column on the left, the field taking the rest, a muted line under it.
 func fieldRow(c *ui.Context, title, desc string, field func()) {
 	ui.Row(c).Padding(10, 14).Gap(12).AlignItems(ui.Start).MinHeight(44).Children(func() {
-		ui.Text(c, title).FontSize(13).Width(96).Shrink(0).Margin(6, 0, 0)
+		ui.Text(c, title).FontSize(13).Width(120).Shrink(0).Margin(6, 0, 0)
 		ui.Column(c).Grow(1).MinWidth(0).Gap(4).Children(func() {
 			field()
 			if desc != "" {
@@ -564,6 +611,11 @@ func (a *app) providerActions(c *ui.Context, f *providerForm, stored *store.Prov
 	t := c.Theme()
 	dirty := f.dirty(stored)
 	ui.Row(c).Shrink(0).Gap(8).AlignItems(ui.Center).Padding(12, 0, 0).Children(func() {
+		if f.id != "" && stored != nil {
+			if smallButton(c.Key("p-delete"), L("Delete"), danger).Clicked() {
+				a.askDeleteProvider(*stored)
+			}
+		}
 		label := L("Test Connection")
 		if f.checking {
 			label = L("Testing…")
@@ -587,7 +639,7 @@ func (a *app) providerActions(c *ui.Context, f *providerForm, stored *store.Prov
 				a.set.provSel, a.set.prov = "", nil
 			}
 			if primaryButton(c.Key("p-save"), L("Create"), strings.TrimSpace(f.name) == "").Clicked() && a.saveProvider(f) {
-				a.set.provSel = f.id
+				a.set.provSel, a.set.provHi = f.id, f.id
 				a.reload()
 			}
 			return
