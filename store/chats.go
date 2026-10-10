@@ -411,3 +411,10 @@ func (s *Store) Unread(chatID string) int {
 		chatID, User, System).Scan(&n)
 	return n
 }
+
+// LastSeq is the sequence of a chat's newest message, 0 for none.
+func (s *Store) LastSeq(chatID string) int64 {
+	var n int64
+	s.db.QueryRow(`SELECT COALESCE(MAX(seq), 0) FROM messages WHERE chat_id = ?`, chatID).Scan(&n)
+	return n
+}

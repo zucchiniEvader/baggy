@@ -128,6 +128,8 @@ func main() {
 		a.notify = func(title, subtitle, body, chatID string) {
 			go mygo.NewNotification(mygo.NotificationOptions{ID: "chat-" + chatID + "-" + store.NewID("n"), Title: title, Subtitle: subtitle, Body: body, Group: chatID}).Show()
 		}
+		a.setBadge = mygo.App.SetBadgeCount
+		a.showBadge()
 		mygo.App.OnNotificationClick(func(id string) {
 			win.Update(func() {
 				if rest, ok := strings.CutPrefix(id, "chat-"); ok {

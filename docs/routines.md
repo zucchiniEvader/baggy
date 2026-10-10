@@ -26,6 +26,6 @@ A run is a message from `store.System` in the bot's DM, with the routine in its 
 
 ## The desktop
 
-A bot's inspector has a Routines section: a row per routine with its schedule in words and next run (or Paused, Paused while you were away) and a switch; with none, it says to ask the bot. A row opens a sheet: the schedule and timezone, missed runs, the last run and check, the task and the check's code, and Delete, Edit in Chat (which puts `Edit my routine "Name": ` in the DM's composer), Pause/Resume and Run Now. A run shows in the transcript as "Routine · Name".
+A bot's inspector has a Routines section: a row per routine with its schedule in words and next run (or Paused, Paused while you were away) and a switch; with none, it says to ask the bot. A row opens a sheet: the schedule and timezone, missed runs, the last run and check, the task and the check's code, and Delete, Edit in Chat (which puts `Edit my routine "Name": ` in the DM's composer), Pause/Resume and Run Now. A run shows in the transcript as "Routine · Name". Out of sight, its reply (or failure) posts a system notification titled "Bot · Routine"; a pass posts none; a pause for being away posts one too; and the Dock's badge counts what waits unread.
 
 Checked against DeepSeek: asked in plain words for a weekday 8:30 reminder in Shanghai time, Chef created `30 8 * * 1-5` in `Asia/Shanghai`, and a run sent the one-line reminder.

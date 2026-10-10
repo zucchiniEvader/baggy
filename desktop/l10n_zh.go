@@ -295,4 +295,6 @@ var zh = map[string]string{
 	"Back to %s":              "返回%s",
 	"Back (Esc)":              "返回(Esc)",
 	"The services your bots think with. A bot that names none runs on the default.": "你的 bot 用来思考的服务。没有指定的 bot 会用默认的那个。",
+	"%s · %s": "%s · %s",
+	"gobot":   "gobot",
 }

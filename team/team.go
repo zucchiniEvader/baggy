@@ -38,7 +38,10 @@ const (
 )
 
 type Event struct {
-	Kind   EventKind
+	Kind EventKind
+	// Since, on run_start, is the newest message before the run: what it
+	// adds, the message that started it included, comes after.
+	Since  int64
 	ChatID string
 	BotID  string
 	Turn   string
@@ -158,7 +161,7 @@ func (t *Team) Continue(chatID string) error {
 	ctx, cancel := context.WithCancel(context.Background())
 	r := &run{cancel: cancel, steering: agent.NewQueue(agent.QueueAll), interrupt: agent.NewInterrupt(), pending: map[string]store.Meta{}, authors: map[string]string{}}
 	t.runs[chatID] = r
-	t.emit(Event{Kind: EventRunStart, ChatID: chatID})
+	t.emit(Event{Kind: EventRunStart, ChatID: chatID, Since: t.Store.LastSeq(chatID)})
 	t.active.Add(1)
 	go t.work(ctx, chatID, r, "")
 	return nil
@@ -230,7 +233,7 @@ func (t *Team) deliver(chatID, author string, meta store.Meta, msg agent.Message
 	ctx, cancel := context.WithCancel(context.Background())
 	r = &run{cancel: cancel, steering: agent.NewQueue(agent.QueueAll), interrupt: agent.NewInterrupt(), pending: map[string]store.Meta{}, authors: map[string]string{}, mentions: meta.Mentions, hops: meta.Hops, routine: meta.Routine}
 	t.runs[chatID] = r
-	t.emit(Event{Kind: EventRunStart, ChatID: chatID})
+	t.emit(Event{Kind: EventRunStart, ChatID: chatID, Since: e.Seq - 1})
 	t.active.Add(1)
 	go t.work(ctx, chatID, r, replyAuthor(meta))
 	return nil

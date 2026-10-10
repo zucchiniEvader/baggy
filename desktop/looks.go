@@ -7,6 +7,7 @@ import (
 	"github.com/spike/gobot/agent"
 	"github.com/spike/gobot/provider/catalog"
 	"github.com/spike/gobot/store"
+	"github.com/spike/gobot/team"
 )
 
 // avatar is a bot's look: its icon in a gray tile, size high.
@@ -49,11 +50,13 @@ func (a *app) watching(chatID string) bool { return a.sel == chatID && a.focused
 
 // markRead clears the chat shown, when the user sees it.
 func (a *app) markRead() {
-	if a.sel != "" && a.focused && a.unread[a.sel] > 0 {
-		a.st.MarkRead(a.sel)
+	if a.sel == "" || !a.focused {
+		return
+	}
+	a.st.MarkRead(a.sel)
+	if a.unread[a.sel] > 0 {
 		a.unread[a.sel] = 0
-	} else if a.sel != "" && a.focused {
-		a.st.MarkRead(a.sel)
+		a.showBadge()
 	}
 }
 
@@ -62,10 +65,25 @@ func (a *app) countUnread() {
 	for _, ch := range a.chats {
 		a.unread[ch.ID] = a.st.Unread(ch.ID)
 	}
+	a.showBadge()
+}
+
+// showBadge puts the unread total on the app's icon (the Dock's), zero
+// clearing it.
+func (a *app) showBadge() {
+	total := 0
+	for _, n := range a.unread {
+		total += n
+	}
+	if a.setBadge != nil && total != a.badge {
+		a.setBadge(total)
+	}
+	a.badge = total
 }
 
 // notifyEnd tells the user about a run that ended out of sight: the bot's
-// last reply, or its failure.
+// last reply in it, or its failure; a run that added nothing unread (a
+// PASS) tells nothing, whatever older replies wait unread.
 func (a *app) notifyEnd(chatID string) {
 	if a.notify == nil || a.watching(chatID) || a.unread[chatID] == 0 {
 		return
@@ -74,7 +92,7 @@ func (a *app) notifyEnd(chatID string) {
 	if ch == nil {
 		return
 	}
-	es, _ := a.st.Messages(chatID, ch.ReadSeq)
+	es, _ := a.st.Messages(chatID, max(ch.ReadSeq, a.runFrom[chatID]))
 	for i := len(es) - 1; i >= 0; i-- {
 		m := es[i].Msg
 		if m.Role != agent.RoleAssistant || m.StopReason == agent.StopToolUse || es[i].Author == store.User {
@@ -88,7 +106,31 @@ func (a *app) notifyEnd(chatID string) {
 		if ch.Kind == store.Group {
 			subtitle = ch.Title
 		}
-		a.notify(a.name(es[i].Author), subtitle, oneLine(body, 280), chatID)
+		title := a.name(es[i].Author)
+		// A routine's run: its name beside the bot's, from the run's marker.
+		for j := i - 1; j >= 0; j-- {
+			if es[j].Author == store.User {
+				break
+			}
+			if es[j].Meta.Routine != "" {
+				title = L("%s · %s", title, es[j].Meta.RoutineName)
+				break
+			}
+		}
+		a.notify(title, subtitle, oneLine(body, 280), chatID)
 		return
 	}
+}
+
+// notifyNotice tells the user about a notice out of sight, as a routine
+// paused while they were away.
+func (a *app) notifyNotice(e store.Entry) {
+	if a.notify == nil || a.watching(e.ChatID) || e.Msg.Kind != team.KindNotice {
+		return
+	}
+	title := L("gobot")
+	if ch := a.chat(e.ChatID); ch != nil {
+		title = a.title(*ch)
+	}
+	a.notify(title, "", oneLine(messageText(e.Msg), 280), e.ChatID)
 }

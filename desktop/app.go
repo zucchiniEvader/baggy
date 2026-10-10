@@ -25,6 +25,9 @@ type app struct {
 	sel   string // the chat shown
 	views map[string]*chatView
 	busy  map[string]bool
+	// runFrom is, by chat, the newest message as its run started: what the
+	// run adds, which its notification tells, comes after it.
+	runFrom map[string]int64
 
 	side         listNav
 	sidebarShown bool
@@ -38,6 +41,8 @@ type app struct {
 	focused      bool           // the window has the focus
 	unread       map[string]int // by chat
 	notify       func(title, subtitle, body, chatID string)
+	setBadge     func(n int) // the unread total on the app's icon
+	badge        int
 	sideWidth    float32
 
 	botSheet   *botForm
@@ -95,7 +100,7 @@ type confirmation struct {
 }
 
 func newApp(st *store.Store, tm *team.Team, post func(func())) *app {
-	a := &app{st: st, team: tm, post: post, views: map[string]*chatView{}, busy: map[string]bool{}, unread: map[string]int{}, focused: true}
+	a := &app{st: st, team: tm, post: post, views: map[string]*chatView{}, busy: map[string]bool{}, runFrom: map[string]int64{}, unread: map[string]int{}, focused: true}
 	a.approvals = newApprovals(a)
 	a.prefs = loadPrefs(st)
 	a.sideWidth, a.inspector, a.sidebarShown = a.prefs.sideWidth, a.prefs.inspector, true
@@ -180,6 +185,7 @@ func (a *app) apply(e team.Event) {
 	switch e.Kind {
 	case team.EventRunStart:
 		a.busy[e.ChatID] = true
+		a.runFrom[e.ChatID] = e.Since // what this run adds comes after
 		return
 	case team.EventRunEnd:
 		delete(a.busy, e.ChatID)
@@ -201,6 +207,7 @@ func (a *app) apply(e team.Event) {
 		if e.ChatID == a.sel {
 			a.markRead()
 		}
+		a.notifyNotice(*e.Entry)
 	}
 	if v == nil {
 		return // not opened: it loads from the store when it is

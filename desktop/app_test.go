@@ -709,3 +709,47 @@ func TestBlankPressInDialogKeepsFieldsUnfocused(t *testing.T) {
 		t.Fatalf("name %q description %q", f.name, f.description)
 	}
 }
+
+func TestRoutineNotificationsAndBadge(t *testing.T) {
+	reply := "Two meetings today."
+	h := newHarness(t, script(func(string, []agent.Message) agent.Message { return say(reply) }))
+	var notes []string
+	h.a.notify = func(title, subtitle, body, chatID string) { notes = append(notes, title+": "+body) }
+	badge := -1
+	h.a.setBadge = func(n int) { badge = n }
+	chef := h.a.bots[0]
+	scout, _ := h.st.CreateBot(store.Bot{Name: "Scout"})
+	h.a.reload()
+	dmScout, _ := h.st.DMOf(scout.ID)
+	h.a.selectChat(dmScout.ID) // looking elsewhere
+	r, _ := h.st.SaveRoutine(store.Routine{BotID: chef.ID, Name: "Brief", Prompt: "Brief me", Schedule: "every 1h", Enabled: true})
+
+	h.a.team.RunRoutine(r)
+	h.pump("the run", func() bool { return h.idle() && len(notes) == 1 })
+	if notes[0] != "Chef · Brief: Two meetings today." || badge != 1 {
+		t.Fatalf("notes %q badge %d", notes, badge)
+	}
+
+	reply = "PASS" // nothing to report: no notification, nothing unread
+	h.a.team.RunRoutine(r)
+	h.pump("the quiet run", func() bool { return h.idle() })
+	if len(notes) != 1 || badge != 1 {
+		t.Fatalf("a pass notified: %q badge %d", notes, badge)
+	}
+
+	dmChef, _ := h.st.DMOf(chef.ID)
+	h.a.selectChat(dmChef.ID)
+	if badge != 0 {
+		t.Fatalf("badge %d after reading", badge)
+	}
+
+	// Away a week since the user last wrote: the due routine pauses, and says so.
+	h.st.Append(dmScout.ID, store.User, "", store.Meta{}, agent.Message{Role: agent.RoleUser, Parts: []agent.Part{{Kind: agent.PartText, Text: "hi"}}})
+	h.a.selectChat(dmScout.ID)
+	h.a.team.Now = func() time.Time { return time.Now().Add(8 * 24 * time.Hour) }
+	h.a.team.TickRoutines()
+	h.pump("the pause notice", func() bool { return len(h.posts) == 0 && len(notes) == 2 })
+	if !strings.HasPrefix(notes[1], `Chef: Paused the routine "Brief"`) {
+		t.Fatalf("notes %q", notes)
+	}
+}

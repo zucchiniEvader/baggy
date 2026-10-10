@@ -20,7 +20,7 @@ A chat at work has one run. A message delivered to an idle chat is stored and st
 
 | Event | Means |
 | --- | --- |
-| `run_start`, `run_end` | the chat started or stopped working |
+| `run_start`, `run_end` | the chat started or stopped working; `Since` on `run_start` is the newest message before the run |
 | `turn` | `BotID` begins a turn (`Turn` is its id) |
 | `agent` | a streamed `agent.Event` of that turn |
 | `entry` | `Entry` was stored |
