@@ -28,7 +28,24 @@ func TestMain(m *testing.M) {
 func answer(method string, params json.RawMessage) (any, *rpcError) {
 	switch method {
 	case "initialize":
-		return map[string]any{"protocolVersion": ProtocolVersion, "serverInfo": map[string]string{"name": "fake"}, "instructions": "Use echo."}, nil
+		return map[string]any{"protocolVersion": ProtocolVersion, "serverInfo": map[string]string{"name": "fake"}, "instructions": "Use echo.",
+			"capabilities": map[string]any{"tools": map[string]any{}, "resources": map[string]any{}}}, nil
+	case "resources/list":
+		var p struct{ Cursor string }
+		json.Unmarshal(params, &p)
+		if p.Cursor == "" {
+			return map[string]any{"resources": []map[string]any{{"uri": "file:///notes.md", "name": "notes", "mimeType": "text/markdown"}, {"uri": "ui://widget", "name": "an app"}}, "nextCursor": "2"}, nil
+		}
+		return map[string]any{"resources": []map[string]any{{"uri": "file:///logo.png", "name": "logo", "mimeType": "image/png"}}}, nil
+	case "resources/templates/list":
+		return map[string]any{"resourceTemplates": []map[string]any{{"uriTemplate": "file:///{path}", "name": "files"}}}, nil
+	case "resources/read":
+		var p struct{ URI string }
+		json.Unmarshal(params, &p)
+		if p.URI == "file:///logo.png" {
+			return map[string]any{"contents": []map[string]any{{"uri": p.URI, "mimeType": "image/png", "blob": "iVBORw0KGgo="}}}, nil
+		}
+		return map[string]any{"contents": []map[string]any{{"uri": p.URI, "mimeType": "text/markdown", "text": "# Notes"}}}, nil
 	case "tools/list":
 		var p struct{ Cursor string }
 		json.Unmarshal(params, &p)
@@ -102,6 +119,22 @@ func check(t *testing.T, s Server) {
 	}
 	if r, _ := c.Call(ctx, "fail", nil); !r.IsError {
 		t.Fatal("error result lost")
+	}
+	if !c.HasResources {
+		t.Fatal("resources not offered")
+	}
+	rs, next, err := c.Resources(ctx, "")
+	if err != nil || len(rs) != 1 || rs[0].URI != "file:///notes.md" || next != "2" {
+		t.Fatalf("resources %+v %q %v", rs, next, err)
+	}
+	if rs, next, _ := c.Resources(ctx, next); len(rs) != 1 || next != "" {
+		t.Fatalf("page 2 %+v %q", rs, next)
+	}
+	if ts, _, err := c.ResourceTemplates(ctx, ""); err != nil || len(ts) != 1 || ts[0].URITemplate != "file:///{path}" {
+		t.Fatalf("templates %+v %v", ts, err)
+	}
+	if cs, err := c.ReadResource(ctx, "file:///notes.md"); err != nil || len(cs) != 1 || cs[0].Text != "# Notes" {
+		t.Fatalf("read %+v %v", cs, err)
 	}
 }
 

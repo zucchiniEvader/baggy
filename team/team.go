@@ -424,6 +424,7 @@ func (t *Team) turn(ctx context.Context, chat store.Chat, botID string, r *run, 
 	var plugins []mcp.Status
 	if t.Codemode || t.Plugins != nil {
 		plugins = t.plugins(ctx)
+		tools = append(tools, t.resourceTools(plugins)...)
 		tools = append(tools, t.codemodeTool(b, chat, tools, hooks, plugins))
 	}
 	system := SystemPrompt(b, chat, bots, ws)

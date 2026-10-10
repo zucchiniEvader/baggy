@@ -97,6 +97,7 @@ type Client struct {
 	t            transport
 	Name         string // the server's own, from initialize
 	Instructions string
+	HasResources bool // it offers resources (its capabilities say so)
 }
 
 // Connect starts or reaches a server and initializes it.
@@ -125,13 +126,17 @@ func Connect(ctx context.Context, s Server) (*Client, error) {
 	var init struct {
 		ServerInfo   struct{ Name string } `json:"serverInfo"`
 		Instructions string                `json:"instructions"`
+		Capabilities struct {
+			Resources json.RawMessage `json:"resources"`
+		} `json:"capabilities"`
 	}
 	json.Unmarshal(raw, &init)
 	if err := t.notify(ctx, "notifications/initialized", nil); err != nil {
 		t.close()
 		return nil, err
 	}
-	return &Client{t: t, Name: init.ServerInfo.Name, Instructions: init.Instructions}, nil
+	res := init.Capabilities.Resources
+	return &Client{t: t, Name: init.ServerInfo.Name, Instructions: init.Instructions, HasResources: len(res) > 0 && string(res) != "null"}, nil
 }
 
 // Tools lists the server's tools, every page.

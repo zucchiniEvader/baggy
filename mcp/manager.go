@@ -85,6 +85,8 @@ type Status struct {
 	State  string // "off", "connecting", "ready", "failed"
 	Err    string
 	Tools  []Tool
+	// Resources: the server offers resources (read_mcp_resource).
+	Resources bool
 }
 
 type conn struct {
@@ -227,10 +229,10 @@ func (m *Manager) Statuses(ctx context.Context) []Status {
 			st := Status{Server: c.server, ID: id, State: "ready"}
 			if c.server.Disabled {
 				st.State = "off"
-			} else if _, tools, err := c.ready(ctx); err != nil {
+			} else if cl, tools, err := c.ready(ctx); err != nil {
 				st.State, st.Err = "failed", err.Error()
 			} else {
-				st.Tools = tools
+				st.Tools, st.Resources = tools, cl.HasResources
 			}
 			out[i] = st
 		}()
@@ -258,7 +260,7 @@ func (m *Manager) Known() []Status {
 		case c.server.Disabled:
 			st.State = "off"
 		case c.client != nil:
-			st.State = "ready"
+			st.State, st.Resources = "ready", c.client.HasResources
 		case c.err != nil:
 			st.State, st.Err = "failed", c.err.Error()
 		}

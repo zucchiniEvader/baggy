@@ -19,10 +19,12 @@ const CheckTimeout = 5 * time.Minute
 
 // scriptable are the bot's own tools a script may call.
 var scriptable = map[string]bool{"read_file": true, "write_file": true, "edit_file": true, "find": true, "grep": true, "ls": true,
-	"shell": true, "memory_update": true, "memory_log": true, "recall": true}
+	"shell": true, "memory_update": true, "memory_log": true, "recall": true,
+	"list_mcp_resources": true, "list_mcp_resource_templates": true, "read_mcp_resource": true}
 
 // readOnly are the bot's tools a routine's check may call.
-var readOnly = map[string]bool{"read_file": true, "find": true, "grep": true, "ls": true, "recall": true}
+var readOnly = map[string]bool{"read_file": true, "find": true, "grep": true, "ls": true, "recall": true,
+	"list_mcp_resources": true, "list_mcp_resource_templates": true, "read_mcp_resource": true}
 
 // scriptHost is what a script reaches: some of the bot's tools, through the
 // turn's hooks, and the plugins' tools.
@@ -144,6 +146,9 @@ func PluginsPrompt(ps []mcp.Status) string {
 		if d := strings.TrimSpace(p.Server.Description); d != "" {
 			s.WriteString(d + "\n")
 		}
+		if p.Resources {
+			s.WriteString("It offers resources: list them with list_mcp_resources (server " + p.ID + ") and read one with read_mcp_resource.\n")
+		}
 		for _, tl := range p.Tools {
 			line := "- " + p.ID + "__" + tl.Name
 			if d := firstLine(tl.Description); d != "" {
@@ -177,7 +182,11 @@ func (t *Team) RunCheck(ctx context.Context, r store.Routine) (string, error) {
 			}
 		}
 	}
-	host := &scriptHost{t: t, own: own, plugins: t.plugins(ctx), readOnly: true}
+	plugins := t.plugins(ctx)
+	for _, tl := range t.resourceTools(plugins) {
+		own[tl.Name()] = tl
+	}
+	host := &scriptHost{t: t, own: own, plugins: plugins, readOnly: true}
 	res := codemode.Run(ctx, r.Check, host, codemode.Options{Timeout: CheckTimeout, MaxOutputTokens: 1000, Store: scriptStore{t.Store, dm.ID, b.ID}})
 	if res.Err != nil {
 		return "", res.Err
