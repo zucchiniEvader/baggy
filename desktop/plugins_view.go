@@ -12,15 +12,9 @@ import (
 	"github.com/spike/gobot/mcp"
 )
 
-// mcpTemplate starts an mcp.json for the user to fill in.
+// mcpTemplate starts an mcp.json with no servers; Settings adds them.
 const mcpTemplate = `{
-  "mcpServers": {
-    "filesystem": {
-      "command": "npx",
-      "args": ["-y", "@modelcontextprotocol/server-filesystem", "~/Documents"],
-      "disabled": true
-    }
-  }
+  "mcpServers": {}
 }
 `
 
