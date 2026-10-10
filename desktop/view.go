@@ -298,19 +298,42 @@ func (a *app) drawRow(c *ui.Context, ch store.Chat, v *chatView, r row, first bo
 			if r.quote != nil {
 				quoteView(c, a.name(r.quote.Author), r.quote.Text)
 			}
-			bubble := ui.Column(c).Padding(8, 12).Radius(cardRadius).Background(p.userBubble).Gap(4)
-			a.rowMenu(bubble, r)
-			bubble.Children(func() {
-				if r.text != "" {
-					ui.Text(c, r.text).FontSize(13).LineHeight(1.55).Selectable()
-				}
-				if r.images > 0 {
-					ui.Row(c).Gap(6).AlignItems(ui.Center).TextColor(t.TextMuted).Children(func() {
-						ui.Icon(c, iconPaperclip).FontSize(12)
-						ui.Text(c, L("%d image(s) attached", r.images)).FontSize(12)
-					})
-				}
-			})
+			if r.text != "" || r.images > 0 {
+				bubble := ui.Column(c).Padding(8, 12).Radius(cardRadius).Background(p.userBubble).Gap(4)
+				a.rowMenu(bubble, r)
+				bubble.Children(func() {
+					if r.text != "" {
+						ui.Text(c, r.text).FontSize(13).LineHeight(1.55).Selectable()
+					}
+					if r.images > 0 {
+						ui.Row(c).Gap(6).AlignItems(ui.Center).TextColor(t.TextMuted).Children(func() {
+							ui.Icon(c, iconPaperclip).FontSize(12)
+							ui.Text(c, L("%d image(s) attached", r.images)).FontSize(12)
+						})
+					}
+				})
+			}
+			if len(r.files) > 0 {
+				ui.Row(c).Wrap().Gap(6).Justify(ui.End).Children(func() {
+					for _, f := range r.files {
+						chip := fileChip(c.Key(f.ID), f.Name, f.Size, nil).Cursor(ui.CursorPointer)
+						if f.Note != "" {
+							chip.Tooltip(f.Note)
+						}
+						if chip.Clicked() && a.openFolder != nil {
+							a.openFolder(a.st.FilePath(f))
+						}
+						chip.ContextMenu(func(m *ui.Menu) {
+							if m.Item(L("Open")).Chosen() && a.openFolder != nil {
+								a.openFolder(a.st.FilePath(f))
+							}
+							if m.Item(L("Show in Finder")).Chosen() && a.revealFile != nil {
+								a.revealFile(a.st.FilePath(f))
+							}
+						})
+					}
+				})
+			}
 		})
 	case rowAssistant:
 		col := ui.Column(c).Gap(8)

@@ -1,19 +1,16 @@
 package main
 
 import (
-	"net/http"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"unicode"
 
 	"github.com/egoist/mygo/ui"
-	"github.com/spike/gobot/agent"
 	"github.com/spike/gobot/store"
+	"github.com/spike/gobot/team"
 )
-
-// maxImage is the largest image the composer attaches.
-const maxImage = 5 << 20
 
 // atQuery is the @word the draft ends with, and where it starts; ok is false
 // when the draft does not end in one.
@@ -59,34 +56,81 @@ func (v *chatView) pick(b store.Bot) {
 	v.focus = true
 }
 
-// attach adds an image file to the next message.
+// attach adds a file to the next message.
 func (v *chatView) attach(path string) error {
+	name := filepath.Base(path)
+	info, err := os.Stat(path)
+	switch {
+	case err != nil:
+		return err
+	case info.IsDir():
+		return errf("%s is a folder: attach its files", name)
+	case info.Size() > team.MaxFile:
+		return errf("%s is larger than %d MB", name, team.MaxFile>>20)
+	}
 	b, err := os.ReadFile(path)
 	if err != nil {
 		return err
 	}
-	return v.attachBytes(b, filepath.Base(path))
+	return v.attachBytes(b, name)
 }
 
 func (v *chatView) attachBytes(b []byte, name string) error {
-	if len(b) > maxImage {
-		return errf("%s is larger than 5 MB", name)
+	if len(b) > team.MaxFile {
+		return errf("%s is larger than %d MB", name, team.MaxFile>>20)
 	}
-	mt := http.DetectContentType(b)
-	switch mt {
-	case "image/png", "image/jpeg", "image/gif", "image/webp":
-	default:
-		return errf("%s is not an image (PNG, JPEG, GIF or WebP)", name)
-	}
-	v.images = append(v.images, agent.Part{Kind: agent.PartImage, MediaType: mt, Data: b})
+	v.files = append(v.files, team.Attachment{Name: name, Data: b})
 	return nil
+}
+
+// fileChip is an attached file: its icon, name and size, and remove when
+// it is still a draft's.
+func fileChip(c *ui.Context, name string, size int64, remove *bool) ui.Element {
+	t := c.Theme()
+	chip := ui.Row(c).Height(26).Padding(0, 4, 0, 8).Gap(6).Radius(rowRadius).Background(pal(c).pill).AlignItems(ui.Center).Label(name)
+	chip.Children(func() {
+		ic := iconFile
+		if isPicture(name) {
+			ic = iconImage
+		}
+		ui.Icon(c, ic).FontSize(12).TextColor(t.TextMuted).Shrink(0)
+		ui.Text(c, name).FontSize(12).SingleLine().Shrink(1).MinWidth(0).MaxWidth(220)
+		ui.Text(c, sizeText(size)).FontSize(11).TextColor(t.TextMuted).SingleLine().Shrink(0)
+		if remove != nil {
+			if iconButton(c.Key("x"), iconClose, L("Remove")).Size(20, 20).Clicked() {
+				*remove = true
+			}
+		} else {
+			ui.Box(c).Width(4)
+		}
+	})
+	return chip
+}
+
+func isPicture(name string) bool {
+	switch strings.ToLower(filepath.Ext(name)) {
+	case ".png", ".jpg", ".jpeg", ".gif", ".webp", ".heic", ".heif":
+		return true
+	}
+	return false
+}
+
+// sizeText is a file's size as Finder says it.
+func sizeText(n int64) string {
+	switch {
+	case n < 1000:
+		return L("%d bytes", n)
+	case n < 1000*1000:
+		return fmt.Sprintf("%.0f KB", float64(n)/1000)
+	}
+	return fmt.Sprintf("%.1f MB", float64(n)/(1000*1000))
 }
 
 func (a *app) composer(c *ui.Context, ch store.Chat, v *chatView) {
 	t := c.Theme()
 	p := pal(c)
 	busy := a.busy[ch.ID]
-	empty := strings.TrimSpace(v.draft) == "" && len(v.images) == 0
+	empty := strings.TrimSpace(v.draft) == "" && len(v.files) == 0
 	ui.Column(c).Shrink(0).MaxWidth(contentWidth).FillWidth().Margin(0, ui.Auto).Padding(0, 28, 16).Gap(8).Children(func() {
 		card := ui.Column(c).Radius(12).Background(p.surface).Border(1, p.border).Padding(10, 8, 8, 12).Gap(6)
 		for _, path := range card.DroppedFiles() {
@@ -107,14 +151,20 @@ func (a *app) composer(c *ui.Context, ch store.Chat, v *chatView) {
 					}
 				})
 			}
-			if n := len(v.images); n > 0 {
-				ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
-					ui.Icon(c, iconPaperclip).FontSize(12).TextColor(t.TextMuted)
-					ui.Text(c, L("%d image(s) attached", n)).FontSize(12).TextColor(t.TextMuted).Grow(1)
-					if iconButton(c.Key("unattach"), iconClose, L("Remove")).Clicked() {
-						v.images = nil
+			if len(v.files) > 0 {
+				drop := -1
+				ui.Row(c).Wrap().Gap(6).Children(func() {
+					for i, f := range v.files {
+						removed := false
+						fileChip(c.Key(fmt.Sprint("file", i)), f.Name, int64(len(f.Data)), &removed)
+						if removed {
+							drop = i
+						}
 					}
 				})
+				if drop >= 0 {
+					v.files = append(v.files[:drop:drop], v.files[drop+1:]...)
+				}
 			}
 			placeholder := L("Message %s", a.title(ch))
 			if busy && ch.Kind == store.DM {
@@ -162,7 +212,7 @@ func (a *app) composer(c *ui.Context, ch store.Chat, v *chatView) {
 					return true
 				case ev.Key == ui.KeyV && ev.Mods == ui.Cmd && a.readImage != nil:
 					if img := a.readImage(); len(img) > 0 {
-						if err := v.attachBytes(img, L("The pasted image")); err != nil {
+						if err := v.attachBytes(img, pastedName(v.files)); err != nil {
 							v.notice(err.Error())
 						}
 						return true // an image on the clipboard: no text to paste
@@ -198,9 +248,9 @@ func (a *app) composer(c *ui.Context, ch store.Chat, v *chatView) {
 				v.focus = false
 			}
 			ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
-				if a.pickImage != nil {
-					if iconButton(c.Key("attach"), iconPaperclip, L("Attach an image")).Clicked() {
-						a.pickImage(func(paths []string) {
+				if a.pickFiles != nil {
+					if iconButton(c.Key("attach"), iconPaperclip, L("Attach files")).Clicked() {
+						a.pickFiles(func(paths []string) {
 							for _, path := range paths {
 								if err := v.attach(path); err != nil {
 									v.notice(err.Error())
@@ -238,6 +288,20 @@ func (a *app) composer(c *ui.Context, ch store.Chat, v *chatView) {
 			})
 		})
 	})
+}
+
+// pastedName names a pasted image, apart from those already attached.
+func pastedName(fs []team.Attachment) string {
+	n := 0
+	for _, f := range fs {
+		if strings.HasPrefix(f.Name, "pasted-image") {
+			n++
+		}
+	}
+	if n == 0 {
+		return "pasted-image.png"
+	}
+	return fmt.Sprintf("pasted-image-%d.png", n+1)
 }
 
 // atIndex is the @ menu's highlighted choice.

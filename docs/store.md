@@ -1,6 +1,6 @@
 # Store
 
-`store.Open(dir)` keeps gobot's state in `dir/gobot.db`, one SQLite file through `modernc.org/sqlite` (pure Go, no cgo, so Windows builds cross-compile), with foreign keys, WAL, and one connection. Migrations are a list run up to `PRAGMA user_version`. Bot workspaces are folders beside it: `Store.Workspace(id)` is `dir/workspaces/<bot id>`, keyed by id so a rename never moves it.
+`store.Open(dir)` keeps gobot's state in `dir/gobot.db`, one SQLite file through `modernc.org/sqlite` (pure Go, no cgo, so Windows builds cross-compile), with foreign keys, WAL, and one connection. Migrations are a list run up to `PRAGMA user_version`. Bot workspaces are folders beside it: `Store.Workspace(id)` is `dir/workspaces/<bot id>`, keyed by id so a rename never moves it. Attached files are kept at `dir/attachments/<file id>/<name>` (`SaveFile`, `FilePath`) and copied to the same path in a bot's workspace by `Place`.
 
 | Table | Holds |
 | --- | --- |
@@ -8,7 +8,7 @@
 | `bots` | `store.Bot`: id, name, description (its system prompt), provider id (empty: the default), model (empty: the provider's first), thinking level, look (an icon name, kept in the `emoji` column) |
 | `chats` | `store.Chat`: id, kind (`dm` or `group`), title and description (groups), owner, created, updated (the last message), read mark (`ReadSeq`) |
 | `members` | the bots of a chat in turn order |
-| `messages` | `store.Entry`: chat, sequence, author (`store.User` or a bot id), turn id, `Meta` (mentions, the quote replied to, `From` and `Hops` for `message_bot`), the `agent.Message` as JSON, created |
+| `messages` | `store.Entry`: chat, sequence, author (`store.User` or a bot id), turn id, `Meta` (mentions, the quote replied to, `From` and `Hops` for `message_bot`, the attached `Files`), the `agent.Message` as JSON, created |
 | `routines` | `store.Routine` (`routines.md`) |
 | `script_store` | codemode's `store`/`load` values by chat, bot and key |
 | `settings` | key and value: the default provider, the desktop's preferences and Always Allow rules, `seeded` |

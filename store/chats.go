@@ -288,6 +288,8 @@ type Meta struct {
 	RoutineName string `json:"routine_name,omitempty"`
 	// Found is what the routine's check returned, read as data.
 	Found string `json:"found,omitempty"`
+	// Files are the files the user attached (Store.SaveFile).
+	Files []File `json:"files,omitempty"`
 }
 
 // Quote is the message a reply answers, kept with the reply.

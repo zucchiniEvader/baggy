@@ -7,11 +7,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/spike/gobot/agent"
+	"github.com/spike/gobot/images"
 	"github.com/spike/gobot/mcp"
 	"github.com/spike/gobot/provider/connect"
 	"github.com/spike/gobot/store"
@@ -110,9 +112,10 @@ type run struct {
 	interrupt *agent.Interrupt
 	pending   map[string]store.Meta // DM: queued messages by id, with who sent them
 	authors   map[string]string
-	restart   bool     // group: a new user message arrived
-	routine   string   // DM: the routine whose run started this turn
-	mentions  []string // group: its mentions
+	plain     map[string]agent.Message // DM: queued messages with files, as stored
+	restart   bool                     // group: a new user message arrived
+	routine   string                   // DM: the routine whose run started this turn
+	mentions  []string                 // group: its mentions
 	hops      int
 }
 
@@ -159,7 +162,7 @@ func (t *Team) Continue(chatID string) error {
 		return nil
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	r := &run{cancel: cancel, steering: agent.NewQueue(agent.QueueAll), interrupt: agent.NewInterrupt(), pending: map[string]store.Meta{}, authors: map[string]string{}}
+	r := &run{cancel: cancel, steering: agent.NewQueue(agent.QueueAll), interrupt: agent.NewInterrupt(), pending: map[string]store.Meta{}, authors: map[string]string{}, plain: map[string]agent.Message{}}
 	t.runs[chatID] = r
 	t.emit(Event{Kind: EventRunStart, ChatID: chatID, Since: t.Store.LastSeq(chatID)})
 	t.active.Add(1)
@@ -198,6 +201,70 @@ func (t *Team) SendMessage(chatID, text string, images []agent.Part, mentions []
 	return t.deliver(chatID, store.User, store.Meta{Mentions: mentions, ReplyTo: replyTo}, msg)
 }
 
+// MaxFile is the largest file a message attaches.
+const MaxFile = 50 << 20
+
+// Attachment is a file the user attaches to a message.
+type Attachment struct {
+	Name string
+	Data []byte
+}
+
+// SendFiles is Send with files. Each is kept (Store.SaveFile) and copied
+// into the workspace of the bots that read the message; one that is a
+// picture also goes as an image part a model takes (images.Fit). The bots
+// read a line per file naming its path (Project).
+func (t *Team) SendFiles(chatID, text string, files []Attachment, mentions []string, replyTo *store.Quote) error {
+	if strings.TrimSpace(text) == "" && len(files) == 0 {
+		return errors.New("empty message")
+	}
+	chat, err := t.Store.Chat(chatID)
+	if err != nil {
+		return err
+	}
+	msg := agent.Message{ID: store.NewID("msg"), Role: agent.RoleUser}
+	if strings.TrimSpace(text) != "" {
+		msg.Parts = append(msg.Parts, agent.Part{Kind: agent.PartText, Text: text})
+	}
+	meta := store.Meta{Mentions: mentions, ReplyTo: replyTo}
+	for _, a := range files {
+		if len(a.Data) > MaxFile {
+			return fmt.Errorf("%s is larger than %d MB", a.Name, MaxFile>>20)
+		}
+		mt := http.DetectContentType(a.Data)
+		var part *agent.Part
+		note := ""
+		if images.Is(a.Data, a.Name) {
+			if data, imt, n, err := images.Fit(a.Data, a.Name); err != nil {
+				note = "not shown as an image: " + err.Error()
+			} else {
+				part, note = &agent.Part{Kind: agent.PartImage, MediaType: imt, Data: data}, n
+			}
+		}
+		f, err := t.Store.SaveFile(a.Name, a.Data, strings.TrimSuffix(mt, "; charset=utf-8"))
+		if err != nil {
+			return err
+		}
+		f.Image, f.Note = part != nil, note
+		if part != nil {
+			msg.Parts = append(msg.Parts, *part)
+		}
+		meta.Files = append(meta.Files, f)
+		for _, id := range readers(chat) {
+			t.Store.Place(id, f) // again before each turn, if this fails
+		}
+	}
+	return t.deliver(chatID, store.User, meta, msg)
+}
+
+// readers are the bots that read a chat.
+func readers(chat store.Chat) []string {
+	if chat.Kind == store.DM {
+		return []string{chat.Owner}
+	}
+	return chat.Members
+}
+
 // deliver hands a message to a chat and starts it working.
 func (t *Team) deliver(chatID, author string, meta store.Meta, msg agent.Message) error {
 	chat, err := t.Store.Chat(chatID)
@@ -213,7 +280,10 @@ func (t *Team) deliver(chatID, author string, meta store.Meta, msg agent.Message
 	if r != nil && chat.Kind == store.DM {
 		r.pending[msg.ID] = meta
 		r.authors[msg.ID] = author
-		r.steering.Push(msg)
+		if len(meta.Files) > 0 {
+			r.plain[msg.ID] = msg // kept without the file lines Project adds
+		}
+		r.steering.Push(withFiles(msg, meta.Files))
 		return nil
 	}
 	e, err := t.Store.Append(chatID, author, "", meta, msg)
@@ -231,7 +301,7 @@ func (t *Team) deliver(chatID, author string, meta store.Meta, msg agent.Message
 		return nil
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	r = &run{cancel: cancel, steering: agent.NewQueue(agent.QueueAll), interrupt: agent.NewInterrupt(), pending: map[string]store.Meta{}, authors: map[string]string{}, mentions: meta.Mentions, hops: meta.Hops, routine: meta.Routine}
+	r = &run{cancel: cancel, steering: agent.NewQueue(agent.QueueAll), interrupt: agent.NewInterrupt(), pending: map[string]store.Meta{}, authors: map[string]string{}, plain: map[string]agent.Message{}, mentions: meta.Mentions, hops: meta.Hops, routine: meta.Routine}
 	t.runs[chatID] = r
 	t.emit(Event{Kind: EventRunStart, ChatID: chatID, Since: e.Seq - 1})
 	t.active.Add(1)
@@ -311,6 +381,11 @@ func (t *Team) turn(ctx context.Context, chat store.Chat, botID string, r *run, 
 	if err != nil {
 		return fail(err)
 	}
+	for _, e := range entries {
+		for _, f := range e.Meta.Files {
+			t.Store.Place(b.ID, f)
+		}
+	}
 	msgs := Project(entries, b.ID, bots)
 	var notes []string
 	if t.Memory {
@@ -387,6 +462,10 @@ func (t *Team) turn(ctx context.Context, chat store.Chat, botID string, r *run, 
 			if e.Message.Role == agent.RoleUser {
 				t.mu.Lock()
 				meta, author = r.pending[e.Message.ID], r.authors[e.Message.ID]
+				if m, ok := r.plain[e.Message.ID]; ok {
+					e.Message = &m
+					delete(r.plain, m.ID)
+				}
 				delete(r.pending, e.Message.ID)
 				delete(r.authors, e.Message.ID)
 				if author == "" {

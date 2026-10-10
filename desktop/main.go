@@ -125,6 +125,7 @@ func main() {
 		a.redrawMain = func() { win.Update(func() {}) }
 		a.post = win.Update
 		a.openFolder = func(p string) { go mygo.Shell.OpenPath(p) }
+		a.revealFile = func(p string) { go mygo.Shell.ShowItemInFolder(p) }
 		a.mcpPath = filepath.Join(dataDir(), "mcp.json")
 		win.OnFocus(func() { win.Update(func() { a.focused = true; a.markRead() }) })
 		win.OnBlur(func() { win.Update(func() { a.focused = false }) })
@@ -147,10 +148,9 @@ func main() {
 		})
 		// The file dialog waits for the user, so it is asked from a goroutine:
 		// asked from a frame, it would wait on the very thread that draws.
-		a.pickImage = func(done func(paths []string)) {
+		a.pickFiles = func(done func(paths []string)) {
 			go func() {
-				paths, _ := mygo.Dialog.Open(mygo.OpenDialogOptions{Parent: win, Title: L("Attach Images"), Multiple: true,
-					Filters: []mygo.FileFilter{{Name: L("Images"), Extensions: []string{"png", "jpg", "jpeg", "gif", "webp"}}}})
+				paths, _ := mygo.Dialog.Open(mygo.OpenDialogOptions{Parent: win, Title: L("Attach Files"), Multiple: true})
 				if len(paths) > 0 {
 					win.Update(func() { done(paths) })
 				}

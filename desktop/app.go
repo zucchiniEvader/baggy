@@ -62,14 +62,15 @@ type app struct {
 	fallback       connect.Config                  // the provider when none is stored
 	locale         string                          // the system's language
 	readImage      func() []byte                   // the clipboard's image as PNG, or nil
-	pickImage      func(done func(paths []string)) // asks for image files; done runs on the main thread with the ones chosen
+	pickFiles      func(done func(paths []string)) // asks for image files; done runs on the main thread with the ones chosen
 	openFolder     func(path string)
-	onLanguage     func()       // the language changed: the menu bar is made again
-	showSettings   func()       // opens or brings up the Settings window
-	redrawMain     func()       // draws the main window again
-	redrawSettings func()       // draws the Settings window again
-	mcpPath        string       // the user's mcp.json
-	servers        []mcp.Status // as the last check left them
+	revealFile     func(path string) // shows a file in Finder
+	onLanguage     func()            // the language changed: the menu bar is made again
+	showSettings   func()            // opens or brings up the Settings window
+	redrawMain     func()            // draws the main window again
+	redrawSettings func()            // draws the Settings window again
+	mcpPath        string            // the user's mcp.json
+	servers        []mcp.Status      // as the last check left them
 	checking       bool
 }
 
@@ -85,8 +86,8 @@ type chatView struct {
 	reply    *store.Quote
 	atOpen   bool
 	atSel    int
-	atDraft  string       // the draft the @ menu last saw
-	images   []agent.Part // attached, sent with the next message
+	atDraft  string            // the draft the @ menu last saw
+	files    []team.Attachment // attached, sent with the next message
 	focus    bool
 	open     map[string]bool // disclosures opened: thinking, tool calls
 	working  string          // the bot whose turn runs
@@ -309,7 +310,7 @@ func (a *app) sendDraft(interrupt bool) {
 		return
 	}
 	text := strings.TrimSpace(v.draft)
-	if text == "" && len(v.images) == 0 {
+	if text == "" && len(v.files) == 0 {
 		return
 	}
 	var mentions []string
@@ -319,11 +320,11 @@ func (a *app) sendDraft(interrupt bool) {
 		}
 	}
 	mentions = append(mentions, a.typedMentions(text, mentions)...)
-	if err := a.team.SendMessage(a.sel, text, v.images, mentions, v.reply); err != nil {
+	if err := a.team.SendFiles(a.sel, text, v.files, mentions, v.reply); err != nil {
 		v.notice(err.Error())
 		return
 	}
-	v.draft, v.mentions, v.reply, v.images, v.atOpen = "", nil, nil, nil, false
+	v.draft, v.mentions, v.reply, v.files, v.atOpen = "", nil, nil, nil, false
 	v.focus = true
 	if interrupt {
 		a.approvals.denyAll(a.sel)

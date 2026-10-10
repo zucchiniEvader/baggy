@@ -34,8 +34,9 @@ type row struct {
 	quote    *store.Quote
 	call     agent.Part
 	result   *tool.Result
-	pending  bool // a tool call waiting for approval
-	images   int  // images attached to a user message
+	pending  bool         // a tool call waiting for approval
+	images   int          // images in a user message with no files listed (older ones)
+	files    []store.File // files attached to a user message
 	searches []search
 }
 
@@ -134,9 +135,9 @@ func entryRows(e store.Entry) []row {
 		}
 		return []row{{kind: rowNotice, seq: e.Seq, text: strings.Trim(text, "[]")}}
 	case m.Role == agent.RoleUser:
-		r := row{kind: rowUser, author: e.Author, from: e.Meta.From, seq: e.Seq, text: messageText(m), quote: e.Meta.ReplyTo}
+		r := row{kind: rowUser, author: e.Author, from: e.Meta.From, seq: e.Seq, text: messageText(m), quote: e.Meta.ReplyTo, files: e.Meta.Files}
 		for _, p := range m.Parts {
-			if p.Kind == agent.PartImage {
+			if p.Kind == agent.PartImage && len(r.files) == 0 {
 				r.images++
 			}
 		}

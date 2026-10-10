@@ -33,6 +33,7 @@ provider/   Provider interface, Request, stream Events; one adapter per wire pro
 tool/       Tool interface and Result, argument validation, shell, file, edit, find, grep
 store/      SQLite state: providers, bots, chats, members, messages, settings (docs/store.md)
 team/       runs DMs and group rooms, projection, prompts, team tools, compaction (docs/team.md)
+images/     pictures a model takes: upright, at most 2000×2000, HEIC on a Mac
 memory/     a bot's MEMORY.md, notes and diary, scrubbing, search (docs/memory.md)
 schedule/   routine schedules: intervals, cron in a timezone, words (docs/routines.md)
 mcp/        MCP client (stdio, Streamable HTTP) and the mcp.json manager (docs/plugins.md)

@@ -293,14 +293,27 @@ func TestMarkdownBlocks(t *testing.T) {
 	}
 }
 
-func TestAttachRejectsNonImages(t *testing.T) {
-	v := &chatView{}
-	if err := v.attachBytes([]byte("hello"), "x.txt"); err == nil {
-		t.Fatal("text accepted")
+func TestAttachedFilesGoWithTheMessage(t *testing.T) {
+	h := newHarness(t, script(func(string, []agent.Message) agent.Message { return say("read it") }))
+	v := h.a.view(h.a.sel)
+	if err := v.attachBytes([]byte("a,b\n1,2\n"), "data.csv"); err != nil {
+		t.Fatal(err)
 	}
-	var pngHeader = []byte{0x89, 'P', 'N', 'G', '\r', '\n', 0x1a, '\n', 0, 0, 0, 0}
-	if err := v.attachBytes(pngHeader, "x.png"); err != nil || v.images[0].MediaType != "image/png" {
-		t.Fatalf("png: %v %+v", err, v.images)
+	h.tt.Frame()
+	if !h.tt.HasText("data.csv") || !h.tt.HasText("8 bytes") {
+		t.Fatalf("no chip: %q", h.tt.Texts())
+	}
+	h.send("sum it")
+	h.pump("the reply", func() bool { return h.tt.HasText("read it") && h.idle() })
+	es, _ := h.st.Messages(h.a.sel, 0)
+	if fs := es[0].Meta.Files; len(fs) != 1 || fs[0].Name != "data.csv" || len(v.files) != 0 {
+		t.Fatalf("files %+v, draft %d", fs, len(v.files))
+	}
+	if !h.tt.HasText("data.csv") { // the sent message's chip
+		t.Fatalf("no sent chip: %q", h.tt.Texts())
+	}
+	if pastedName(nil) != "pasted-image.png" || pastedName([]team.Attachment{{Name: "pasted-image.png"}}) != "pasted-image-2.png" {
+		t.Fatal("pasted names")
 	}
 }
 
@@ -761,19 +774,19 @@ func TestAttachDoesNotBlockTheFrame(t *testing.T) {
 	chosen := make(chan struct{})
 	// As main.go does: the dialog waits for the user off the main thread,
 	// and its answer comes back through post.
-	h.a.pickImage = func(done func([]string)) {
+	h.a.pickFiles = func(done func([]string)) {
 		go func() {
 			<-chosen // the user picks a while later
 			h.a.post(func() { done([]string{img}) })
 		}()
 	}
 	h.tt.Frame()
-	if err := h.tt.Click("Attach an image"); err != nil {
+	if err := h.tt.Click("Attach files"); err != nil {
 		t.Fatal(err)
 	}
 	h.tt.Frame() // the frame goes on while the dialog shows
 	close(chosen)
-	h.pump("the image", func() bool { return h.tt.HasText("1 image(s) attached") })
+	h.pump("the file", func() bool { return h.tt.HasText("a.png") })
 }
 
 func TestContextSettings(t *testing.T) {

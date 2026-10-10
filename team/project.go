@@ -147,7 +147,59 @@ func userView(m agent.Message, meta store.Meta, botID string, byID map[string]st
 		}
 		m.Parts[i].Text = text
 	}
+	return withFiles(m, meta.Files)
+}
+
+// withFiles is a user message with a line per attached file before its
+// images.
+func withFiles(m agent.Message, fs []store.File) agent.Message {
+	if len(fs) == 0 {
+		return m
+	}
+	m.Parts = append([]agent.Part(nil), m.Parts...)
+	lines := fileLines(fs)
+	if len(m.Parts) > 0 && m.Parts[0].Kind == agent.PartText {
+		m.Parts[0].Text += "\n\n" + lines
+	} else {
+		m.Parts = append([]agent.Part{{Kind: agent.PartText, Text: lines}}, m.Parts...)
+	}
 	return m
+}
+
+// fileLines name a message's attached files by their paths in the
+// workspace.
+func fileLines(fs []store.File) string {
+	var b strings.Builder
+	for i, f := range fs {
+		if i > 0 {
+			b.WriteByte('\n')
+		}
+		fmt.Fprintf(&b, "[Attached file: %s (%s", f.Rel(), size(f.Size))
+		if f.Type != "" {
+			b.WriteString(", " + f.Type)
+		}
+		b.WriteString(")")
+		switch {
+		case f.Image && f.Note != "":
+			b.WriteString("; attached below as an image, " + f.Note)
+		case f.Image:
+			b.WriteString("; attached below as an image")
+		case f.Note != "":
+			b.WriteString("; " + f.Note)
+		}
+		b.WriteString("]")
+	}
+	return b.String()
+}
+
+func size(n int64) string {
+	switch {
+	case n < 1024:
+		return fmt.Sprintf("%d bytes", n)
+	case n < 1<<20:
+		return fmt.Sprintf("%.1f KB", float64(n)/1024)
+	}
+	return fmt.Sprintf("%.1f MB", float64(n)/(1<<20))
 }
 
 // QuoteOf is the quote a reply to e keeps: its words on one line, at most 280
