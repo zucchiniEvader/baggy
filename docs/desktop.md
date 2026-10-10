@@ -13,7 +13,7 @@ State is a `store` in `GOBOT_DATA` (default: the user config folder's `gobot`), 
 
 ## Icon and builds
 
-`mygo.json` names the app gobot (`io.github.spike.gobot`); its icon is `resources/icon.png`, the art of `resources/icon-source.png` (a square with no transparency) in an 824 rounded square centered on a transparent 1024 canvas, the shape macOS expects of an app icon, so the Dock shows it as it is rather than inside a gray frame. `go tool mygo build` writes `build/darwin-arm64/gobot.app` (its `AppIcon.icns` made from the icon) and `gobot 0.1.0.dmg`; the binary embeds the icon too, the Dock's on macOS for a bare build and the About pane's.
+`mygo.json` names the app gobot (`io.github.spike.gobot`); its icon is `resources/icon.png`, the art of `resources/icon-source.png` (a square with no transparency) in an 824 rounded square centered on a transparent 1024 canvas, the shape macOS expects of an app icon, so the Dock shows it as it is rather than inside a gray frame. `go tool mygo build` writes `build/darwin-arm64/gobot.app` (its `AppIcon.icns` made from the icon) and `gobot 0.1.0.dmg`; the binary embeds the icon too, the Dock's on macOS for a bare build and the About pane's. The menu bar's icon (`assets/tray.png`) is the same bag as a 32 px template silhouette, which macOS tints for a light or dark bar, its eyes, mouth and folds cut out and grown so they read at 16 points. `cd desktop/tools/mkicons && go run .` makes both from `resources/icon-source.png` (its own module, so the app takes no image dependency).
 
 ## State and threads
 
