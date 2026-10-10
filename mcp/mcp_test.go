@@ -208,6 +208,10 @@ func TestManager(t *testing.T) {
 	if tl, ok := m.Lookup("fake_tools__echo"); !ok || !tl.Annotations.ReadOnlyHint {
 		t.Fatal("lookup")
 	}
+	m.Close() // Reconnect: the file is read again
+	if st := m.Known(); len(st) != 3 {
+		t.Fatalf("after Close: %+v", st)
+	}
 	os.WriteFile(path, []byte("{bad"), 0o644)
 	os.Chtimes(path, time.Now().Add(time.Second), time.Now().Add(time.Second))
 	if m.FileError() == nil {

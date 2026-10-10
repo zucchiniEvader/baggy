@@ -54,6 +54,10 @@ type settingsState struct {
 	provHi  string        // the list's row the keys are on
 	prov    *providerForm // its form
 	provNav listNav
+	srvSel  string      // the server whose page shows in MCP Servers: its name, "new", or "" for the list
+	srvHi   string      // the list's row the keys are on
+	srv     *serverForm // its form
+	srvNav  listNav
 	confirm *confirmation
 }
 
@@ -92,7 +96,7 @@ func (a *app) settingsRoot(c *ui.Context) {
 					title = sp.label()
 				}
 			}
-			detail := a.set.pane == paneModels && a.set.provSel != ""
+			detail := a.set.pane == paneModels && a.set.provSel != "" || a.set.pane == paneServers && a.set.srvSel != ""
 			ui.Row(c).Height(titleBarHeight).Shrink(0).Padding(0, 16+c.TitleBar().Right, 0, 20).Gap(4).AlignItems(ui.Center).DragWindow().Children(func() {
 				if detail {
 					back := ui.ButtonBase(c.Key("back")).Height(compactHeight).Padding(0, 8, 0, 4).Gap(2).Radius(rowRadius).AlignItems(ui.Center).Label(L("Back to %s", title)).Tooltip(L("Back (Esc)")).Shrink(0)
@@ -103,10 +107,16 @@ func (a *app) settingsRoot(c *ui.Context) {
 					})
 					if back.Clicked() || c.Shortcut(0, ui.KeyEscape) || c.Shortcut(ui.Cmd, ui.KeyBracketLeft) {
 						a.set.provSel, a.set.prov = "", nil
+						a.set.srvSel, a.set.srv = "", nil
 					}
 					ui.Text(c, "/").FontSize(13).TextColor(c.Theme().TextMuted)
 					name := L("New Provider")
-					if a.set.prov != nil && strings.TrimSpace(a.set.prov.name) != "" {
+					switch {
+					case a.set.pane == paneServers && a.set.srv != nil && strings.TrimSpace(a.set.srv.name) != "":
+						name = a.set.srv.name
+					case a.set.pane == paneServers:
+						name = L("New Server")
+					case a.set.prov != nil && strings.TrimSpace(a.set.prov.name) != "":
 						name = a.set.prov.name
 					}
 					ui.Text(c, name).FontSize(13).FontWeight(600).SingleLine().MinWidth(0).Padding(0, 0, 0, 4)
@@ -117,6 +127,8 @@ func (a *app) settingsRoot(c *ui.Context) {
 			switch a.set.pane {
 			case paneModels:
 				a.modelsPane(c)
+			case paneServers:
+				a.pluginsView(c)
 			default:
 				ui.Scroll(c).Grow(1).MinHeight(0).Children(func() {
 					ui.Column(c).MaxWidth(620).FillWidth().Padding(4, 28, 28).Gap(6).Children(func() {
@@ -125,8 +137,6 @@ func (a *app) settingsRoot(c *ui.Context) {
 							a.generalPane(c)
 						case paneCommands:
 							a.commandsPane(c)
-						case paneServers:
-							a.pluginsView(c)
 						case paneAbout:
 							a.aboutPane(c)
 						}

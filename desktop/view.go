@@ -251,8 +251,6 @@ func items(rows []row) []item {
 	return out
 }
 
-
-
 func (a *app) transcript(c *ui.Context, ch store.Chat, v *chatView) {
 	rows := v.rows
 	its := items(rows)

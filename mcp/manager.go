@@ -157,11 +157,12 @@ func (m *Manager) closeAll() {
 	m.conns, m.order = map[string]*conn{}, nil
 }
 
-// Close stops every server.
+// Close stops every server; the next use reads the file again.
 func (m *Manager) Close() {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.closeAll()
+	m.mod = time.Time{}
 }
 
 // FileError is why mcp.json does not read, or nil.

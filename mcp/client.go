@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -221,7 +222,7 @@ func (t *tail) String() string {
 
 func newStdio(s Server) (*stdio, error) {
 	cmd := exec.Command(s.Command, s.Args...)
-	cmd.Dir = s.Cwd
+	cmd.Dir = workDir(s.Cwd)
 	cmd.Env = os.Environ()
 	if Env != nil {
 		cmd.Env = Env()
@@ -250,6 +251,19 @@ func newStdio(s Server) (*stdio, error) {
 // Env, when set, gives the environment server commands start with (the
 // login shell's, so npx and uvx are found).
 var Env func() []string
+
+// workDir is where a command starts: its cwd with ~ read as the home
+// folder, the home folder when it names none.
+func workDir(cwd string) string {
+	home, _ := os.UserHomeDir()
+	switch {
+	case cwd == "", cwd == "~":
+		return home
+	case strings.HasPrefix(cwd, "~/"):
+		return filepath.Join(home, cwd[2:])
+	}
+	return cwd
+}
 
 func (s *stdio) read(out io.Reader) {
 	sc := bufio.NewScanner(out)

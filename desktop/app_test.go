@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"github.com/spike/gobot/mcp"
 	"image"
 	"image/png"
 	"io"
@@ -1038,5 +1039,99 @@ func TestClock(t *testing.T) {
 		if got := clock(now, c.t); got != c.want {
 			t.Errorf("clock(%v) = %q, want %q", c.t, got, c.want)
 		}
+	}
+}
+
+func TestMCPServerEditor(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var m struct {
+			ID     json.RawMessage
+			Method string
+		}
+		json.NewDecoder(r.Body).Decode(&m)
+		if len(m.ID) == 0 {
+			w.WriteHeader(202)
+			return
+		}
+		res := map[string]any{"tools": []map[string]any{{"name": "search", "description": "Searches the docs", "inputSchema": map[string]any{"type": "object"}}}}
+		if m.Method == "initialize" {
+			res = map[string]any{"protocolVersion": mcp.ProtocolVersion, "serverInfo": map[string]string{"name": "docs"}, "capabilities": map[string]any{"resources": map[string]any{}}}
+		}
+		w.Header().Set("content-type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{"jsonrpc": "2.0", "id": m.ID, "result": res})
+	}))
+	defer srv.Close()
+	h := newHarness(t, script(func(string, []agent.Message) agent.Message { return say("ok") }))
+	path := filepath.Join(t.TempDir(), "mcp.json")
+	os.WriteFile(path, []byte(`{"mcpServers": {"Old": {"command": "nope-not-a-command", "alwaysAllow": ["x"]}}}`), 0o644)
+	h.a.team.Plugins, h.a.mcpPath = mcp.NewManager(path), path
+	defer h.a.team.Plugins.Close()
+	h.a.openSettings(paneServers)
+	st := ui.NewTester(h.a.settingsRoot, 800, 900)
+	h.pump("the check", func() bool { return !h.a.checking })
+	st.Frame()
+	if !st.HasText("Old") {
+		t.Fatalf("list %q", st.Texts())
+	}
+
+	// A new remote server.
+	if err := st.Click("Add Server…"); err != nil {
+		t.Fatal(err)
+	}
+	st.Frame()
+	f := h.a.set.srv
+	f.name, f.kind, f.url, f.headers = "Docs", serverKinds[1], srv.URL, "Authorization: Bearer x"
+	st.Frame()
+	if err := st.Click("Test Connection"); err != nil {
+		t.Fatal(err)
+	}
+	h.pump("the test", func() bool { return !f.testing })
+	if !f.testOK || f.test != "Connected: 1 tools and resources." {
+		t.Fatalf("test %q", f.test)
+	}
+	st.Click("Create")
+	st.Frame()
+	h.pump("the servers", func() bool {
+		for _, s := range h.a.servers {
+			if s.Server.Name == "Docs" && s.State == "ready" {
+				return true
+			}
+		}
+		return false
+	})
+	st.Frame()
+	if h.a.set.srvSel != "Docs" || !st.HasText("Saved") || !st.HasText("search") || !st.HasText("1 tools, resources") {
+		t.Fatalf("page %q", st.Texts())
+	}
+	b, _ := os.ReadFile(path)
+	if !strings.Contains(string(b), `"Authorization": "Bearer x"`) || !strings.Contains(string(b), "alwaysAllow") {
+		t.Fatalf("file %s", b)
+	}
+
+	// Back, then Old: rename it and save.
+	st.Key(0, ui.KeyEscape)
+	st.Frame()
+	st.Click("Old")
+	st.Frame()
+	h.a.set.srv.name, h.a.set.srv.args = "Older", "--flag\n  two words  "
+	st.Frame()
+	st.Click("Save")
+	st.Frame()
+	b, _ = os.ReadFile(path)
+	ss, _ := mcp.Parse(b)
+	if len(ss) != 2 || ss[1].Name != "Older" || len(ss[1].Args) != 2 || ss[1].Args[1] != "two words" || !strings.Contains(string(b), "alwaysAllow") {
+		t.Fatalf("after rename %+v %s", ss, b)
+	}
+	// Delete it.
+	st.Click("Delete")
+	st.Frame()
+	h.a.set.confirm.run()
+	h.a.set.confirm = nil
+	b, _ = os.ReadFile(path)
+	if ss, _ := mcp.Parse(b); len(ss) != 1 || h.a.set.srvSel != "" {
+		t.Fatalf("after delete %+v", ss)
+	}
+	if _, err := (&serverForm{kind: serverKinds[0], name: "x", command: "x", env: "NOEQUALS"}).server(); err == nil {
+		t.Fatal("a bad env line")
 	}
 }
