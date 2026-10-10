@@ -245,8 +245,6 @@ func drawBlocks(c *ui.Context, blocks []mdBlock, nested bool) {
 	}
 }
 
-const monoFont = "monospace"
-
 func drawSpans(c *ui.Context, spans []mdSpan, bold bool) ui.Element {
 	t := c.Theme()
 	return ui.RichText(c).MinWidth(0).Children(func() {

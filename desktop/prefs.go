@@ -74,18 +74,23 @@ func (a *app) applyPrefs() {
 func (a *app) prefsView(c *ui.Context) {
 	p := a.prefs
 	changed := false
-	ui.Text(c, L("Preferences")).Bold()
+	sectionTitle(c, L("Preferences"))
 	ui.Form(c, func() {
 		ui.Field(c, L("Show thinking"), func() { changed = ui.Switch(c, &p.showThinking).Changed() || changed })
 		ui.Field(c, L("Commands"), func() {
 			choice := modeLabel(p.commands)
-			if ui.Select(c, &choice, modeLabels()).Changed() {
-				p.commands, changed = modeOf(choice), true
+			popup(c, &choice, modeLabels())
+			if m := modeOf(choice); m != p.commands {
+				p.commands, changed = m, true
 			}
 		}).Description(L("Before a shell command or a plugin action that changes something: run it, ask every time, or let the bot's model review it and ask only when in doubt. Always Allow keeps an exact command."))
 		ui.Field(c, L("Keep running when closed"), func() { changed = ui.Switch(c, &p.keepRunning).Changed() || changed }).
 			Description(L("Bots keep working; the tray icon opens the window again."))
-		ui.Field(c, L("Language"), func() { changed = ui.Select(c, &p.language, languages).Changed() || changed })
+		ui.Field(c, L("Language"), func() {
+			was := p.language
+			popup(c, &p.language, languages)
+			changed = changed || p.language != was
+		})
 	})
 	if changed {
 		p.save()

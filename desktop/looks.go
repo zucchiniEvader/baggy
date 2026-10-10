@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"strings"
 
 	"github.com/egoist/mygo/ui"
 	"github.com/spike/gobot/agent"
@@ -10,54 +9,9 @@ import (
 	"github.com/spike/gobot/store"
 )
 
-// lookColors are the colors a bot's look offers, by name.
-var lookColors = []struct{ name, hex string }{
-	{"Orange", "#e8590c"}, {"Blue", "#1971c2"}, {"Green", "#2b8a3e"}, {"Purple", "#9c36b5"},
-	{"Teal", "#0c8599"}, {"Pink", "#c2255c"}, {"Indigo", "#5f3dc4"}, {"Gray", "#495057"},
-}
-
-func colorNames() []string {
-	var out []string
-	for _, c := range lookColors {
-		out = append(out, L(c.name))
-	}
-	return out
-}
-
-func colorHex(name string) string {
-	for _, c := range lookColors {
-		if L(c.name) == name || c.name == name {
-			return c.hex
-		}
-	}
-	return ""
-}
-
-func colorName(hex string) string {
-	for _, c := range lookColors {
-		if strings.EqualFold(c.hex, hex) {
-			return L(c.name)
-		}
-	}
-	return L(lookColors[0].name)
-}
-
-// avatar is a bot's look at size (the font size; the circle is twice it):
-// its emoji on its color, else the initials of name.
-func (a *app) avatar(c *ui.Context, botID, name string, size float32) {
-	b, ok := a.byID[botID]
-	if !ok || b.Emoji == "" {
-		ui.Avatar(c, name, nil).FontSize(size)
-		return
-	}
-	bg := a.authorColor(botID)
-	if b.Color != "" {
-		bg = ui.Hex(b.Color)
-	}
-	d := size * 2
-	ui.Row(c).Width(d).Height(d).Radius(d / 2).Background(bg).Justify(ui.Center).AlignItems(ui.Center).Shrink(0).Label(name).Children(func() {
-		ui.Text(c, b.Emoji).FontSize(size * 1.1)
-	})
+// avatar is a bot's look: its icon in a gray tile, size high.
+func (a *app) avatar(c *ui.Context, botID string, size float32) {
+	iconTile(c, botIcon(a.byID[botID].Icon), size).Label(a.name(botID))
 }
 
 // contextLine is how full the chat's last request was: tokens against the

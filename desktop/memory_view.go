@@ -30,8 +30,7 @@ func (a *app) memoryOf(b store.Bot) *memory.Memory { return memory.New(a.st.Work
 func (a *app) memoryDetails(c *ui.Context, b store.Bot) {
 	t := c.Theme()
 	m := a.memoryOf(b)
-	ui.Divider(c)
-	ui.Text(c, L("Memory")).FontSize(11).Bold().TextColor(t.TextMuted)
+	sectionTitle(c, L("Memory"))
 	lines, bytes, cut := m.Loaded()
 	status := L("Empty")
 	if lines > 0 {
@@ -40,17 +39,15 @@ func (a *app) memoryDetails(c *ui.Context, b store.Bot) {
 	if cut > 0 {
 		status += " · " + L("%d lines past the budget", cut)
 	}
-	ui.Text(c, status).FontSize(12)
-	ui.Row(c).Gap(6).Children(func() {
-		if ui.Button(c.Key("edit-memory"), L("Edit…")).Clicked() {
-			text := m.Read()
-			a.memSheet = &memoryForm{open: true, bot: b, was: text, text: text}
-		}
-		if a.openFolder != nil {
-			if ui.Button(c.Key("show-folder"), L("Show Folder")).Clicked() {
-				a.openFolder(a.st.Workspace(b.ID))
-			}
-		}
+	row := listRow(c.Key("edit-memory"), rowPlain).Label(L("Edit…"))
+	if row.Clicked() {
+		text := m.Read()
+		a.memSheet = &memoryForm{open: true, bot: b, was: text, text: text}
+	}
+	row.Children(func() {
+		ui.Icon(c, iconPin).FontSize(iconSize).TextColor(t.TextMuted).Shrink(0)
+		ui.Text(c, "MEMORY.md").FontSize(13).Shrink(0)
+		ui.Text(c, status).FontSize(11).TextColor(t.TextMuted).SingleLine().Shrink(1).MinWidth(0)
 	})
 }
 
@@ -58,28 +55,29 @@ func (a *app) memorySheetView(c *ui.Context) {
 	f := a.memSheet
 	m := a.memoryOf(f.bot)
 	ui.Modal(c, &f.open, func() {
-		ui.Column(c).Width(560).Gap(10).Children(func() {
-			ui.Text(c, L("%s's memory", f.bot.Name)).Bold().FontSize(16)
-			ui.Text(c, L("MEMORY.md opens every turn of this bot. Credentials are redacted when saved.")).FontSize(12).TextColor(c.Theme().TextMuted)
-			ui.TextArea(c, &f.text).Height(320).Font(monoFont).FontSize(12)
+		ui.Column(c).Width(580).Gap(14).Children(func() {
+			dialogTitle(c, L("%s's memory", f.bot.Name), L("MEMORY.md opens every turn of this bot. Credentials are redacted when saved."))
+			ui.Box(c).Padding(8, 10).Radius(rowRadius).Background(pal(c).codeBg).Children(func() {
+				ui.TextAreaBase(c, &f.text).Height(320).Font(monoFont).FontSize(12).LineHeight(1.45).Label(L("Memory"))
+			})
 			if f.err != "" {
-				ui.Text(c, f.err).TextColor(c.Theme().Danger)
+				ui.Text(c, f.err).FontSize(12).TextColor(pal(c).red)
 			}
 			ui.Row(c).Gap(8).Justify(ui.End).Children(func() {
-				if ui.Button(c, L("Cancel")).Clicked() {
+				if button(c, L("Cancel")).Clicked() {
 					f.open = false
 				}
 				if f.changed {
-					if ui.Button(c, L("Reload")).Clicked() {
+					if button(c, L("Reload")).Clicked() {
 						f.was, f.text = m.Read(), m.Read()
 						f.changed, f.err = false, ""
 					}
-					if ui.Button(c, L("Overwrite")).Clicked() {
+					if button(c, L("Overwrite")).Clicked() {
 						f.was = m.Read()
 						f.changed = false
 					}
 				}
-				if ui.PrimaryButton(c, L("Save")).Clicked() {
+				if primaryButton(c, L("Save"), false).Clicked() {
 					err := m.Save(f.was, f.text)
 					switch {
 					case errors.Is(err, memory.ErrChanged):

@@ -20,7 +20,7 @@ type botForm struct {
 	name, description   string
 	providerName, model string
 	thinking            string
-	emoji, color        string
+	icon                string // a botIcons name
 	err                 string
 }
 
@@ -53,7 +53,7 @@ func (a *app) providerName(id string) string {
 }
 
 func (a *app) newBot() {
-	a.botSheet = &botForm{open: true, providerName: L("Default"), thinking: "Default", color: colorName("")}
+	a.botSheet = &botForm{open: true, providerName: L("Default"), thinking: "Default", icon: "bot"}
 }
 
 func (a *app) editBot(id string) {
@@ -68,7 +68,7 @@ func (a *app) editBot(id string) {
 		}
 	}
 	a.botSheet = &botForm{open: true, id: b.ID, name: b.Name, description: b.Description, providerName: a.providerName(b.Provider), model: b.Model, thinking: th,
-		emoji: b.Emoji, color: colorName(b.Color)}
+		icon: b.Icon}
 }
 
 func (a *app) saveBot(f *botForm) bool {
@@ -77,7 +77,7 @@ func (a *app) saveBot(f *botForm) bool {
 		th = ""
 	}
 	b := store.Bot{ID: f.id, Name: f.name, Description: f.description, Provider: a.providerID(f.providerName), Model: strings.TrimSpace(f.model), Thinking: th,
-		Emoji: strings.TrimSpace(f.emoji), Color: colorHex(f.color)}
+		Icon: f.icon}
 	var err error
 	if f.id == "" {
 		b, err = a.st.CreateBot(b)
@@ -102,37 +102,52 @@ func (a *app) botSheetView(c *ui.Context) {
 	f := a.botSheet
 	ui.Modal(c, &f.open, func() {
 		title := L("New Bot")
+		action := L("Create")
 		if f.id != "" {
-			title = L("Edit %s", f.name)
+			title, action = L("Edit %s", f.name), L("Save")
 		}
-		ui.Column(c).Width(460).Gap(12).Children(func() {
-			ui.Text(c, title).Bold().FontSize(16)
+		ui.Column(c).Width(480).Gap(18).Children(func() {
+			dialogTitle(c, title, L("A bot is a name, a description (its system prompt), the model it runs on, and a workspace folder of its own."))
 			ui.Form(c, func() {
-				ui.Field(c, L("Name"), func() { ui.TextInput(c, &f.name).AutoFocus() })
-				ui.Field(c, L("Description"), func() { ui.TextArea(c, &f.description).Lines(4, 10) }).
-					Description(L("What it does and how: its system prompt."))
-				ui.Field(c, L("Provider"), func() { ui.Select(c, &f.providerName, a.providerNames()) })
-				ui.Field(c, L("Model"), func() { ui.TextInput(c, &f.model).Placeholder(a.modelHint(f.providerName)) })
-				ui.Field(c, L("Thinking"), func() { ui.Select(c, &f.thinking, thinkingLevels) })
-				ui.Field(c, L("Emoji"), func() { ui.TextInput(c, &f.emoji).Placeholder("🦊").Width(80) }).Description(L("Its look, on the color below; empty shows its initials."))
-				ui.Field(c, L("Color"), func() { ui.Select(c, &f.color, colorNames()) })
+				ui.Field(c, L("Name"), func() { textField(c, &f.name, L("For example Scout")).AutoFocus() })
+				ui.Field(c, L("Look"), func() { a.iconPicker(c, &f.icon) })
+				ui.Field(c, L("Description"), func() { textArea(c, &f.description, L("What it does and how: its system prompt."), 4, 10) })
+				ui.Field(c, L("Provider"), func() { popup(c, &f.providerName, a.providerNames()) })
+				ui.Field(c, L("Model"), func() { textField(c, &f.model, a.modelHint(f.providerName)) })
+				ui.Field(c, L("Thinking"), func() { popup(c, &f.thinking, thinkingLevels) })
 			})
 			if f.err != "" {
-				ui.Text(c, f.err).TextColor(c.Theme().Danger)
+				ui.Text(c, f.err).FontSize(12).TextColor(pal(c).red)
 			}
-			ui.Row(c).Gap(8).Justify(ui.End).Children(func() {
-				if ui.Button(c, L("Cancel")).Clicked() {
-					f.open = false
-				}
-				label := L("Create")
-				if f.id != "" {
-					label = L("Save")
-				}
-				if ui.PrimaryButton(c, label).Disabled(strings.TrimSpace(f.name) == "").Clicked() && a.saveBot(f) {
-					f.open = false
+			if dialogButtons(c, &f.open, action, strings.TrimSpace(f.name) == "") && a.saveBot(f) {
+				f.open = false
+			}
+		})
+	})
+}
+
+// iconPicker chooses a bot's look among the icons, as a row of tiles.
+func (a *app) iconPicker(c *ui.Context, name *string) {
+	t := c.Theme()
+	ui.Row(c).Gap(4).Wrap().FocusGroup(ui.Horizontal).Children(func() {
+		for _, b := range botIcons {
+			chosen := *name == b.name || (*name == "" && b.name == "bot")
+			tile := ui.ButtonBase(c.Key("look-"+b.name)).Size(compactHeight, compactHeight).Radius(rowRadius).Center().Label(b.name).Role(ui.RoleRadio).Checked(chosen)
+			st := rowPlain
+			if chosen {
+				st = rowChosen
+			}
+			styleRow(tile, t, st)
+			if tile.Clicked() {
+				*name = b.name
+			}
+			tile.Children(func() {
+				ic := ui.Icon(c, b.svg).FontSize(iconSize)
+				if !chosen {
+					ic.TextColor(t.TextMuted)
 				}
 			})
-		})
+		}
 	})
 }
 
@@ -189,44 +204,46 @@ func (a *app) saveGroup(f *groupForm) bool {
 }
 
 func (a *app) groupSheetView(c *ui.Context) {
+	t := c.Theme()
 	f := a.groupSheet
 	ui.Modal(c, &f.open, func() {
-		title := L("New Group")
+		title, action := L("New Group"), L("Create")
 		if f.id != "" {
-			title = L("Edit Group")
+			title, action = L("Edit Group"), L("Save")
 		}
-		ui.Column(c).Width(460).Gap(12).Children(func() {
-			ui.Text(c, title).Bold().FontSize(16)
+		ui.Column(c).Width(480).Gap(18).Children(func() {
+			dialogTitle(c, title, L("Members take turns: the ones you @ go first, and each replies or passes."))
 			ui.Form(c, func() {
-				ui.Field(c, L("Name"), func() { ui.TextInput(c, &f.title).AutoFocus() })
-				ui.Field(c, L("Description"), func() { ui.TextArea(c, &f.desc).Lines(2, 6) }).Description(L("What the group is for; every member reads it."))
+				ui.Field(c, L("Name"), func() { textField(c, &f.title, L("For example Launch")).AutoFocus() })
+				ui.Field(c, L("Description"), func() { textArea(c, &f.desc, L("What the group is for; every member reads it."), 2, 6) })
 			})
 			if f.id == "" {
-				ui.Text(c, L("Members (the first one owns the work)")).FontSize(12).Bold()
-				ui.Column(c).Gap(4).Children(func() {
+				ui.Column(c).Gap(1).FocusGroup(ui.Vertical).Children(func() {
+					ui.Text(c, L("Members (the first one owns the work)")).FontSize(13).FontWeight(600).Padding(0, 0, 5)
 					for _, b := range a.bots {
 						on := f.picked[b.ID]
-						if ui.Checkbox(c.Key("pick-"+b.ID), &on, b.Name).Changed() {
-							f.picked[b.ID] = on
+						row := listRow(c.Key("pick-"+b.ID), rowPlain).Label(b.Name).Role(ui.RoleCheckBox).Checked(on)
+						if row.Clicked() {
+							f.picked[b.ID] = !on
 						}
+						row.Children(func() {
+							iconTile(c, botIcon(b.Icon), 20)
+							ui.Text(c, b.Name).FontSize(13).Shrink(0)
+							ui.Text(c, firstLine(b.Description)).FontSize(12).TextColor(t.TextMuted).SingleLine().Shrink(1).MinWidth(0)
+							ui.Spacer(c)
+							if on {
+								ui.Icon(c, iconCheck).FontSize(iconSize).Shrink(0)
+							}
+						})
 					}
 				})
 			}
 			if f.err != "" {
-				ui.Text(c, f.err).TextColor(c.Theme().Danger)
+				ui.Text(c, f.err).FontSize(12).TextColor(pal(c).red)
 			}
-			ui.Row(c).Gap(8).Justify(ui.End).Children(func() {
-				if ui.Button(c, L("Cancel")).Clicked() {
-					f.open = false
-				}
-				label := L("Create")
-				if f.id != "" {
-					label = L("Save")
-				}
-				if ui.PrimaryButton(c, label).Disabled(strings.TrimSpace(f.title) == "").Clicked() && a.saveGroup(f) {
-					f.open = false
-				}
-			})
+			if dialogButtons(c, &f.open, action, strings.TrimSpace(f.title) == "") && a.saveGroup(f) {
+				f.open = false
+			}
 		})
 	})
 }
@@ -295,131 +312,134 @@ func (a *app) saveProvider(f *providerForm) bool {
 func (a *app) providerSheetView(c *ui.Context) {
 	f := a.provSheet
 	ui.Modal(c, &f.open, func() {
-		ui.Column(c).Width(480).Gap(12).Children(func() {
-			title := L("New Provider")
-			if f.id != "" {
-				title = L("Edit Provider")
-			}
-			ui.Text(c, title).Bold().FontSize(16)
+		title := L("New Provider")
+		if f.id != "" {
+			title = L("Edit Provider")
+		}
+		ui.Column(c).Width(500).Gap(18).Children(func() {
+			dialogTitle(c, title, L("Any server that speaks one of these protocols: Anthropic, DeepSeek, OpenAI, OpenRouter, Ollama, vLLM…"))
 			ui.Form(c, func() {
-				ui.Field(c, L("Name"), func() { ui.TextInput(c, &f.name).AutoFocus().Placeholder("DeepSeek") })
-				ui.Field(c, L("Protocol"), func() { ui.Select(c, &f.api, apiLabels) })
-				ui.Field(c, L("Base URL"), func() { ui.TextInput(c, &f.base).Placeholder(L("the vendor's own")) }).
+				ui.Field(c, L("Name"), func() { textField(c, &f.name, "DeepSeek").AutoFocus() })
+				ui.Field(c, L("Protocol"), func() { popup(c, &f.api, apiLabels) })
+				ui.Field(c, L("Base URL"), func() { textField(c, &f.base, L("the vendor's own")) }).
 					Description(L("For example https://api.deepseek.com, or http://localhost:11434/v1 for Ollama."))
-				ui.Field(c, L("API key"), func() { ui.TextInput(c, &f.key).Password() })
-				ui.Field(c, L("Models"), func() { ui.TextInput(c, &f.models).Placeholder("deepseek-chat, deepseek-reasoner") }).
+				ui.Field(c, L("API key"), func() { textField(c, &f.key, "sk-…").Password() })
+				ui.Field(c, L("Models"), func() { textField(c, &f.models, "deepseek-chat, deepseek-reasoner") }).
 					Description(L("Comma separated; the first is the default."))
-				if apiID(f.api) == connect.Chat {
-					ui.Field(c, L("Send reasoning back"), func() { ui.Switch(c, &f.replay) }).Description(L("As reasoning_content, which DeepSeek's thinking mode takes."))
-				}
 				if apiID(f.api) != connect.Chat {
 					ui.Field(c, L("Web search"), func() { ui.Switch(c, &f.web) }).Description(L("The server searches the web (and reads pages, on Anthropic) for the bot."))
+				}
+				if apiID(f.api) == connect.Chat {
+					ui.Field(c, L("Send reasoning back"), func() { ui.Switch(c, &f.replay) }).Description(L("As reasoning_content, which DeepSeek's thinking mode takes."))
 				}
 				if apiID(f.api) == connect.Responses {
 					ui.Field(c, L("Encrypted reasoning"), func() { ui.Switch(c, &f.encrypted) }).Description(L("Keeps reasoning across tool calls on OpenAI's API."))
 				}
 			})
 			if f.err != "" {
-				ui.Text(c, f.err).TextColor(c.Theme().Danger)
+				ui.Text(c, f.err).FontSize(12).TextColor(pal(c).red)
 			}
-			ui.Row(c).Gap(8).Justify(ui.End).Children(func() {
-				if ui.Button(c, L("Cancel")).Clicked() {
-					f.open = false
-				}
-				if ui.PrimaryButton(c, L("Save")).Clicked() && a.saveProvider(f) {
-					f.open = false
-				}
-			})
+			if dialogButtons(c, &f.open, L("Save"), false) && a.saveProvider(f) {
+				f.open = false
+			}
 		})
 	})
 }
 
-// settingsView is the Settings sheet: providers, the default one, and the
-// app's preferences.
+// settingsView is the Settings sheet: providers, the default one, MCP
+// servers, and the app's preferences.
 func (a *app) settingsView(c *ui.Context) {
 	t := c.Theme()
 	ui.Modal(c, &a.settings, func() {
-		ui.Scroll(c).MaxHeight(620).Children(func() {
-			ui.Column(c).Width(520).Gap(14).Padding(0, 12, 0, 0).Children(func() {
-				ui.Text(c, L("Settings")).Bold().FontSize(16)
-				ui.Text(c, L("Providers")).Bold()
-				ps, _ := a.st.Providers()
-				def := a.st.Setting(team.SettingDefaultProvider)
-				if len(ps) == 0 {
-					note := L("No provider yet: bots run on the environment's (GOBOT_API_KEY or ANTHROPIC_API_KEY).")
-					if a.fallback.APIKey == "" {
-						note = L("No provider yet. Add one to start chatting.")
+		ui.Column(c).Width(540).Gap(14).Children(func() {
+			dialogTitle(c, L("Settings"), "")
+			ui.Scroll(c).MaxHeight(560).Children(func() {
+				ui.Column(c).Gap(6).Padding(0, 12, 0, 0).Children(func() {
+					sectionTitle(c, L("Providers"))
+					ps, _ := a.st.Providers()
+					def := a.st.Setting(team.SettingDefaultProvider)
+					if len(ps) == 0 {
+						note := L("No provider yet: bots run on the environment's (GOBOT_API_KEY or ANTHROPIC_API_KEY).")
+						if a.fallback.APIKey == "" {
+							note = L("No provider yet. Add one to start chatting.")
+						}
+						ui.Text(c, note).FontSize(12).TextColor(t.TextMuted)
 					}
-					ui.Text(c, note).FontSize(12).TextColor(t.TextMuted)
-				}
-				ui.Column(c).Gap(6).Children(func() {
-					for _, p := range ps {
-						ui.Row(c.Key(p.ID)).Gap(8).AlignItems(ui.Center).Padding(6, 10).Radius(8).Background(t.Surface).Children(func() {
-							ui.Column(c).Grow(1).MinWidth(0).Children(func() {
-								name := p.Name
-								if p.ID == def || (def == "" && p.ID == ps[0].ID) {
-									name += " · " + L("default")
+					ui.Column(c).Gap(1).Children(func() {
+						for _, p := range ps {
+							p := p
+							isDef := p.ID == def || (def == "" && p.ID == ps[0].ID)
+							row := ui.Row(c.Key(p.ID)).Height(40).Padding(0, 8).Gap(8).Radius(rowRadius).AlignItems(ui.Center).Label(p.Name)
+							styleRow(row, t, rowPlain)
+							var action func()
+							menu := func(m *ui.Menu) {
+								if m.Item(L("Make Default")).Disabled(isDef).Chosen() {
+									action = func() { a.st.SetSetting(team.SettingDefaultProvider, p.ID) }
 								}
-								ui.Text(c, name).Bold().SingleLine()
-								ui.Text(c, apiLabel(p.API)+" · "+strings.Join(p.Models, ", ")).FontSize(11).TextColor(t.TextMuted).SingleLine()
-							})
-							if p.ID != def {
-								if ui.Button(c, L("Make Default")).Clicked() {
-									a.st.SetSetting(team.SettingDefaultProvider, p.ID)
+								if m.Item(L("Edit…")).Chosen() {
+									action = func() { a.settings = false; a.editProvider(p) }
 								}
-							}
-							if ui.Button(c, L("Edit…")).Clicked() {
-								a.settings = false
-								a.editProvider(p)
-							}
-							if ui.Button(c, L("Delete")).Clicked() {
-								id := p.ID
-								a.settings = false
-								a.ask(L("Delete %s?", p.Name), L("Bots on it move to the default provider."), L("Delete"), func() {
-									a.do(a.st.DeleteProvider(id))
-									if a.st.Setting(team.SettingDefaultProvider) == id {
-										a.st.SetSetting(team.SettingDefaultProvider, "")
+								m.Separator()
+								if m.Item(L("Delete")).Chosen() {
+									action = func() {
+										a.settings = false
+										a.ask(L("Delete %s?", p.Name), L("Bots on it move to the default provider."), L("Delete"), func() {
+											a.do(a.st.DeleteProvider(p.ID))
+											if a.st.Setting(team.SettingDefaultProvider) == p.ID {
+												a.st.SetSetting(team.SettingDefaultProvider, "")
+											}
+										})
 									}
-								})
+								}
 							}
-						})
-					}
-				})
-				if ui.Button(c, L("Add Provider…")).Clicked() {
-					a.settings = false
-					a.provSheet = &providerForm{open: true, api: apiLabels[0], web: true}
-				}
-				ui.Divider(c)
-				a.pluginsView(c)
-				ui.Divider(c)
-				a.prefsView(c)
-				ui.Row(c).Justify(ui.End).Children(func() {
-					if ui.PrimaryButton(c, L("Done")).Clicked() {
+							row.ContextMenu(menu)
+							if row.DoubleClicked() {
+								action = func() { a.settings = false; a.editProvider(p) }
+							}
+							row.Children(func() {
+								ui.Icon(c, iconPlug).FontSize(iconSize).TextColor(t.TextMuted).Shrink(0)
+								ui.Column(c).Grow(1).MinWidth(0).Children(func() {
+									ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
+										ui.Text(c, p.Name).FontSize(13).FontWeight(600).SingleLine().Shrink(1).MinWidth(0)
+										if isDef {
+											badge(c, L("default"))
+										}
+									})
+									ui.Text(c, apiLabel(p.API)+" · "+strings.Join(p.Models, ", ")).FontSize(11).TextColor(t.TextMuted).SingleLine().MinWidth(0)
+								})
+								if smallButton(c.Key("edit-"+p.ID), L("Edit…"), secondary).Clicked() {
+									action = func() { a.settings = false; a.editProvider(p) }
+								}
+								iconButton(c.Key("more-"+p.ID), iconMore, L("More")).Menu(menu)
+							})
+							if action != nil {
+								action()
+							}
+						}
+					})
+					if smallButton(c.Key("add-provider"), L("Add Provider…"), secondary).AlignSelf(ui.Start).Clicked() {
 						a.settings = false
+						a.provSheet = &providerForm{open: true, api: apiLabels[0], web: true}
 					}
+					a.pluginsView(c)
+					a.prefsView(c)
 				})
+			})
+			ui.Row(c).Justify(ui.End).Children(func() {
+				if primaryButton(c, L("Done"), false).Clicked() {
+					a.settings = false
+				}
 			})
 		})
 	})
 }
 
+// confirmView asks before a delete, as an alert.
 func (a *app) confirmView(c *ui.Context) {
 	f := a.confirm
-	ui.Modal(c, &f.open, func() {
-		ui.Column(c).Width(400).Gap(12).Children(func() {
-			ui.Text(c, f.title).Bold().FontSize(15)
-			ui.Text(c, f.message)
-			ui.Row(c).Gap(8).Justify(ui.End).Children(func() {
-				if ui.Button(c, L("Cancel")).Clicked() {
-					f.open = false
-				}
-				if ui.PrimaryButton(c, f.action).Clicked() {
-					f.open = false
-					f.run()
-				}
-			})
-		})
-	})
+	if ui.AlertDialog(c, &f.open, f.title, f.message, L("Cancel"), f.action) == 1 {
+		f.run()
+	}
 }
 
 // sheets draws whichever sheet is up.

@@ -161,8 +161,8 @@ func TestRoutines(t *testing.T) {
 
 func TestLooksAndUnread(t *testing.T) {
 	s := open(t)
-	b := must(s.CreateBot(Bot{Name: "A", Emoji: "🦊", Color: "#ff8800"}))
-	if got := must(s.Bot(b.ID)); got.Emoji != "🦊" || got.Color != "#ff8800" {
+	b := must(s.CreateBot(Bot{Name: "A", Icon: "brain"}))
+	if got := must(s.Bot(b.ID)); got.Icon != "brain" {
 		t.Fatalf("look %+v", got)
 	}
 	dm := must(s.DMOf(b.ID))

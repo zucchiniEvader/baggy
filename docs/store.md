@@ -5,7 +5,7 @@
 | Table | Holds |
 | --- | --- |
 | `providers` | `store.Provider`: id, name, `api` (`connect.Anthropic`, `Chat`, `Responses`), base URL, API key, models (JSON list, the first is the default), options (`replay_reasoning`, `encrypted_reasoning`) |
-| `bots` | `store.Bot`: id, name, description (its system prompt), provider id (empty: the default), model (empty: the provider's first), thinking level, look (an emoji and a color) |
+| `bots` | `store.Bot`: id, name, description (its system prompt), provider id (empty: the default), model (empty: the provider's first), thinking level, look (an icon name, kept in the `emoji` column) |
 | `chats` | `store.Chat`: id, kind (`dm` or `group`), title and description (groups), owner, created, updated (the last message), read mark (`ReadSeq`) |
 | `members` | the bots of a chat in turn order |
 | `messages` | `store.Entry`: chat, sequence, author (`store.User` or a bot id), turn id, `Meta` (mentions, the quote replied to, `From` and `Hops` for `message_bot`), the `agent.Message` as JSON, created |

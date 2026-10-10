@@ -202,10 +202,10 @@ func (a *app) markPending(chatID, callID string, on bool) {
 // approvalButtons are Allow, Always Allow and Deny for a waiting action.
 func (a *app) approvalButtons(c *ui.Context, chatID, callID string) {
 	ui.Row(c).Gap(8).Children(func() {
-		if ui.PrimaryButton(c.Key("allow-"+callID), L("Allow")).Clicked() {
+		if smallButton(c.Key("allow-"+callID), L("Allow"), primary).Clicked() {
 			a.approvals.decide(callID, true)
 		}
-		if ui.Button(c.Key("always-"+callID), L("Always Allow")).Tooltip(L("Allow this exact command (or this plugin tool) from now on")).Clicked() {
+		if smallButton(c.Key("always-"+callID), L("Always Allow"), secondary).Tooltip(L("Allow this exact command (or this plugin tool) from now on")).Clicked() {
 			a.approvals.mu.Lock()
 			w := a.approvals.waiting[callID]
 			a.approvals.mu.Unlock()
@@ -214,30 +214,48 @@ func (a *app) approvalButtons(c *ui.Context, chatID, callID string) {
 			}
 			a.approvals.decide(callID, true)
 		}
-		if ui.Button(c.Key("deny-"+callID), L("Deny")).Clicked() {
+		if smallButton(c.Key("deny-"+callID), L("Deny"), secondary).Clicked() {
 			a.approvals.decide(callID, false)
 		}
 	})
 }
 
-// approvalBar is the chat's waiting actions above the composer: the ones a
-// script asked for have no card of their own.
+// approvalBar is the chat's waiting actions that have no card of their own,
+// as a script's calls, above the composer.
 func (a *app) approvalBar(c *ui.Context, ch store.Chat) {
-	ws := a.approvals.in(ch.ID)
+	var ws []*waiting
+	v := a.views[ch.ID]
+	for _, w := range a.approvals.in(ch.ID) {
+		carded := false
+		if v != nil {
+			for _, r := range v.rows {
+				carded = carded || (r.kind == rowTool && r.call.CallID == w.id)
+			}
+		}
+		if !carded {
+			ws = append(ws, w)
+		}
+	}
 	if len(ws) == 0 {
 		return
 	}
 	t := c.Theme()
-	ui.Column(c).Padding(10, 16).Gap(8).Background(t.Surface).BorderWidth(1, 0, 0, 0).BorderColor(t.Border).Children(func() {
-		for _, w := range ws {
-			ui.Column(c.Key("wait-" + w.id)).Gap(4).Children(func() {
-				ui.Text(c, L("%s wants to run %s", a.name(w.bot), describe(w.call))).FontSize(12).Bold().Selectable()
-				if w.reason != "" {
-					ui.Text(c, L("Auto-review: %s", w.reason)).FontSize(12).TextColor(t.Warning)
-				}
-				a.approvalButtons(c, ch.ID, w.id)
-			})
-		}
+	p := pal(c)
+	ui.Column(c).Shrink(0).MaxWidth(contentWidth).FillWidth().Margin(0, ui.Auto).Padding(0, 28, 8).Children(func() {
+		ui.Column(c).Radius(cardRadius).Background(p.surface).Border(1, p.border).Padding(10, 12).Gap(10).Children(func() {
+			for _, w := range ws {
+				ui.Column(c.Key("wait-" + w.id)).Gap(6).Children(func() {
+					ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
+						ui.Icon(c, iconShield).FontSize(iconSize).TextColor(p.orange).Shrink(0)
+						ui.Text(c, L("%s wants to run %s", a.name(w.bot), describe(w.call))).FontSize(13).Grow(1).MinWidth(0).Selectable()
+					})
+					if w.reason != "" {
+						ui.Text(c, L("Auto-review: %s", w.reason)).FontSize(12).TextColor(t.TextMuted).Padding(0, 0, 0, 22)
+					}
+					ui.Row(c).Padding(0, 0, 0, 22).Children(func() { a.approvalButtons(c, ch.ID, w.id) })
+				})
+			}
+		})
 	})
 }
 

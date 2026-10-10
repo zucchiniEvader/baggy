@@ -416,7 +416,7 @@ func TestUnreadAndNotification(t *testing.T) {
 	var notes []string
 	h.a.notify = func(title, subtitle, body, chatID string) { notes = append(notes, title+": "+body) }
 	chef := h.a.bots[0]
-	scout, _ := h.st.CreateBot(store.Bot{Name: "Scout", Emoji: "🦊", Color: "#1971c2"})
+	scout, _ := h.st.CreateBot(store.Bot{Name: "Scout", Icon: "brain"})
 	h.a.reload()
 	dmScout, _ := h.st.DMOf(scout.ID)
 	h.a.selectChat(dmScout.ID) // the user looks at Scout while Chef works
@@ -430,12 +430,6 @@ func TestUnreadAndNotification(t *testing.T) {
 	h.a.selectChat(dmChef.ID)
 	if h.a.unread[dmChef.ID] != 0 || h.st.Unread(dmChef.ID) != 0 {
 		t.Fatal("not read")
-	}
-	if !h.tt.HasText("🦊") {
-		h.tt.Frame()
-		if !h.tt.HasText("🦊") {
-			t.Fatalf("no emoji look: %q", h.tt.Texts())
-		}
 	}
 }
 

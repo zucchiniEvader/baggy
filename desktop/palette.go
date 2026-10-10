@@ -72,8 +72,12 @@ func (a *app) paletteView(c *ui.Context) {
 		cs[i].run()
 	}
 	ui.Modal(c, &p.open, func() {
-		ui.Column(c).Width(460).Gap(8).Children(func() {
-			in := ui.TextInput(c.Key("palette"), &p.query).AutoFocus().Placeholder(L("Type a command or a chat")).Label(L("Command"))
+		ui.Column(c).Width(480).Gap(8).Children(func() {
+			var in ui.Element
+			fieldBox(c.Key("palette-box"), func(box ui.Element) {
+				ui.Icon(c, iconSearch).FontSize(13).TextColor(t.TextMuted)
+				in = fieldInput(c.Key("palette"), box, &p.query, L("Type a command or a chat")).AutoFocus()
+			})
 			if in.Changed() {
 				p.at = 0
 			}
@@ -95,19 +99,18 @@ func (a *app) paletteView(c *ui.Context) {
 				}
 				return true
 			})
-			ui.Column(c).Gap(2).MaxHeight(360).Children(func() {
+			ui.Column(c).Gap(1).MaxHeight(360).Children(func() {
 				for i, cmd := range cs {
-					item := ui.Row(c.Key("cmd-"+cmd.label)).Padding(6, 10).Radius(6).Label(cmd.label)
+					st := rowPlain
 					if i == p.at {
-						item.Background(t.Accent).TextColor(t.AccentText) // the palette owns the keyboard
-					} else if item.Hovered() {
-						item.Background(t.SurfaceHover)
+						st = rowKeyboard // the palette owns the keyboard
 					}
+					item := listRow(c.Key("cmd-"+cmd.label), st).Label(cmd.label)
 					if item.Clicked() {
 						run(i)
 						return
 					}
-					item.Children(func() { ui.Text(c, cmd.label).SingleLine() })
+					item.Children(func() { ui.Text(c, cmd.label).FontSize(13).SingleLine().MinWidth(0) })
 				}
 				if len(cs) == 0 {
 					ui.Text(c, L("Nothing matches.")).TextColor(t.TextMuted).Padding(6, 10)
@@ -135,6 +138,10 @@ func (a *app) shortcuts(c *ui.Context) {
 		a.newBot()
 	case c.Shortcut(ui.Cmd, ui.KeyComma):
 		a.settings = true
+	case c.Shortcut(ui.Cmd|ui.Shift, ui.KeyB):
+		a.toggleSidebar()
+	case c.Shortcut(ui.Cmd, ui.KeyF):
+		a.sidebarShown, a.filterFocus = true, true
 	case c.Shortcut(0, ui.KeyEscape) && a.busy[a.sel]:
 		a.stop()
 	}

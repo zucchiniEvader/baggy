@@ -39,31 +39,38 @@ func (a *app) pluginsView(c *ui.Context) {
 	if a.team.Plugins == nil {
 		return
 	}
-	ui.Text(c, L("MCP Servers")).Bold()
-	ui.Text(c, L("Servers in mcp.json (the format Claude Desktop and Cursor use) give every bot their tools, which it calls from codemode scripts.")).FontSize(12).TextColor(t.TextMuted)
+	sectionTitle(c, L("MCP Servers"))
+	ui.Text(c, L("Servers in mcp.json (the format Claude Desktop and Cursor use) give every bot their tools, which it calls from codemode scripts.")).FontSize(12).LineHeight(1.5).TextColor(t.TextMuted)
 	if err := a.team.Plugins.FileError(); err != nil {
-		ui.Text(c, err.Error()).FontSize(12).TextColor(t.Danger)
+		errorRow(c, err.Error())
 	}
 	servers := a.servers
 	if servers == nil {
 		servers = a.team.Plugins.Known()
 	}
-	ui.Column(c).Gap(6).Children(func() {
+	ui.Column(c).Gap(1).Children(func() {
 		for _, s := range servers {
-			ui.Row(c.Key("mcp-"+s.ID)).Gap(8).AlignItems(ui.Center).Padding(6, 10).Radius(8).Background(t.Surface).Children(func() {
+			ui.Row(c.Key("mcp-"+s.ID)).Height(40).Gap(8).AlignItems(ui.Center).Padding(0, 8).Radius(rowRadius).Children(func() {
+				ui.Icon(c, iconPlug).FontSize(iconSize).TextColor(t.TextMuted).Shrink(0)
 				ui.Column(c).Grow(1).MinWidth(0).Children(func() {
-					ui.Text(c, s.Server.Name).Bold().SingleLine()
+					ui.Text(c, s.Server.Name).FontSize(13).FontWeight(600).SingleLine().MinWidth(0)
 					line, color := L("Not connected yet"), t.TextMuted
 					switch s.State {
 					case "ready":
 						line = L("%d tools", len(s.Tools))
 					case "failed":
-						line, color = s.Err, t.Danger
+						line, color = s.Err, pal(c).red
 					case "off":
 						line = L("Off")
 					}
-					ui.Text(c, line).FontSize(11).TextColor(color).SingleLine()
+					ui.Text(c, line).FontSize(11).TextColor(color).SingleLine().MinWidth(0)
 				})
+				switch s.State {
+				case "ready":
+					ui.Icon(c, iconCheck).FontSize(12).TextColor(pal(c).greenBar).Shrink(0)
+				case "failed":
+					ui.Icon(c, iconXCircle).FontSize(12).TextColor(pal(c).redBar).Shrink(0)
+				}
 			})
 		}
 		if len(servers) == 0 {
@@ -72,7 +79,7 @@ func (a *app) pluginsView(c *ui.Context) {
 	})
 	ui.Row(c).Gap(8).Children(func() {
 		if a.openFolder != nil && a.mcpPath != "" {
-			if ui.Button(c.Key("open-mcp"), L("Open mcp.json")).Clicked() {
+			if smallButton(c.Key("open-mcp"), L("Open mcp.json"), secondary).Clicked() {
 				if _, err := os.Stat(a.mcpPath); err != nil {
 					os.MkdirAll(filepath.Dir(a.mcpPath), 0o755)
 					os.WriteFile(a.mcpPath, []byte(mcpTemplate), 0o644)
@@ -84,7 +91,7 @@ func (a *app) pluginsView(c *ui.Context) {
 		if a.checking {
 			label = L("Connecting…")
 		}
-		if ui.Button(c.Key("check-mcp"), label).Disabled(a.checking).Clicked() {
+		if smallButton(c.Key("check-mcp"), label, secondary).Clicked() && !a.checking {
 			a.team.Plugins.Close() // read the file again and start fresh
 			a.checkServers()
 		}

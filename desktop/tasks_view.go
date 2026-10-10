@@ -63,13 +63,20 @@ func (a *app) tasksButton(c *ui.Context, ch store.Chat) {
 		a.tasksOpen = false
 		return
 	}
-	btn := ui.Button(c.Key("tasks"), L("Tasks (%d)", len(ts))).Tooltip(L("Commands running in this chat"))
+	btn := ui.ButtonBase(c.Key("tasks")).Height(compactHeight).Padding(0, 8).Gap(5).Radius(rowRadius).AlignItems(ui.Center).Label(L("Tasks (%d)", len(ts))).Tooltip(L("Commands running in this chat")).Shrink(0)
+	styleButton(btn, c.Theme(), ghost, false)
+	btn.Children(func() {
+		ui.Icon(c, iconTerminal).FontSize(iconSize)
+		ui.Text(c, fmt.Sprint(len(ts))).Font(monoFont).FontSize(11).Bold()
+	})
 	if btn.Clicked() {
 		a.tasksOpen = !a.tasksOpen
 	}
 	t := c.Theme()
-	ui.Popover(c, btn, &a.tasksOpen, func() {
-		ui.Column(c).Width(420).Gap(10).Children(func() {
+	p := pal(c)
+	ui.PopoverBase(c, btn, &a.tasksOpen, func(panel ui.Element) {
+		panel.Margin(6, 0, 0, 0).Padding(12).Radius(cardRadius).Background(p.surface).Border(1, p.border)
+		ui.Column(c).Width(420).Gap(14).Children(func() {
 			for _, s := range ts {
 				s := s
 				ui.Column(c.Key("task-" + s.ID)).Gap(4).Children(func() {
@@ -78,28 +85,25 @@ func (a *app) tasksButton(c *ui.Context, ch store.Chat) {
 						if title == "" {
 							title = s.Command
 						}
-						ui.Text(c, oneLine(title, 60)).Bold().Grow(1).SingleLine()
+						ui.Icon(c, iconTerminal).FontSize(iconSize).TextColor(t.TextMuted).Shrink(0)
+						ui.Text(c, oneLine(title, 60)).FontSize(13).FontWeight(600).Grow(1).SingleLine().MinWidth(0)
 						who := ""
 						if ch.Kind == store.Group {
 							who = a.name(s.Bot) + " · "
 						}
 						ui.Text(c, who+elapsed(time.Since(s.Started))).FontSize(11).TextColor(t.TextMuted)
 					})
-					ui.Column(c).Padding(6, 8).Radius(6).Background(t.Surface).Children(func() {
-						ui.Text(c, oneLine(s.Command, 120)).Font(monoFont).FontSize(11).Selectable()
-					})
+					codeBlock(c, oneLine(s.Command, 120))
 					if last := s.Last(10); last != "" {
-						ui.Column(c).Padding(6, 8).Radius(6).Background(t.Surface).Children(func() {
-							ui.Text(c, last).Font(monoFont).FontSize(11).Selectable()
-						})
+						codeBlock(c, last)
 					}
 					ui.Row(c).Gap(8).Justify(ui.End).Children(func() {
 						if !s.Background() {
-							if ui.Button(c.Key("bg-"+s.ID), L("Run in Background")).Clicked() {
+							if smallButton(c.Key("bg-"+s.ID), L("Run in Background"), secondary).Clicked() {
 								s.SendToBackground()
 							}
 						}
-						if ui.Button(c.Key("stop-"+s.ID), L("Stop")).Clicked() {
+						if smallButton(c.Key("stop-"+s.ID), L("Stop"), danger).Clicked() {
 							go s.Stop(L("stopped from Running tasks"))
 						}
 					})

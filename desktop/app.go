@@ -26,13 +26,19 @@ type app struct {
 	views map[string]*chatView
 	busy  map[string]bool
 
-	side      listNav
-	inspector bool
-	tasksOpen bool
-	focused   bool           // the window has the focus
-	unread    map[string]int // by chat
-	notify    func(title, subtitle, body, chatID string)
-	sideWidth float32
+	side         listNav
+	sidebarShown bool
+	dragWidth    float32
+	resizing     bool
+	filter       string // the sidebar's search
+	filterFocus  bool
+	vibrancy     bool // the window shows the sidebar's material (macOS)
+	inspector    bool
+	tasksOpen    bool
+	focused      bool           // the window has the focus
+	unread       map[string]int // by chat
+	notify       func(title, subtitle, body, chatID string)
+	sideWidth    float32
 
 	botSheet   *botForm
 	groupSheet *groupForm
@@ -70,8 +76,9 @@ type chatView struct {
 	atDraft  string       // the draft the @ menu last saw
 	images   []agent.Part // attached, sent with the next message
 	focus    bool
-	working  string // the bot whose turn runs
-	retrying string // why the reply under way is being asked again
+	open     map[string]bool // disclosures opened: thinking, tool calls
+	working  string          // the bot whose turn runs
+	retrying string          // why the reply under way is being asked again
 }
 
 type confirmation struct {
@@ -86,7 +93,8 @@ func newApp(st *store.Store, tm *team.Team, post func(func())) *app {
 	a := &app{st: st, team: tm, post: post, views: map[string]*chatView{}, busy: map[string]bool{}, unread: map[string]int{}, focused: true}
 	a.approvals = newApprovals(a)
 	a.prefs = loadPrefs(st)
-	a.sideWidth, a.inspector = a.prefs.sideWidth, a.prefs.inspector
+	a.sideWidth, a.inspector, a.sidebarShown = a.prefs.sideWidth, a.prefs.inspector, true
+	a.dragWidth = a.sideWidth
 	a.reload()
 	if len(a.chats) > 0 {
 		a.selectChat(a.chats[0].ID)
@@ -143,7 +151,7 @@ func (a *app) view(id string) *chatView {
 	if v := a.views[id]; v != nil {
 		return v
 	}
-	v := &chatView{id: id, stream: map[string]int{}}
+	v := &chatView{id: id, stream: map[string]int{}, open: map[string]bool{}}
 	v.list.FollowEnd = true
 	if es, err := a.st.Messages(id, 0); err == nil {
 		v.rows = buildRows(es)

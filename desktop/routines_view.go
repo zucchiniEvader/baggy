@@ -54,27 +54,25 @@ func outcomeText(o string) string {
 func (a *app) routinesDetails(c *ui.Context, b store.Bot) {
 	t := c.Theme()
 	rs, _ := a.st.Routines(b.ID)
-	ui.Divider(c)
-	ui.Text(c, L("Routines")).FontSize(11).Bold().TextColor(t.TextMuted)
+	sectionTitle(c, L("Routines"))
 	if len(rs) == 0 {
 		ui.Text(c, L("Ask %s in chat to set one up, such as a morning brief.", b.Name)).FontSize(12).TextColor(t.TextMuted)
 		return
 	}
 	now := time.Now()
-	ui.Column(c).Gap(4).AlignSelf(ui.Stretch).Children(func() {
+	ui.Column(c).Gap(1).AlignSelf(ui.Stretch).Children(func() {
 		for _, r := range rs {
 			r := r
-			row := ui.Row(c.Key("routine-"+r.ID)).Gap(8).AlignItems(ui.Center).Padding(4, 6).Radius(6).Label(r.Name)
-			if row.Hovered() {
-				row.Background(t.SurfaceHover)
-			}
+			row := ui.Row(c.Key("routine-"+r.ID)).Height(40).Gap(8).AlignItems(ui.Center).Padding(0, 4, 0, 8).Radius(rowRadius).Label(r.Name)
+			styleRow(row, t, rowPlain)
 			if row.Clicked() {
 				a.routine = &routineSheet{open: true, id: r.ID}
 			}
 			row.Children(func() {
+				ui.Icon(c, iconClock).FontSize(iconSize).TextColor(t.TextMuted).Shrink(0)
 				ui.Column(c).Grow(1).MinWidth(0).Children(func() {
-					ui.Text(c, r.Name).FontSize(12).Bold().SingleLine()
-					ui.Text(c, routineLine(r, now)).FontSize(11).TextColor(t.TextMuted).SingleLine()
+					ui.Text(c, r.Name).FontSize(13).SingleLine().MinWidth(0)
+					ui.Text(c, routineLine(r, now)).FontSize(11).TextColor(t.TextMuted).SingleLine().MinWidth(0)
 				})
 				on := r.Enabled
 				if ui.Switch(c.Key("on-"+r.ID), &on).Label(L("On")).Changed() {
@@ -103,9 +101,8 @@ func (a *app) routineSheetView(c *ui.Context) {
 		return
 	}
 	ui.Modal(c, &f.open, func() {
-		ui.Column(c).Width(500).Gap(10).Children(func() {
-			ui.Text(c, r.Name).Bold().FontSize(16)
-			ui.Text(c, routineLine(r, time.Now())).FontSize(12).TextColor(t.TextMuted)
+		ui.Column(c).Width(520).Gap(14).Children(func() {
+			dialogTitle(c, r.Name, routineLine(r, time.Now()))
 			tz := r.Timezone
 			if tz == "" {
 				tz = schedule.LocalZone()
@@ -128,21 +125,24 @@ func (a *app) routineSheetView(c *ui.Context) {
 					ui.Field(c, L("Last check"), func() { ui.Text(c, time.UnixMilli(r.LastCheckAt).Format("Jan 2 15:04")+" · "+r.LastCheck) })
 				}
 			})
-			ui.Text(c, L("Task")).FontSize(11).Bold().TextColor(t.TextMuted)
-			ui.Text(c, r.Prompt).Selectable()
+			ui.Column(c).Gap(4).Children(func() {
+				ui.Text(c, L("Task")).FontSize(11).FontWeight(600).TextColor(t.TextMuted)
+				ui.Text(c, r.Prompt).FontSize(13).LineHeight(1.5).Selectable()
+			})
 			if r.Check != "" {
-				ui.Text(c, L("Check")).FontSize(11).Bold().TextColor(t.TextMuted)
-				ui.Column(c).Padding(8, 10).Radius(7).Background(t.Surface).Children(func() {
-					ui.Text(c, r.Check).Font(monoFont).FontSize(11).Selectable()
+				ui.Column(c).Gap(4).Children(func() {
+					ui.Text(c, L("Check")).FontSize(11).FontWeight(600).TextColor(t.TextMuted)
+					codeBlock(c, r.Check)
 				})
 			}
-			ui.Row(c).Gap(8).Justify(ui.End).Children(func() {
-				if ui.Button(c, L("Delete")).Clicked() {
+			ui.Row(c).Gap(8).Children(func() {
+				if textButton(c, L("Delete"), danger, false).Clicked() {
 					f.open = false
 					id, name := r.ID, r.Name
 					a.ask(L("Delete %s?", name), L("The routine stops running. Its past runs stay in the chat."), L("Delete"), func() { a.do(a.st.DeleteRoutine(id)) })
 				}
-				if ui.Button(c, L("Edit in Chat")).Clicked() {
+				ui.Spacer(c)
+				if button(c, L("Edit in Chat")).Clicked() {
 					f.open = false
 					if dm, err := a.st.DMOf(r.BotID); err == nil {
 						a.selectChat(dm.ID)
@@ -153,10 +153,10 @@ func (a *app) routineSheetView(c *ui.Context) {
 				if !r.Enabled {
 					pause = L("Resume")
 				}
-				if ui.Button(c, pause).Clicked() {
+				if button(c, pause).Clicked() {
 					a.setRoutineOn(r, !r.Enabled)
 				}
-				if ui.PrimaryButton(c, L("Run Now")).Clicked() {
+				if primaryButton(c, L("Run Now"), false).Clicked() {
 					f.open = false
 					if err := a.team.RunRoutine(r); err != nil {
 						a.do(err)

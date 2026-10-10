@@ -12,6 +12,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
@@ -39,6 +40,10 @@ func dataDir() string {
 }
 
 func main() {
+	mygo.App.SetName("gobot")
+	if !mygo.App.RequestSingleInstanceLock() {
+		return // the running one shows its window
+	}
 	st, err := store.Open(dataDir())
 	if err != nil {
 		log.Fatal(err)
@@ -69,13 +74,22 @@ func main() {
 	a.applyPrefs()
 
 	mygo.App.WhenReady(func() {
+		mygo.App.SetMenu(buildMenu(a, func(fn func()) { a.post(fn) }))
 		win := mygo.NewWindow(mygo.WindowOptions{
-			Title:    "gobot",
-			Width:    1040,
-			Height:   700,
-			StateKey: "main", // size, position, maximized: back where they were
-			Content:  ui.View(a.root),
+			Title:          "gobot",
+			Width:          1180,
+			Height:         780,
+			MinWidth:       720,
+			MinHeight:      480,
+			StateKey:       "main", // size, position, maximized: back where they were
+			TitleBarStyle:  mygo.TitleBarHiddenInset,
+			TitleBarHeight: titleBarHeight,
+			// The traffic lights in the middle of the title bar's height.
+			TrafficLightPosition: &mygo.Point{X: 14, Y: (titleBarHeight - 14) / 2},
+			Vibrancy:             mygo.VibrancySidebar,
+			Content:              ui.View(a.root),
 		})
+		a.vibrancy = runtime.GOOS == "darwin"
 		a.post = win.Update
 		a.openFolder = func(p string) { go mygo.Shell.OpenPath(p) }
 		a.mcpPath = filepath.Join(dataDir(), "mcp.json")
@@ -104,6 +118,7 @@ func main() {
 		for len(pending) > 0 {
 			win.Update(<-pending)
 		}
+		mygo.App.OnSecondInstance(func([]string, string) { win.Update(func() { win.Show(); win.Focus() }) })
 		go func() { // running commands' cards and tasks show their output as it comes
 			for range time.Tick(time.Second) {
 				if len(tm.Terminals.Running("")) > 0 {
@@ -148,4 +163,44 @@ func newTeam(st *store.Store, fallback connect.Config, emit func(team.Event)) *t
 		Memory:     os.Getenv("GOBOT_MEMORY") != "0",
 		Compaction: &team.Compaction{NoFlush: os.Getenv("GOBOT_MEMORY_FLUSH") == "0"},
 	}
+}
+
+// buildMenu is the menu bar; its actions run on the window's thread.
+func buildMenu(a *app, post func(func())) *mygo.Menu {
+	do := func(fn func()) func(*mygo.MenuItem, *mygo.Window) {
+		return func(*mygo.MenuItem, *mygo.Window) { post(fn) }
+	}
+	return mygo.NewMenu([]*mygo.MenuItem{
+		{Role: mygo.RoleAppMenu, Submenu: []*mygo.MenuItem{
+			{Role: mygo.RoleAbout},
+			mygo.Separator(),
+			{Label: L("Settings…"), Accelerator: "CmdOrCtrl+,", Click: do(func() { a.settings = true })},
+			mygo.Separator(),
+			{Role: mygo.RoleServices},
+			mygo.Separator(),
+			{Role: mygo.RoleHide},
+			{Role: mygo.RoleHideOthers},
+			{Role: mygo.RoleUnhide},
+			mygo.Separator(),
+			{Role: mygo.RoleQuit},
+		}},
+		{Label: L("File"), Submenu: []*mygo.MenuItem{
+			{Label: L("New Bot…"), Accelerator: "CmdOrCtrl+N", Click: do(a.newBot)},
+			{Label: L("New Group…"), Accelerator: "CmdOrCtrl+Shift+N", Click: do(a.newGroup)},
+			mygo.Separator(),
+			{Role: mygo.RoleClose},
+		}},
+		{Role: mygo.RoleEditMenu},
+		{Label: L("View"), Submenu: []*mygo.MenuItem{
+			{Label: L("Toggle Sidebar"), Accelerator: "CmdOrCtrl+Shift+B", Click: do(a.toggleSidebar)},
+			{Label: L("Toggle Info"), Accelerator: "CmdOrCtrl+Alt+I", Click: do(func() { a.inspector = !a.inspector; a.layoutChanged() })},
+			{Label: L("Search Chats"), Accelerator: "CmdOrCtrl+F", Click: do(func() { a.sidebarShown, a.filterFocus = true, true })},
+			{Label: L("Command Palette"), Accelerator: "CmdOrCtrl+K", Click: do(a.openPalette)},
+			mygo.Separator(),
+			{Label: L("Stop"), Accelerator: "CmdOrCtrl+.", Click: do(a.stop)},
+			mygo.Separator(),
+			{Role: mygo.RoleToggleFullScreen},
+		}},
+		{Role: mygo.RoleWindowMenu},
+	})
 }
