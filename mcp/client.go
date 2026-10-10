@@ -123,7 +123,7 @@ func Connect(ctx context.Context, s Server) (*Client, error) {
 	raw, err := t.call(ctx, "initialize", map[string]any{
 		"protocolVersion": ProtocolVersion,
 		"capabilities":    map[string]any{},
-		"clientInfo":      map[string]string{"name": "gobot", "version": "0.1"},
+		"clientInfo":      map[string]string{"name": "Baggy", "version": "0.1"},
 	})
 	if err != nil {
 		t.close()
@@ -182,7 +182,7 @@ func (c *Client) Call(ctx context.Context, name string, args json.RawMessage) (R
 	}
 	params := map[string]any{"name": name, "arguments": args}
 	if fn, ok := ctx.Value(progressKey{}).(func(Progress)); ok {
-		token := fmt.Sprintf("gobot-%d", c.tokens.Add(1))
+		token := fmt.Sprintf("baggy-%d", c.tokens.Add(1))
 		params["_meta"] = map[string]any{"progressToken": token}
 		c.progress.Store(token, fn)
 		defer c.progress.Delete(token)

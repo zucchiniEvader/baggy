@@ -131,7 +131,7 @@ func (a *app) notifyNotice(e store.Entry) {
 	if a.notify == nil || a.watching(e.ChatID) || e.Msg.Kind != team.KindNotice {
 		return
 	}
-	title := L("gobot")
+	title := "Baggy"
 	if ch := a.chat(e.ChatID); ch != nil {
 		title = a.title(*ch)
 	}

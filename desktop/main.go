@@ -36,11 +36,36 @@ func dataDir() string {
 	if err != nil {
 		base = os.TempDir()
 	}
-	return filepath.Join(base, "gobot")
+	return filepath.Join(base, "Baggy")
+}
+
+// renameFolders moves the folders the app had under its old name, gobot,
+// to the new ones, unless those are there already.
+func renameFolders() {
+	if os.Getenv("GOBOT_DATA") == "" {
+		if base, err := os.UserConfigDir(); err == nil {
+			moveFolder(filepath.Join(base, "gobot"), dataDir())
+		}
+	}
+	if home, err := os.UserHomeDir(); err == nil && os.Getenv("GOBOT_WORKSPACES") == "" {
+		moveFolder(filepath.Join(home, ".gobot"), filepath.Join(home, ".baggy"))
+	}
+}
+
+func moveFolder(from, to string) {
+	if _, err := os.Stat(to); err == nil {
+		return
+	}
+	if _, err := os.Stat(from); err != nil {
+		return
+	}
+	if err := os.Rename(from, to); err != nil {
+		log.Printf("moving %s to %s: %v", from, to, err)
+	}
 }
 
 // workspacesDir is where the bots' workspaces live: GOBOT_WORKSPACES, else
-// ~/.gobot/workspaces; "" (beside the database) for a data folder of
+// ~/.baggy/workspaces; "" (beside the database) for a data folder of
 // GOBOT_DATA, so a test copy of the app keeps to itself.
 func workspacesDir() string {
 	if d := os.Getenv("GOBOT_WORKSPACES"); d != "" {
@@ -53,14 +78,15 @@ func workspacesDir() string {
 	if err != nil {
 		return ""
 	}
-	return filepath.Join(home, ".gobot", "workspaces")
+	return filepath.Join(home, ".baggy", "workspaces")
 }
 
 func main() {
-	mygo.App.SetName("gobot")
+	mygo.App.SetName("Baggy")
 	if !mygo.App.RequestSingleInstanceLock() {
 		return // the running one shows its window
 	}
+	renameFolders()
 	st, err := store.Open(dataDir())
 	if err != nil {
 		log.Fatal(err)
@@ -130,7 +156,7 @@ func main() {
 			a.redrawSettings = func() { win.Update(func() {}) }
 		}
 		win := mygo.NewWindow(mygo.WindowOptions{
-			Title:          "gobot",
+			Title:          "Baggy",
 			Width:          1180,
 			Height:         780,
 			MinWidth:       720,
@@ -218,9 +244,9 @@ func main() {
 			}
 		})
 		tray, err := mygo.NewTray(mygo.TrayOptions{
-			Icon: trayIcon, IconIsTemplate: true, ToolTip: "gobot",
+			Icon: trayIcon, IconIsTemplate: true, ToolTip: "Baggy",
 			Menu: mygo.NewMenu([]*mygo.MenuItem{
-				{Label: L("Open gobot"), Click: func(*mygo.MenuItem, *mygo.Window) { win.Show(); mygo.App.Focus() }},
+				{Label: L("Open Baggy"), Click: func(*mygo.MenuItem, *mygo.Window) { win.Show(); mygo.App.Focus() }},
 				mygo.Separator(),
 				{Role: mygo.RoleQuit},
 			}),

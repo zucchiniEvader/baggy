@@ -317,18 +317,18 @@ func (a *app) aboutPane(c *ui.Context) {
 	t := c.Theme()
 	ui.Column(c).Gap(12).AlignItems(ui.Center).Padding(24, 0).Children(func() {
 		if b := appBitmap(); b != nil {
-			ui.Image(c, b).Size(96, 96).Label("gobot")
+			ui.Image(c, b).Size(96, 96).Label("Baggy")
 		} else {
 			iconTile(c, iconBot, 48)
 		}
 		ui.Column(c).Gap(4).AlignItems(ui.Center).Children(func() {
-			ui.Text(c, "gobot").FontSize(17).Bold()
+			ui.Text(c, "Baggy").FontSize(17).Bold()
 			ui.Text(c, L("A desktop assistant with group chat.")).FontSize(12).TextColor(t.TextMuted)
 		})
 	})
 	sectionTitle(c, L("Data"))
 	card(c, func() {
-		settingRow(c, tilde(a.st.Dir()), L("The chats, bots and settings (gobot.db), the attached files, and mcp.json."), func() {
+		settingRow(c, tilde(a.st.Dir()), L("The chats, bots and settings (baggy.db), the attached files, and mcp.json."), func() {
 			if a.openFolder != nil {
 				if smallButton(c.Key("show-data"), L("Show Folder"), secondary).Clicked() {
 					a.openFolder(a.st.Dir())

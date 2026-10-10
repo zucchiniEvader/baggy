@@ -225,7 +225,7 @@ func SystemPrompt(b store.Bot, chat store.Chat, bots []store.Bot, workdir, works
 	if d := strings.TrimSpace(b.Description); d != "" {
 		s.WriteString(d + "\n\n")
 	}
-	fmt.Fprintf(&s, "You are %s (id %s), one of the user's bots in gobot, a desktop assistant. Your working folder is %s; your tools run there.", b.Name, b.ID, workdir)
+	fmt.Fprintf(&s, "You are %s (id %s), one of the user's bots in Baggy, a desktop assistant. Your working folder is %s; your tools run there.", b.Name, b.ID, workdir)
 	if workdir != workspace {
 		fmt.Fprintf(&s, " Your own folder, with your memory, is %s.", workspace)
 	}

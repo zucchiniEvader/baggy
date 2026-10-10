@@ -41,3 +41,24 @@ func TestUseWorkspacesMovesThemOver(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestOpenRenamesTheOldDatabase(t *testing.T) {
+	dir := t.TempDir()
+	s, _ := Open(dir)
+	s.CreateBot(Bot{Name: "Kept"})
+	s.Close()
+	os.Rename(filepath.Join(dir, "baggy.db"), filepath.Join(dir, "gobot.db"))
+	os.Remove(filepath.Join(dir, "baggy.db-wal"))
+	os.Remove(filepath.Join(dir, "baggy.db-shm"))
+	s, err := Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	if bs, _ := s.Bots(); len(bs) != 1 || bs[0].Name != "Kept" {
+		t.Fatalf("bots %+v", bs)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "gobot.db")); !os.IsNotExist(err) {
+		t.Fatal("the old file stays")
+	}
+}

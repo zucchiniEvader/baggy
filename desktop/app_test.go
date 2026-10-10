@@ -1239,7 +1239,7 @@ func TestWorkspacesDir(t *testing.T) {
 	home, _ := os.UserHomeDir()
 	t.Setenv("GOBOT_WORKSPACES", "")
 	t.Setenv("GOBOT_DATA", "")
-	if got := workspacesDir(); got != filepath.Join(home, ".gobot", "workspaces") {
+	if got := workspacesDir(); got != filepath.Join(home, ".baggy", "workspaces") {
 		t.Fatalf("default %q", got)
 	}
 	t.Setenv("GOBOT_DATA", t.TempDir())
@@ -1249,5 +1249,21 @@ func TestWorkspacesDir(t *testing.T) {
 	t.Setenv("GOBOT_WORKSPACES", "/x")
 	if workspacesDir() != "/x" || tilde(filepath.Join(home, "a")) != "~/a" || tilde(home+"x") != home+"x" {
 		t.Fatal("override or tilde")
+	}
+}
+
+func TestMoveFolder(t *testing.T) {
+	dir := t.TempDir()
+	old, now := filepath.Join(dir, "gobot"), filepath.Join(dir, "Baggy")
+	os.MkdirAll(old, 0o755)
+	os.WriteFile(filepath.Join(old, "baggy.db"), []byte("x"), 0o644)
+	moveFolder(old, now)
+	if _, err := os.Stat(filepath.Join(now, "baggy.db")); err != nil {
+		t.Fatal("not moved")
+	}
+	os.MkdirAll(old, 0o755) // a new one is there already: the old stays
+	moveFolder(old, now)
+	if _, err := os.Stat(old); err != nil {
+		t.Fatal("moved over the new one")
 	}
 }

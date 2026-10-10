@@ -1,6 +1,6 @@
 # gobot
 
-A desktop personal assistant with group chat, written in Go: the agent core is our own, the UI is [MyGo](https://github.com/egoist/mygo) native. The design follows `../lorca`, a Rust project with the same shape; read it, don't copy it.
+**Baggy**, a desktop personal assistant with group chat, written in Go (the repository and Go module keep the name gobot): the agent core is our own, the UI is [MyGo](https://github.com/egoist/mygo) native. The design follows `../lorca`, a Rust project with the same shape; read it, don't copy it.
 
 ## Reference: `../lorca`
 

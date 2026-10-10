@@ -27,12 +27,19 @@ type Store struct {
 	workspaces string // the bots' folders: dir/workspaces unless UseWorkspaces moved them
 }
 
-// Open opens (creating as needed) dir/gobot.db and dir/workspaces.
+// Open opens (creating as needed) dir/baggy.db; one named gobot.db, from
+// when the app was gobot, is renamed first.
 func Open(dir string) (*Store, error) {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return nil, err
 	}
-	db, err := sql.Open("sqlite", "file:"+filepath.Join(dir, "gobot.db")+"?_pragma=foreign_keys(1)&_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)")
+	for _, ext := range []string{"", "-wal", "-shm"} { // the app was gobot
+		old, path := filepath.Join(dir, "gobot.db"+ext), filepath.Join(dir, "baggy.db"+ext)
+		if _, err := os.Stat(path); os.IsNotExist(err) {
+			os.Rename(old, path)
+		}
+	}
+	db, err := sql.Open("sqlite", "file:"+filepath.Join(dir, "baggy.db")+"?_pragma=foreign_keys(1)&_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)")
 	if err != nil {
 		return nil, err
 	}
@@ -421,7 +428,9 @@ func (s *Store) SaveAvatar(png []byte) (string, error) {
 }
 
 // AvatarPath is where an avatar picture is kept.
-func (s *Store) AvatarPath(name string) string { return filepath.Join(s.dir, "avatars", filepath.Base(name)) }
+func (s *Store) AvatarPath(name string) string {
+	return filepath.Join(s.dir, "avatars", filepath.Base(name))
+}
 
 func notFound(res sql.Result, err error) error {
 	if err != nil {

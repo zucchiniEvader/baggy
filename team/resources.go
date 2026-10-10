@@ -126,7 +126,7 @@ func resourceText(cs []mcp.ResourceContent) string {
 		if exts, _ := mime.ExtensionsByType(c.MimeType); len(exts) > 0 {
 			ext = exts[0]
 		}
-		f, err := os.CreateTemp("", "gobot-resource-*"+ext)
+		f, err := os.CreateTemp("", "baggy-resource-*"+ext)
 		if err == nil {
 			_, err = f.Write(data)
 			f.Close()
