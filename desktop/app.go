@@ -57,10 +57,10 @@ type app struct {
 	approvals  *approvals
 	prefs      *prefs
 
-	fallback       connect.Config  // the provider when none is stored
-	locale         string          // the system's language
-	readImage      func() []byte   // the clipboard's image as PNG, or nil
-	pickImage      func() []string // asks for image files
+	fallback       connect.Config                  // the provider when none is stored
+	locale         string                          // the system's language
+	readImage      func() []byte                   // the clipboard's image as PNG, or nil
+	pickImage      func(done func(paths []string)) // asks for image files; done runs on the main thread with the ones chosen
 	openFolder     func(path string)
 	onLanguage     func()       // the language changed: the menu bar is made again
 	showSettings   func()       // opens or brings up the Settings window

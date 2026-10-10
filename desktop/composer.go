@@ -200,11 +200,14 @@ func (a *app) composer(c *ui.Context, ch store.Chat, v *chatView) {
 			ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
 				if a.pickImage != nil {
 					if iconButton(c.Key("attach"), iconPaperclip, L("Attach an image")).Clicked() {
-						for _, path := range a.pickImage() {
-							if err := v.attach(path); err != nil {
-								v.notice(err.Error())
+						a.pickImage(func(paths []string) {
+							for _, path := range paths {
+								if err := v.attach(path); err != nil {
+									v.notice(err.Error())
+								}
 							}
-						}
+							v.focus = true
+						})
 					}
 				}
 				hint := L("↩ Send · ⇧↩ New line")

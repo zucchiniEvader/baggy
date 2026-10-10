@@ -753,3 +753,25 @@ func TestRoutineNotificationsAndBadge(t *testing.T) {
 		t.Fatalf("notes %q", notes)
 	}
 }
+
+func TestAttachDoesNotBlockTheFrame(t *testing.T) {
+	h := newHarness(t, script(func(string, []agent.Message) agent.Message { return say("ok") }))
+	img := filepath.Join(t.TempDir(), "a.png")
+	os.WriteFile(img, []byte{0x89, 'P', 'N', 'G', '\r', '\n', 0x1a, '\n', 0, 0, 0, 0}, 0o644)
+	chosen := make(chan struct{})
+	// As main.go does: the dialog waits for the user off the main thread,
+	// and its answer comes back through post.
+	h.a.pickImage = func(done func([]string)) {
+		go func() {
+			<-chosen // the user picks a while later
+			h.a.post(func() { done([]string{img}) })
+		}()
+	}
+	h.tt.Frame()
+	if err := h.tt.Click("Attach an image"); err != nil {
+		t.Fatal(err)
+	}
+	h.tt.Frame() // the frame goes on while the dialog shows
+	close(chosen)
+	h.pump("the image", func() bool { return h.tt.HasText("1 image(s) attached") })
+}

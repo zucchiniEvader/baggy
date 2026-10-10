@@ -142,10 +142,16 @@ func main() {
 				mygo.App.Focus()
 			})
 		})
-		a.pickImage = func() []string {
-			paths, _ := mygo.Dialog.Open(mygo.OpenDialogOptions{Parent: win, Title: L("Attach Images"), Multiple: true,
-				Filters: []mygo.FileFilter{{Name: L("Images"), Extensions: []string{"png", "jpg", "jpeg", "gif", "webp"}}}})
-			return paths
+		// The file dialog waits for the user, so it is asked from a goroutine:
+		// asked from a frame, it would wait on the very thread that draws.
+		a.pickImage = func(done func(paths []string)) {
+			go func() {
+				paths, _ := mygo.Dialog.Open(mygo.OpenDialogOptions{Parent: win, Title: L("Attach Images"), Multiple: true,
+					Filters: []mygo.FileFilter{{Name: L("Images"), Extensions: []string{"png", "jpg", "jpeg", "gif", "webp"}}}})
+				if len(paths) > 0 {
+					win.Update(func() { done(paths) })
+				}
+			}()
 		}
 		for len(pending) > 0 {
 			win.Update(<-pending)
