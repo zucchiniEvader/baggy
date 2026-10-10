@@ -4,6 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"image/png"
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -578,15 +581,27 @@ func TestSettingsModelsAndCommands(t *testing.T) {
 	st.Frame()
 	h.a.set.prov.name, h.a.set.prov.key, h.a.set.prov.models = "DeepSeek", "sk-x", "deepseek-flash, deepseek-v4-pro"
 	st.Frame()
-	if err := st.Click("Save"); err != nil {
+	if err := st.Click("Create"); err != nil {
 		t.Fatal(err)
 	}
 	st.Frame()
 	ps, _ := h.st.Providers()
-	if len(ps) != 1 || len(ps[0].Models) != 2 || h.st.Setting(team.SettingDefaultProvider) != ps[0].ID || !st.HasText("Saved.") || !st.HasText("default") {
+	if len(ps) != 1 || len(ps[0].Models) != 2 || h.st.Setting(team.SettingDefaultProvider) != ps[0].ID || !st.HasText("Saved") || !st.HasText("Default") || !st.HasText("deepseek-flash · Anthropic") {
 		t.Fatalf("providers %+v texts %q", ps, st.Texts())
 	}
-	st.Click("Delete")
+	h.a.set.prov.models = "deepseek-flash"
+	st.Frame()
+	if !st.HasText("Revert") || st.HasText("Saved") {
+		t.Fatalf("an edit not shown: %q", st.Texts())
+	}
+	st.Click("Revert")
+	st.Frame()
+	if h.a.set.prov.models != "deepseek-flash, deepseek-v4-pro" {
+		t.Fatal("not reverted")
+	}
+	if err := st.Click("Delete Provider"); err != nil {
+		t.Fatal(err)
+	}
 	st.Frame()
 	if h.a.set.confirm == nil {
 		t.Fatal("no confirmation")
@@ -617,5 +632,26 @@ func TestSettingsModelsAndCommands(t *testing.T) {
 	st.Frame()
 	if !st.HasText(h.st.Dir()) {
 		t.Fatalf("about: %q", st.Texts())
+	}
+}
+
+func TestTestConnection(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		io.Copy(io.Discard, r.Body)
+		if r.Header.Get("authorization") != "Bearer good" {
+			w.WriteHeader(401)
+			io.WriteString(w, `{"error":{"message":"invalid api key"}}`)
+			return
+		}
+		io.WriteString(w, "data: {\"choices\":[{\"delta\":{\"content\":\"OK\"},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n")
+	}))
+	defer srv.Close()
+	cfg := connect.Config{API: connect.Chat, BaseURL: srv.URL, APIKey: "good", Model: "m"}
+	if ok, msg := checkProvider(cfg); !ok || msg != "Connected: m answered." {
+		t.Fatalf("%v %q", ok, msg)
+	}
+	cfg.APIKey = "bad"
+	if ok, msg := checkProvider(cfg); ok || !strings.Contains(msg, "invalid api key") {
+		t.Fatalf("%v %q", ok, msg)
 	}
 }

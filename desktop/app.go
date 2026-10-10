@@ -52,17 +52,18 @@ type app struct {
 	approvals  *approvals
 	prefs      *prefs
 
-	fallback     connect.Config  // the provider when none is stored
-	locale       string          // the system's language
-	readImage    func() []byte   // the clipboard's image as PNG, or nil
-	pickImage    func() []string // asks for image files
-	openFolder   func(path string)
-	onLanguage   func()       // the language changed: the menu bar is made again
-	showSettings func()       // opens or brings up the Settings window
-	redrawMain   func()       // draws the main window again
-	mcpPath      string       // the user's mcp.json
-	servers      []mcp.Status // as the last check left them
-	checking     bool
+	fallback       connect.Config  // the provider when none is stored
+	locale         string          // the system's language
+	readImage      func() []byte   // the clipboard's image as PNG, or nil
+	pickImage      func() []string // asks for image files
+	openFolder     func(path string)
+	onLanguage     func()       // the language changed: the menu bar is made again
+	showSettings   func()       // opens or brings up the Settings window
+	redrawMain     func()       // draws the main window again
+	redrawSettings func()       // draws the Settings window again
+	mcpPath        string       // the user's mcp.json
+	servers        []mcp.Status // as the last check left them
+	checking       bool
 }
 
 // chatView is one chat's transcript as drawn and its composer.

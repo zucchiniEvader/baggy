@@ -98,6 +98,8 @@ func main() {
 				Content:              ui.View(a.settingsRoot),
 			})
 			settingsWin.OnClosed(func() { settingsWin = nil })
+			win := settingsWin
+			a.redrawSettings = func() { win.Update(func() {}) }
 		}
 		win := mygo.NewWindow(mygo.WindowOptions{
 			Title:          "gobot",

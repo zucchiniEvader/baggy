@@ -251,7 +251,9 @@ func (a *app) groupSheetView(c *ui.Context) {
 // ---- providers ----
 
 type providerForm struct {
-	saved                  bool // shows "Saved." until edited again
+	showKey                bool // the key shows as text
+	checking, checkOK      bool // Test Connection under way, and how it went
+	check                  string
 	id                     string
 	name, api, base, key   string
 	models                 string // comma separated
