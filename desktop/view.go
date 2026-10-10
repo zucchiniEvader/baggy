@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/egoist/mygo/ui"
 	"github.com/spike/gobot/agent"
@@ -250,8 +251,7 @@ func items(rows []row) []item {
 	return out
 }
 
-// avatarGutter is the width of the column a bot's avatar stands in.
-const avatarGutter = 28
+
 
 func (a *app) transcript(c *ui.Context, ch store.Chat, v *chatView) {
 	rows := v.rows
@@ -271,21 +271,28 @@ func (a *app) transcript(c *ui.Context, ch store.Chat, v *chatView) {
 				a.drawRow(c, ch, v, r, false)
 				return
 			}
-			// A bot's rows: its avatar at the start of its turn, in a column of
-			// its own, the words beside it.
-			ui.Row(c).Gap(10).AlignItems(ui.Start).Children(func() {
-				gutter := ui.Box(c).Width(avatarGutter).Shrink(0)
+			// A bot's rows: its name starts each of its turns, and a reply's
+			// time shows on the right while the pointer is over it.
+			col := ui.Column(c).Gap(8)
+			hovered := col.Hovered()
+			col.Children(func() {
 				if it.first {
-					gutter.Children(func() { a.avatar(c, r.author, avatarGutter) })
+					ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
+						ui.Text(c, a.name(r.author)).FontSize(12).FontWeight(600).TextColor(c.Theme().TextMuted).SingleLine().Shrink(1).MinWidth(0)
+						ui.Spacer(c)
+						if r.kind == rowAssistant {
+							msgTime(c, r.at, hovered)
+						}
+					})
 				}
-				ui.Column(c).Grow(1).MinWidth(0).Gap(8).Children(func() {
-					if it.first {
-						ui.Text(c, a.name(r.author)).FontSize(13).FontWeight(600).SingleLine().MinWidth(0).Margin(5, 0, 0)
-					}
-					if r.kind == rowTool {
-						a.toolGroup(c, ch, v, it.rows)
-					} else {
-						a.drawRow(c, ch, v, r, it.first)
+				if r.kind == rowTool {
+					a.toolGroup(c, ch, v, it.rows)
+					return
+				}
+				ui.Box(c).Children(func() {
+					a.drawRow(c, ch, v, r, it.first)
+					if !it.first && hovered && r.at != 0 {
+						ui.Box(c).Absolute().Top(0).Right(0).Padding(0, 0, 0, 8).Background(pal(c).appBg).Children(func() { msgTime(c, r.at, true) })
 					}
 				})
 			})
@@ -311,10 +318,11 @@ func (a *app) streaming(v *chatView) bool {
 
 func (a *app) drawRow(c *ui.Context, ch store.Chat, v *chatView, r row, first bool) {
 	t := c.Theme()
-	p := pal(c)
 	switch r.kind {
 	case rowUser:
-		ui.Column(c).AlignItems(ui.End).Gap(4).Padding(0, 0, 0, 80).Children(func() {
+		col := ui.Column(c).AlignItems(ui.End).Gap(4).Padding(0, 0, 0, 80)
+		hovered := col.Hovered()
+		col.Children(func() {
 			if r.from != "" {
 				ui.Text(c, L("From %s, via message_bot", a.name(r.from))).FontSize(11).TextColor(t.TextMuted)
 			}
@@ -322,18 +330,15 @@ func (a *app) drawRow(c *ui.Context, ch store.Chat, v *chatView, r row, first bo
 				quoteView(c, a.name(r.quote.Author), r.quote.Text)
 			}
 			if r.text != "" || r.images > 0 {
-				bubble := ui.Column(c).Padding(8, 12).Radius(cardRadius).Background(p.userBubble).Gap(4)
-				a.rowMenu(bubble, r)
-				bubble.Children(func() {
-					if r.text != "" {
-						ui.Text(c, r.text).FontSize(13).LineHeight(1.55).Selectable()
-					}
-					if r.images > 0 {
-						ui.Row(c).Gap(6).AlignItems(ui.Center).TextColor(t.TextMuted).Children(func() {
-							ui.Icon(c, iconPaperclip).FontSize(12)
-							ui.Text(c, L("%d image(s) attached", r.images)).FontSize(12)
-						})
-					}
+				ui.Row(c).AlignItems(ui.End).Children(func() {
+					// The time stands left of the bubble, out of the flow, so
+					// showing it moves nothing.
+					ui.Box(c).Width(0).Shrink(0).Children(func() {
+						if hovered && r.at != 0 {
+							ui.Row(c).Absolute().Right(0).Bottom(8).Width(140).Justify(ui.End).Padding(0, 8, 0, 0).Children(func() { msgTime(c, r.at, true) })
+						}
+					})
+					a.userBubble(c, r)
 				})
 			}
 			if len(r.files) > 0 {
@@ -369,6 +374,24 @@ func (a *app) drawRow(c *ui.Context, ch store.Chat, v *chatView, r row, first bo
 	case rowNotice:
 		ui.Text(c, r.text).Selectable().FontSize(11).TextColor(t.TextMuted).TextAlign(ui.Center).FillWidth()
 	}
+}
+
+// userBubble is the words of a user's message on a neutral bubble.
+func (a *app) userBubble(c *ui.Context, r row) {
+	t := c.Theme()
+	bubble := ui.Column(c).Padding(8, 12).Radius(cardRadius).Background(pal(c).userBubble).Gap(4).MinWidth(0)
+	a.rowMenu(bubble, r)
+	bubble.Children(func() {
+		if r.text != "" {
+			ui.Text(c, r.text).FontSize(13).LineHeight(1.55).Selectable()
+		}
+		if r.images > 0 {
+			ui.Row(c).Gap(6).AlignItems(ui.Center).TextColor(t.TextMuted).Children(func() {
+				ui.Icon(c, iconPaperclip).FontSize(12)
+				ui.Text(c, L("%d image(s) attached", r.images)).FontSize(12)
+			})
+		}
+	})
 }
 
 // failedReply is a reply that failed: what went wrong in words a person
@@ -641,4 +664,28 @@ func (a *app) thumb(f store.File) *ui.Bitmap {
 		}
 		return ui.NewBitmap(img), nil
 	})
+}
+
+// msgTime is when a message came, as the conversation shows it while the
+// pointer is over it: the time today, else the day with it; the whole date
+// in its tooltip.
+func msgTime(c *ui.Context, at int64, shown bool) {
+	if at == 0 || !shown {
+		return
+	}
+	t := time.UnixMilli(at)
+	ui.Text(c, clock(time.Now(), t)).FontSize(11).TextColor(c.Theme().TextMuted).SingleLine().Shrink(0).Tooltip(t.Format("2006-01-02 15:04:05"))
+}
+
+func clock(now, t time.Time) string {
+	hm := t.Format("15:04")
+	switch days := daysBetween(t, now); {
+	case days <= 0:
+		return hm
+	case days == 1:
+		return L("Yesterday") + " " + hm
+	case t.Year() == now.Year():
+		return fmt.Sprintf("%d/%d %s", t.Month(), t.Day(), hm)
+	}
+	return fmt.Sprintf("%d/%d/%d %s", t.Year(), t.Month(), t.Day(), hm)
 }

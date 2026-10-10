@@ -991,3 +991,52 @@ func TestNewProviderListsModelsOnceTheURLRests(t *testing.T) {
 		t.Fatalf("models %q", f.models)
 	}
 }
+
+func TestMessageTimeShowsOnHover(t *testing.T) {
+	h := newHarness(t, script(func(string, []agent.Message) agent.Message { return say("Soup.\n\nAnd bread.") }))
+	h.send("dinner?")
+	h.pump("the reply", func() bool { return h.tt.HasText("Soup.") && h.idle() })
+	now := time.Now().Format("15:04")
+	h.tt.Move(1, 1)
+	h.tt.Frame()
+	h.tt.Frame()
+	stamps := func() int {
+		n := 0
+		for _, s := range h.tt.Texts() {
+			if s == now {
+				n++
+			}
+		}
+		return n
+	}
+	before := stamps() // the sidebar's row shows the time already
+	for _, text := range []string{"dinner?", "And bread."} {
+		r, ok := h.tt.Find(text)
+		if !ok {
+			t.Fatalf("no %q", text)
+		}
+		h.tt.Move(r.X+2, r.Y+2)
+		h.tt.Frame()
+		h.tt.Frame()
+		if stamps() != before+1 {
+			t.Fatalf("hovering %q: %d stamps, %d before; %q", text, stamps(), before, h.tt.Texts())
+		}
+	}
+}
+
+func TestClock(t *testing.T) {
+	now := time.Date(2026, 10, 10, 15, 0, 0, 0, time.Local)
+	for _, c := range []struct {
+		t    time.Time
+		want string
+	}{
+		{now.Add(-time.Hour), "14:00"},
+		{now.AddDate(0, 0, -1), "Yesterday 15:00"},
+		{now.AddDate(0, 0, -5), "10/5 15:00"},
+		{now.AddDate(-1, 0, 0), "2025/10/10 15:00"},
+	} {
+		if got := clock(now, c.t); got != c.want {
+			t.Errorf("clock(%v) = %q, want %q", c.t, got, c.want)
+		}
+	}
+}

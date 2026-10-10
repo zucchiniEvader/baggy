@@ -26,6 +26,7 @@ type row struct {
 	author   string // store.User or a bot id
 	from     string // a user row delivered by message_bot: the sending bot
 	seq      int64  // the entry it shows; 0 while streaming
+	at       int64  // when the entry was stored, Unix ms; 0 while streaming
 	turn     string
 	text     string
 	thinking string
@@ -135,7 +136,7 @@ func entryRows(e store.Entry) []row {
 		}
 		return []row{{kind: rowNotice, seq: e.Seq, text: strings.Trim(text, "[]")}}
 	case m.Role == agent.RoleUser:
-		r := row{kind: rowUser, author: e.Author, from: e.Meta.From, seq: e.Seq, text: messageText(m), quote: e.Meta.ReplyTo, files: e.Meta.Files}
+		r := row{kind: rowUser, author: e.Author, from: e.Meta.From, seq: e.Seq, at: e.Created, text: messageText(m), quote: e.Meta.ReplyTo, files: e.Meta.Files}
 		for _, p := range m.Parts {
 			if p.Kind == agent.PartImage && len(r.files) == 0 {
 				r.images++
@@ -144,7 +145,7 @@ func entryRows(e store.Entry) []row {
 		return []row{r}
 	case m.Role == agent.RoleAssistant:
 		var out []row
-		r := row{kind: rowAssistant, author: e.Author, seq: e.Seq, turn: e.Turn, text: messageText(m)}
+		r := row{kind: rowAssistant, author: e.Author, seq: e.Seq, at: e.Created, turn: e.Turn, text: messageText(m)}
 		for _, p := range m.Parts {
 			switch p.Kind {
 			case agent.PartThinking:
@@ -167,7 +168,7 @@ func entryRows(e store.Entry) []row {
 		}
 		for _, p := range m.Parts {
 			if p.Kind == agent.PartToolCall {
-				out = append(out, row{kind: rowTool, author: e.Author, seq: e.Seq, turn: e.Turn, call: p})
+				out = append(out, row{kind: rowTool, author: e.Author, seq: e.Seq, at: e.Created, turn: e.Turn, call: p})
 			}
 		}
 		return out
