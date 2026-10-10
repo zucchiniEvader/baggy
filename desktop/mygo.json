@@ -1,0 +1,7 @@
+{
+  "name": "gobot",
+  "identifier": "io.github.spike.gobot",
+  "version": "0.1.0",
+  "icon": "resources/icon.png",
+  "out": "build"
+}

@@ -11,6 +11,10 @@ GOBOT_RENDER=<folder> go test -run TestRender ./...   # writes group-light.png a
 
 State is a `store` in `GOBOT_DATA` (default: the user config folder's `gobot`), seeded with Chef. Bots run on the providers added in Settings; with none, on the environment's (`connect.FromEnv`: `GOBOT_API`, `GOBOT_BASE_URL`, `GOBOT_API_KEY`, `GOBOT_MODEL`, or `ANTHROPIC_API_KEY`). A bot's tools are `shell`, `read_file`, `write_file`, `edit_file`, `find` and `grep` in its workspace, plus the team's and its memory's; failed model calls are retried (`agent.DefaultRetry`), the header reading "Retrying: …" meanwhile and the partial reply dropped.
 
+## Icon and builds
+
+`mygo.json` names the app gobot (`io.github.spike.gobot`); its icon is `resources/icon.png`, the art of `resources/icon-source.png` (a square with no transparency) in an 824 rounded square centered on a transparent 1024 canvas, the shape macOS expects of an app icon, so the Dock shows it as it is rather than inside a gray frame. `go tool mygo build` writes `build/darwin-arm64/gobot.app` (its `AppIcon.icns` made from the icon) and `gobot 0.1.0.dmg`; the binary embeds the icon too, the Dock's on macOS for a bare build and the About pane's.
+
 ## State and threads
 
 Views are immediate: `app.root` builds the window every frame from the `app` struct, which belongs to the main thread. `team.Team` emits from its goroutines through `app.post` (the window's `Update`), so events apply on the main thread in order. Tests give `post` a channel and run it on the test goroutine.

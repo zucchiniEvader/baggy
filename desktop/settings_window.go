@@ -303,7 +303,11 @@ func (a *app) commandsPane(c *ui.Context) {
 func (a *app) aboutPane(c *ui.Context) {
 	t := c.Theme()
 	ui.Column(c).Gap(12).AlignItems(ui.Center).Padding(24, 0).Children(func() {
-		iconTile(c, iconBot, 48)
+		if b := appBitmap(); b != nil {
+			ui.Image(c, b).Size(96, 96).Label("gobot")
+		} else {
+			iconTile(c, iconBot, 48)
+		}
 		ui.Column(c).Gap(4).AlignItems(ui.Center).Children(func() {
 			ui.Text(c, "gobot").FontSize(17).Bold()
 			ui.Text(c, L("A desktop assistant with group chat.")).FontSize(12).TextColor(t.TextMuted)

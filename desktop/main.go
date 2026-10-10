@@ -74,6 +74,9 @@ func main() {
 	a.applyPrefs()
 
 	mygo.App.WhenReady(func() {
+		if runtime.GOOS == "darwin" {
+			mygo.App.Dock.SetIcon(appIcon) // the bundle's own, also for a bare binary
+		}
 		mygo.App.SetMenu(buildMenu(a, func(fn func()) { a.post(fn) }))
 		a.onLanguage = func() { mygo.App.SetMenu(buildMenu(a, func(fn func()) { a.post(fn) })) }
 		var settingsWin *mygo.Window
