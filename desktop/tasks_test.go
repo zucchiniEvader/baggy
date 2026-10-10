@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/spike/gobot/agent"
-	"github.com/spike/gobot/terminal"
+	"github.com/zucchiniEvader/baggy/agent"
+	"github.com/zucchiniEvader/baggy/terminal"
 )
 
 func TestRunningTasks(t *testing.T) {

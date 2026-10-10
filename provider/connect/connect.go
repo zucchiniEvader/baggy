@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/spike/gobot/provider"
-	"github.com/spike/gobot/provider/anthropic"
-	"github.com/spike/gobot/provider/catalog"
-	"github.com/spike/gobot/provider/openai"
+	"github.com/zucchiniEvader/baggy/provider"
+	"github.com/zucchiniEvader/baggy/provider/anthropic"
+	"github.com/zucchiniEvader/baggy/provider/catalog"
+	"github.com/zucchiniEvader/baggy/provider/openai"
 )
 
 // The wire protocols a Config can name.

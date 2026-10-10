@@ -7,10 +7,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/spike/gobot/agent"
-	"github.com/spike/gobot/schedule"
-	"github.com/spike/gobot/store"
-	"github.com/spike/gobot/tool"
+	"github.com/zucchiniEvader/baggy/agent"
+	"github.com/zucchiniEvader/baggy/schedule"
+	"github.com/zucchiniEvader/baggy/store"
+	"github.com/zucchiniEvader/baggy/tool"
 )
 
 const (

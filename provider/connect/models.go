@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/spike/gobot/provider/catalog"
+	"github.com/zucchiniEvader/baggy/provider/catalog"
 )
 
 // Listed is a model a server lists.

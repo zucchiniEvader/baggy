@@ -4,7 +4,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/spike/gobot/store"
+	"github.com/zucchiniEvader/baggy/store"
 )
 
 // prefs are the app's preferences, kept in the store's settings.

@@ -9,7 +9,7 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/spike/gobot/agent"
+	"github.com/zucchiniEvader/baggy/agent"
 )
 
 // Rates are dollars per million tokens.

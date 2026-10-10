@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/spike/gobot/tool"
+	"github.com/zucchiniEvader/baggy/tool"
 )
 
 func call(t *testing.T, tl tool.Tool, args any) tool.Result {

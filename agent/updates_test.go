@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/spike/gobot/tool"
+	"github.com/zucchiniEvader/baggy/tool"
 )
 
 // chatty reports partial results as it works.

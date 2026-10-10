@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"strings"
 
-	"github.com/spike/gobot/agent"
+	"github.com/zucchiniEvader/baggy/agent"
 )
 
 // Server tool names, as the UI words them.

@@ -11,8 +11,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/spike/gobot/agent"
-	"github.com/spike/gobot/provider"
+	"github.com/zucchiniEvader/baggy/agent"
+	"github.com/zucchiniEvader/baggy/provider"
 )
 
 func sse(events ...string) string {

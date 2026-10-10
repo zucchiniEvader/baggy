@@ -3,10 +3,10 @@ package team
 import (
 	"errors"
 
-	"github.com/spike/gobot/agent"
-	"github.com/spike/gobot/provider"
-	"github.com/spike/gobot/provider/connect"
-	"github.com/spike/gobot/store"
+	"github.com/zucchiniEvader/baggy/agent"
+	"github.com/zucchiniEvader/baggy/provider"
+	"github.com/zucchiniEvader/baggy/provider/connect"
+	"github.com/zucchiniEvader/baggy/store"
 )
 
 // ErrNoProvider is a bot's model when no provider is set up.

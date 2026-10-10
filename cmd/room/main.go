@@ -9,10 +9,10 @@ import (
 	"os"
 	"strings"
 
-	"github.com/spike/gobot/agent"
-	"github.com/spike/gobot/provider/connect"
-	"github.com/spike/gobot/store"
-	"github.com/spike/gobot/team"
+	"github.com/zucchiniEvader/baggy/agent"
+	"github.com/zucchiniEvader/baggy/provider/connect"
+	"github.com/zucchiniEvader/baggy/store"
+	"github.com/zucchiniEvader/baggy/team"
 )
 
 func main() {

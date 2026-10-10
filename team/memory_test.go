@@ -6,10 +6,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/spike/gobot/agent"
-	"github.com/spike/gobot/memory"
-	"github.com/spike/gobot/store"
-	"github.com/spike/gobot/tool"
+	"github.com/zucchiniEvader/baggy/agent"
+	"github.com/zucchiniEvader/baggy/memory"
+	"github.com/zucchiniEvader/baggy/store"
+	"github.com/zucchiniEvader/baggy/tool"
 )
 
 // summarizing answers a summary request with "SUMMARY" and a flush with a

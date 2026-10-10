@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/spike/gobot/tool"
+	"github.com/zucchiniEvader/baggy/tool"
 )
 
 // maxOutput is how much of a read the model gets: its end.

@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/spike/gobot/agent"
-	"github.com/spike/gobot/store"
+	"github.com/zucchiniEvader/baggy/agent"
+	"github.com/zucchiniEvader/baggy/store"
 )
 
 const reviewSystem = `You review one action an assistant wants to take on the user's own computer, before it runs. Answer with JSON only: {"decision": "allow" | "ask", "reason": "<one short sentence>"}.

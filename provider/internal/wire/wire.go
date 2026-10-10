@@ -15,7 +15,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/spike/gobot/agent"
+	"github.com/zucchiniEvader/baggy/agent"
 )
 
 // Retry says how a request that fails before it streams is retried: on a

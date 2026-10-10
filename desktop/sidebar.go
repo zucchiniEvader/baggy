@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/egoist/mygo/ui"
-	"github.com/spike/gobot/store"
+	"github.com/zucchiniEvader/baggy/store"
 )
 
 // listNav is a list whose chosen row shows in the accent only while the

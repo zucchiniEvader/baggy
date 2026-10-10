@@ -4,7 +4,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/spike/gobot/tool"
+	"github.com/zucchiniEvader/baggy/tool"
 )
 
 // updateEvery is the most often a tool's partial results become events.

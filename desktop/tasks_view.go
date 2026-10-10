@@ -6,9 +6,9 @@ import (
 	"time"
 
 	"github.com/egoist/mygo/ui"
-	"github.com/spike/gobot/agent"
-	"github.com/spike/gobot/store"
-	"github.com/spike/gobot/terminal"
+	"github.com/zucchiniEvader/baggy/agent"
+	"github.com/zucchiniEvader/baggy/store"
+	"github.com/zucchiniEvader/baggy/terminal"
 )
 
 // taskDelay is how long a command runs before it counts as a task, so a

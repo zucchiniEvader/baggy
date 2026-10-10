@@ -5,7 +5,7 @@ import (
 	"time"
 
 	"github.com/egoist/mygo/ui"
-	"github.com/spike/gobot/store"
+	"github.com/zucchiniEvader/baggy/store"
 )
 
 // inspectorSlide is the inspector as it slides open and closed from the

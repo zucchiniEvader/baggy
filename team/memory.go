@@ -9,10 +9,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/spike/gobot/agent"
-	"github.com/spike/gobot/memory"
-	"github.com/spike/gobot/store"
-	"github.com/spike/gobot/tool"
+	"github.com/zucchiniEvader/baggy/agent"
+	"github.com/zucchiniEvader/baggy/memory"
+	"github.com/zucchiniEvader/baggy/store"
+	"github.com/zucchiniEvader/baggy/tool"
 )
 
 const (

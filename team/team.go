@@ -12,13 +12,13 @@ import (
 	"sync"
 	"time"
 
-	"github.com/spike/gobot/agent"
-	"github.com/spike/gobot/images"
-	"github.com/spike/gobot/mcp"
-	"github.com/spike/gobot/provider/connect"
-	"github.com/spike/gobot/store"
-	"github.com/spike/gobot/terminal"
-	"github.com/spike/gobot/tool"
+	"github.com/zucchiniEvader/baggy/agent"
+	"github.com/zucchiniEvader/baggy/images"
+	"github.com/zucchiniEvader/baggy/mcp"
+	"github.com/zucchiniEvader/baggy/provider/connect"
+	"github.com/zucchiniEvader/baggy/store"
+	"github.com/zucchiniEvader/baggy/terminal"
+	"github.com/zucchiniEvader/baggy/tool"
 )
 
 // MaxHops is how many bot-to-bot messages may follow a user message before

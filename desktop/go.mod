@@ -1,10 +1,10 @@
-module github.com/spike/gobot/desktop
+module github.com/zucchiniEvader/baggy/desktop
 
 go 1.27.1
 
 require (
 	github.com/egoist/mygo v0.3.6
-	github.com/spike/gobot v0.0.0
+	github.com/zucchiniEvader/baggy v0.0.0
 	github.com/yuin/goldmark v1.8.6
 )
 
@@ -30,6 +30,6 @@ require (
 	modernc.org/sqlite v1.60.1 // indirect
 )
 
-replace github.com/spike/gobot => ../
+replace github.com/zucchiniEvader/baggy => ../
 
 tool github.com/egoist/mygo/cmd/mygo

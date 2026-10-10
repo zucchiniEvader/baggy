@@ -3,7 +3,7 @@ package store
 import (
 	"testing"
 
-	"github.com/spike/gobot/agent"
+	"github.com/zucchiniEvader/baggy/agent"
 )
 
 func TestPreviewsAndPins(t *testing.T) {

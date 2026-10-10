@@ -6,8 +6,8 @@ import (
 	"os"
 
 	"github.com/egoist/mygo/ui"
-	"github.com/spike/gobot/images"
-	"github.com/spike/gobot/store"
+	"github.com/zucchiniEvader/baggy/images"
+	"github.com/zucchiniEvader/baggy/store"
 )
 
 // Avatars, after ../lorca/desktop/avatar.go: a bot's icon in white on a

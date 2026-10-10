@@ -10,8 +10,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/spike/gobot/mcp"
-	"github.com/spike/gobot/tool"
+	"github.com/zucchiniEvader/baggy/mcp"
+	"github.com/zucchiniEvader/baggy/tool"
 )
 
 // resourceServer is a Streamable HTTP MCP server with two resources.

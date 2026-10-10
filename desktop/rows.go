@@ -3,11 +3,11 @@ package main
 import (
 	"strings"
 
-	"github.com/spike/gobot/agent"
-	"github.com/spike/gobot/provider"
-	"github.com/spike/gobot/store"
-	"github.com/spike/gobot/team"
-	"github.com/spike/gobot/tool"
+	"github.com/zucchiniEvader/baggy/agent"
+	"github.com/zucchiniEvader/baggy/provider"
+	"github.com/zucchiniEvader/baggy/store"
+	"github.com/zucchiniEvader/baggy/team"
+	"github.com/zucchiniEvader/baggy/tool"
 )
 
 type rowKind int

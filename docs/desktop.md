@@ -1,6 +1,6 @@
 # Desktop app
 
-`desktop/` is a separate Go module (`github.com/spike/gobot/desktop`, `replace`d onto the repository root) so the core keeps no UI dependencies. It is a MyGo 0.3.6 app of native UI, drawn from Go with no web page; `go.mod` pins the `mygo` CLI as a Go tool, and goldmark parses markdown.
+`desktop/` is a separate Go module (`github.com/zucchiniEvader/baggy/desktop`, `replace`d onto the repository root) so the core keeps no UI dependencies. It is a MyGo 0.3.6 app of native UI, drawn from Go with no web page; `go.mod` pins the `mygo` CLI as a Go tool, and goldmark parses markdown.
 
 ```
 cd desktop
@@ -13,7 +13,7 @@ State is a `store` in `GOBOT_DATA` (default: the user config folder's `Baggy`, o
 
 ## Icon and builds
 
-`mygo.json` names the app Baggy (`io.github.spike.baggy`); its icon is `resources/icon.png`, the art of `resources/icon-source.png` (a square with no transparency) in an 824 rounded square centered on a transparent 1024 canvas, the shape macOS expects of an app icon, so the Dock shows it as it is rather than inside a gray frame. `go tool mygo build` writes `build/darwin-arm64/Baggy.app` (its `AppIcon.icns` made from the icon) and `Baggy 0.1.0.dmg`; the binary embeds the icon too, the Dock's on macOS for a bare build and the About pane's. The menu bar's icon (`assets/tray.png`) is the same bag as a 32 px template silhouette, which macOS tints for a light or dark bar, its eyes, mouth and folds cut out and grown so they read at 16 points. `cd desktop/tools/mkicons && go run .` makes both from `resources/icon-source.png` (its own module, so the app takes no image dependency).
+`mygo.json` names the app Baggy (`io.github.zucchinievader.baggy`); its icon is `resources/icon.png`, the art of `resources/icon-source.png` (a square with no transparency) in an 824 rounded square centered on a transparent 1024 canvas, the shape macOS expects of an app icon, so the Dock shows it as it is rather than inside a gray frame. `go tool mygo build` writes `build/darwin-arm64/Baggy.app` (its `AppIcon.icns` made from the icon) and `Baggy 0.1.0.dmg`; the binary embeds the icon too, the Dock's on macOS for a bare build and the About pane's. The menu bar's icon (`assets/tray.png`) is the same bag as a 32 px template silhouette, which macOS tints for a light or dark bar, its eyes, mouth and folds cut out and grown so they read at 16 points. `cd desktop/tools/mkicons && go run .` makes both from `resources/icon-source.png` (its own module, so the app takes no image dependency).
 
 ## State and threads
 

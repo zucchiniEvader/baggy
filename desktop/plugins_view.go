@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/egoist/mygo/ui"
-	"github.com/spike/gobot/mcp"
+	"github.com/zucchiniEvader/baggy/mcp"
 )
 
 // mcpTemplate starts an mcp.json with no servers; Settings adds them.

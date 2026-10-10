@@ -9,8 +9,8 @@ import (
 	"os"
 	"strings"
 
-	"github.com/spike/gobot/mcp"
-	"github.com/spike/gobot/tool"
+	"github.com/zucchiniEvader/baggy/mcp"
+	"github.com/zucchiniEvader/baggy/tool"
 )
 
 // maxResourceText bounds the text read_mcp_resource returns.

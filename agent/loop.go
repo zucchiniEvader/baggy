@@ -5,7 +5,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/spike/gobot/tool"
+	"github.com/zucchiniEvader/baggy/tool"
 )
 
 // Model is the slice of provider.Provider the loop needs; defined here so the

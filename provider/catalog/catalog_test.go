@@ -4,7 +4,7 @@ import (
 	"math"
 	"testing"
 
-	"github.com/spike/gobot/agent"
+	"github.com/zucchiniEvader/baggy/agent"
 )
 
 func TestFindAndCost(t *testing.T) {

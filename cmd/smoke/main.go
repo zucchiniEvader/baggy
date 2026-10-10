@@ -10,10 +10,10 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/spike/gobot/agent"
-	"github.com/spike/gobot/provider"
-	"github.com/spike/gobot/provider/connect"
-	"github.com/spike/gobot/tool"
+	"github.com/zucchiniEvader/baggy/agent"
+	"github.com/zucchiniEvader/baggy/provider"
+	"github.com/zucchiniEvader/baggy/provider/connect"
+	"github.com/zucchiniEvader/baggy/tool"
 )
 
 func main() {

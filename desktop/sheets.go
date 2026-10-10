@@ -7,9 +7,9 @@ import (
 	"time"
 
 	"github.com/egoist/mygo/ui"
-	"github.com/spike/gobot/provider/connect"
-	"github.com/spike/gobot/store"
-	"github.com/spike/gobot/team"
+	"github.com/zucchiniEvader/baggy/provider/connect"
+	"github.com/zucchiniEvader/baggy/store"
+	"github.com/zucchiniEvader/baggy/team"
 )
 
 func errf(format string, a ...any) error { return fmt.Errorf(L(format), a...) }

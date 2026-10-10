@@ -8,8 +8,8 @@ import (
 	"unicode"
 
 	"github.com/egoist/mygo/ui"
-	"github.com/spike/gobot/store"
-	"github.com/spike/gobot/team"
+	"github.com/zucchiniEvader/baggy/store"
+	"github.com/zucchiniEvader/baggy/team"
 )
 
 // atQuery is the @word the draft ends with, and where it starts; ok is false

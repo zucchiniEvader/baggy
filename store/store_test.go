@@ -5,7 +5,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/spike/gobot/agent"
+	"github.com/zucchiniEvader/baggy/agent"
 )
 
 func open(t *testing.T) *Store {

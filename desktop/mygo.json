@@ -1,6 +1,6 @@
 {
   "name": "Baggy",
-  "identifier": "io.github.spike.baggy",
+  "identifier": "io.github.zucchinievader.baggy",
   "version": "0.1.0",
   "icon": "resources/icon.png",
   "out": "build"

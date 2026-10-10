@@ -6,9 +6,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/spike/gobot/agent"
-	"github.com/spike/gobot/store"
-	"github.com/spike/gobot/tool"
+	"github.com/zucchiniEvader/baggy/agent"
+	"github.com/zucchiniEvader/baggy/store"
+	"github.com/zucchiniEvader/baggy/tool"
 )
 
 func clock(at time.Time) func() time.Time { return func() time.Time { return at } }

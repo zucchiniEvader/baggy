@@ -4,9 +4,9 @@ import (
 	"time"
 
 	"github.com/egoist/mygo/ui"
-	"github.com/spike/gobot/schedule"
-	"github.com/spike/gobot/store"
-	"github.com/spike/gobot/team"
+	"github.com/zucchiniEvader/baggy/schedule"
+	"github.com/zucchiniEvader/baggy/store"
+	"github.com/zucchiniEvader/baggy/team"
 )
 
 // routineSheet shows one routine.

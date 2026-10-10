@@ -3,9 +3,9 @@ package provider
 import (
 	"context"
 
-	"github.com/spike/gobot/agent"
-	"github.com/spike/gobot/provider/catalog"
-	"github.com/spike/gobot/tool"
+	"github.com/zucchiniEvader/baggy/agent"
+	"github.com/zucchiniEvader/baggy/provider/catalog"
+	"github.com/zucchiniEvader/baggy/tool"
 )
 
 // Model adapts a Provider to agent.Model, the loop's only dependency.

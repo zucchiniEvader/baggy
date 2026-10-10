@@ -6,7 +6,7 @@ import (
 	"errors"
 	"strings"
 
-	"github.com/spike/gobot/agent"
+	"github.com/zucchiniEvader/baggy/agent"
 )
 
 // Chat kinds.

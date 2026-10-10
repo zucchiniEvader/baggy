@@ -1,4 +1,4 @@
-module github.com/spike/gobot
+module github.com/zucchiniEvader/baggy
 
 go 1.27
 

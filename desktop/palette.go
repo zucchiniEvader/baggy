@@ -4,7 +4,7 @@ import (
 	"strings"
 
 	"github.com/egoist/mygo/ui"
-	"github.com/spike/gobot/store"
+	"github.com/zucchiniEvader/baggy/store"
 )
 
 // paletteState is the command palette: a field filtering the chats and the

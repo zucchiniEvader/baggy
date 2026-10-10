@@ -7,10 +7,10 @@ import (
 	"time"
 
 	"github.com/egoist/mygo/ui"
-	"github.com/spike/gobot/agent"
-	"github.com/spike/gobot/images"
-	"github.com/spike/gobot/store"
-	"github.com/spike/gobot/team"
+	"github.com/zucchiniEvader/baggy/agent"
+	"github.com/zucchiniEvader/baggy/images"
+	"github.com/zucchiniEvader/baggy/store"
+	"github.com/zucchiniEvader/baggy/team"
 )
 
 // root is the window: the chats beside the chat shown, and the sheets.

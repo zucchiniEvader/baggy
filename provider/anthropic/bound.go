@@ -6,8 +6,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/spike/gobot/agent"
-	"github.com/spike/gobot/provider"
+	"github.com/zucchiniEvader/baggy/agent"
+	"github.com/zucchiniEvader/baggy/provider"
 )
 
 // boundModels bind each thinking block to the system prompt, the tools and

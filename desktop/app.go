@@ -5,11 +5,11 @@ import (
 	"sync/atomic"
 
 	"github.com/egoist/mygo/ui"
-	"github.com/spike/gobot/agent"
-	"github.com/spike/gobot/mcp"
-	"github.com/spike/gobot/provider/connect"
-	"github.com/spike/gobot/store"
-	"github.com/spike/gobot/team"
+	"github.com/zucchiniEvader/baggy/agent"
+	"github.com/zucchiniEvader/baggy/mcp"
+	"github.com/zucchiniEvader/baggy/provider/connect"
+	"github.com/zucchiniEvader/baggy/store"
+	"github.com/zucchiniEvader/baggy/team"
 )
 
 // app is the window's state. It belongs to the main thread: team events

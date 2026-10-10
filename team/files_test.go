@@ -3,8 +3,8 @@ package team
 import (
 	"bytes"
 	"context"
-	"github.com/spike/gobot/store"
-	"github.com/spike/gobot/tool"
+	"github.com/zucchiniEvader/baggy/store"
+	"github.com/zucchiniEvader/baggy/tool"
 	"image"
 	"image/png"
 	"os"
@@ -12,7 +12,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/spike/gobot/agent"
+	"github.com/zucchiniEvader/baggy/agent"
 )
 
 func TestSendFilesPlacesThemInTheWorkspace(t *testing.T) {

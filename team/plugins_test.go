@@ -8,10 +8,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/spike/gobot/agent"
-	"github.com/spike/gobot/mcp"
-	"github.com/spike/gobot/store"
-	"github.com/spike/gobot/tool"
+	"github.com/zucchiniEvader/baggy/agent"
+	"github.com/zucchiniEvader/baggy/mcp"
+	"github.com/zucchiniEvader/baggy/store"
+	"github.com/zucchiniEvader/baggy/tool"
 )
 
 func TestCodemodeToolCallsOwnToolsAndKeepsValues(t *testing.T) {

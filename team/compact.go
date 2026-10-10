@@ -7,10 +7,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/spike/gobot/agent"
-	"github.com/spike/gobot/provider/catalog"
-	"github.com/spike/gobot/store"
-	"github.com/spike/gobot/tool"
+	"github.com/zucchiniEvader/baggy/agent"
+	"github.com/zucchiniEvader/baggy/provider/catalog"
+	"github.com/zucchiniEvader/baggy/store"
+	"github.com/zucchiniEvader/baggy/tool"
 )
 
 // Compaction summarizes the older part of a chat when a request would grow

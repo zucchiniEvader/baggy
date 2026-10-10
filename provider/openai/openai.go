@@ -9,7 +9,7 @@ import (
 	"encoding/json"
 	"strings"
 
-	"github.com/spike/gobot/agent"
+	"github.com/zucchiniEvader/baggy/agent"
 )
 
 const defaultBase = "https://api.openai.com/v1"

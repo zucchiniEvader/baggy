@@ -11,10 +11,10 @@ import (
 	"time"
 
 	"github.com/egoist/mygo/ui"
-	"github.com/spike/gobot/agent"
-	"github.com/spike/gobot/store"
-	"github.com/spike/gobot/team"
-	"github.com/spike/gobot/tool"
+	"github.com/zucchiniEvader/baggy/agent"
+	"github.com/zucchiniEvader/baggy/store"
+	"github.com/zucchiniEvader/baggy/team"
+	"github.com/zucchiniEvader/baggy/tool"
 )
 
 // Declined is the result a bot reads for an action the user did not allow.

@@ -9,9 +9,9 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/spike/gobot/agent"
-	"github.com/spike/gobot/provider"
-	"github.com/spike/gobot/provider/internal/wire"
+	"github.com/zucchiniEvader/baggy/agent"
+	"github.com/zucchiniEvader/baggy/provider"
+	"github.com/zucchiniEvader/baggy/provider/internal/wire"
 )
 
 // Chat implements provider.Provider over streaming Chat Completions.

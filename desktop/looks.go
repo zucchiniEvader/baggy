@@ -3,10 +3,10 @@ package main
 import (
 	"fmt"
 
-	"github.com/spike/gobot/agent"
-	"github.com/spike/gobot/provider/catalog"
-	"github.com/spike/gobot/store"
-	"github.com/spike/gobot/team"
+	"github.com/zucchiniEvader/baggy/agent"
+	"github.com/zucchiniEvader/baggy/provider/catalog"
+	"github.com/zucchiniEvader/baggy/store"
+	"github.com/zucchiniEvader/baggy/team"
 )
 
 // contextLine is how full the chat's last request was: tokens against the

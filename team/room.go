@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/spike/gobot/agent"
-	"github.com/spike/gobot/store"
+	"github.com/zucchiniEvader/baggy/agent"
+	"github.com/zucchiniEvader/baggy/store"
 )
 
 // MaxRounds is how many rounds one room exchange runs at most.

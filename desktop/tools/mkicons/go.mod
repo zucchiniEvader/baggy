@@ -1,4 +1,4 @@
-module github.com/spike/gobot/desktop/tools/mkicons
+module github.com/zucchiniEvader/baggy/desktop/tools/mkicons
 
 go 1.27
 

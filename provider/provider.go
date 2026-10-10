@@ -7,7 +7,7 @@ import (
 	"context"
 	"encoding/json"
 
-	"github.com/spike/gobot/agent"
+	"github.com/zucchiniEvader/baggy/agent"
 )
 
 // Provider never fails the call itself: errors arrive as an EventDone whose
@@ -50,9 +50,9 @@ const (
 	EventStart         EventKind = "start"
 	EventTextDelta     EventKind = "text_delta"
 	EventThinkingDelta EventKind = "thinking_delta"
-	EventToolCall      EventKind = "tool_call" // arguments complete
+	EventToolCall      EventKind = "tool_call"   // arguments complete
 	EventServerTool    EventKind = "server_tool" // Part: a server tool's call or result, complete
-	EventDone          EventKind = "done"      // Message is final
+	EventDone          EventKind = "done"        // Message is final
 )
 
 type Event struct {

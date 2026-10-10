@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"github.com/spike/gobot/mcp"
+	"github.com/zucchiniEvader/baggy/mcp"
 	"image"
 	"image/png"
 	"io"
@@ -19,11 +19,11 @@ import (
 	"time"
 
 	"github.com/egoist/mygo/ui"
-	"github.com/spike/gobot/agent"
-	"github.com/spike/gobot/provider/connect"
-	"github.com/spike/gobot/store"
-	"github.com/spike/gobot/team"
-	"github.com/spike/gobot/tool"
+	"github.com/zucchiniEvader/baggy/agent"
+	"github.com/zucchiniEvader/baggy/provider/connect"
+	"github.com/zucchiniEvader/baggy/store"
+	"github.com/zucchiniEvader/baggy/team"
+	"github.com/zucchiniEvader/baggy/tool"
 )
 
 // script answers as the bot the system prompt names.

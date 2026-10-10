@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/spike/gobot/tool"
+	"github.com/zucchiniEvader/baggy/tool"
 )
 
 type echo struct{}
