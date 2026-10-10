@@ -3,7 +3,6 @@ package main
 import (
 	"strconv"
 
-	"github.com/egoist/mygo/ui"
 	"github.com/spike/gobot/store"
 )
 
@@ -82,28 +81,6 @@ func (a *app) applyPrefs() {
 	setLanguage(a.prefs.language, a.locale)
 }
 
-func (a *app) prefsView(c *ui.Context) {
-	p := a.prefs
-	changed := false
-	sectionTitle(c, L("Preferences"))
-	ui.Form(c, func() {
-		ui.Field(c, L("Show thinking"), func() { changed = ui.Switch(c, &p.showThinking).Changed() || changed })
-		ui.Field(c, L("Commands"), func() {
-			choice := modeLabel(p.commands)
-			popup(c, &choice, modeLabels())
-			if m := modeOf(choice); m != p.commands {
-				p.commands, changed = m, true
-			}
-		}).Description(L("Before a shell command or a plugin action that changes something: run it, ask every time, or let the bot's model review it and ask only when in doubt. Always Allow keeps an exact command."))
-		ui.Field(c, L("Keep running when closed"), func() { changed = ui.Switch(c, &p.keepRunning).Changed() || changed }).
-			Description(L("Bots keep working; the tray icon opens the window again."))
-	})
-	if changed {
-		p.save()
-		a.applyPrefs()
-	}
-}
-
 // layoutChanged saves the sidebar's width and the inspector after a change.
 func (a *app) layoutChanged() {
 	if a.prefs.sideWidth != a.sideWidth || a.prefs.inspector != a.inspector {
@@ -139,30 +116,4 @@ func modeOf(label string) string {
 		}
 	}
 	return ModeRun
-}
-
-// generalView is Settings' first section: the app's language.
-func (a *app) generalView(c *ui.Context) {
-	p := a.prefs
-	sectionTitle(c, L("General"))
-	ui.Form(c, func() {
-		ui.Field(c, L("Language"), func() {
-			labels := make([]string, len(languages))
-			for i, l := range languages {
-				labels[i] = languageLabel(l)
-			}
-			choice := languageLabel(p.language)
-			popup(c, &choice, labels)
-			for i, l := range labels {
-				if l == choice && languages[i] != p.language {
-					p.language = languages[i]
-					p.save()
-					a.applyPrefs()
-					if a.onLanguage != nil {
-						a.onLanguage()
-					}
-				}
-			}
-		}).Description(L("The language of the app; bots answer in the language you write in."))
-	})
 }

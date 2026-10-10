@@ -35,4 +35,4 @@ With `Team.Plugins` (or `Team.Codemode`) set, every turn has the `codemode` tool
 
 ## The desktop
 
-Settings has an MCP Servers section: each server with its state (its number of tools, the error, Off, Not connected yet), Open mcp.json (written from a template first when missing), and Reconnect, which reads the file again and connects every server in the background. A codemode card in the transcript shows the script's last lines.
+The Settings window has an MCP Servers pane: each server with its state (its number of tools, the error, Off, Not connected yet), Open mcp.json (written from a template first when missing), and Reconnect, which reads the file again and connects every server in the background. A codemode card in the transcript shows the script's last lines.

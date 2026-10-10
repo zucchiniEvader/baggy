@@ -251,7 +251,7 @@ func (a *app) groupSheetView(c *ui.Context) {
 // ---- providers ----
 
 type providerForm struct {
-	open                   bool
+	saved                  bool // shows "Saved." until edited again
 	id                     string
 	name, api, base, key   string
 	models                 string // comma separated
@@ -280,11 +280,6 @@ func apiID(label string) string {
 	return connect.Anthropic
 }
 
-func (a *app) editProvider(p store.Provider) {
-	a.provSheet = &providerForm{open: true, id: p.ID, name: p.Name, api: apiLabel(p.API), base: p.BaseURL, key: p.APIKey,
-		models: strings.Join(p.Models, ", "), replay: p.Options["replay_reasoning"], encrypted: p.Options["encrypted_reasoning"], web: p.Options["web_search"]}
-}
-
 func (a *app) saveProvider(f *providerForm) bool {
 	var models []string
 	for _, m := range strings.Split(f.models, ",") {
@@ -303,136 +298,11 @@ func (a *app) saveProvider(f *providerForm) bool {
 		f.err = err.Error()
 		return false
 	}
+	f.id, f.err = p.ID, ""
 	if a.st.Setting(team.SettingDefaultProvider) == "" {
 		a.st.SetSetting(team.SettingDefaultProvider, p.ID)
 	}
 	return true
-}
-
-func (a *app) providerSheetView(c *ui.Context) {
-	f := a.provSheet
-	ui.Modal(c, &f.open, func() {
-		title := L("New Provider")
-		if f.id != "" {
-			title = L("Edit Provider")
-		}
-		ui.Column(c).Width(500).Gap(18).Children(func() {
-			dialogTitle(c, title, L("Any server that speaks one of these protocols: Anthropic, DeepSeek, OpenAI, OpenRouter, Ollama, vLLM…"))
-			ui.Form(c, func() {
-				ui.Field(c, L("Name"), func() { textField(c, &f.name, "DeepSeek").AutoFocus() })
-				ui.Field(c, L("Protocol"), func() { popup(c, &f.api, apiLabels) })
-				ui.Field(c, L("Base URL"), func() { textField(c, &f.base, L("the vendor's own")) }).
-					Description(L("For example https://api.deepseek.com, or http://localhost:11434/v1 for Ollama."))
-				ui.Field(c, L("API key"), func() { textField(c, &f.key, "sk-…").Password() })
-				ui.Field(c, L("Models"), func() { textField(c, &f.models, "deepseek-chat, deepseek-reasoner") }).
-					Description(L("Comma separated; the first is the default."))
-				if apiID(f.api) != connect.Chat {
-					ui.Field(c, L("Web search"), func() { ui.Switch(c, &f.web) }).Description(L("The server searches the web (and reads pages, on Anthropic) for the bot."))
-				}
-				if apiID(f.api) == connect.Chat {
-					ui.Field(c, L("Send reasoning back"), func() { ui.Switch(c, &f.replay) }).Description(L("As reasoning_content, which DeepSeek's thinking mode takes."))
-				}
-				if apiID(f.api) == connect.Responses {
-					ui.Field(c, L("Encrypted reasoning"), func() { ui.Switch(c, &f.encrypted) }).Description(L("Keeps reasoning across tool calls on OpenAI's API."))
-				}
-			})
-			if f.err != "" {
-				ui.Text(c, f.err).FontSize(12).TextColor(pal(c).red)
-			}
-			if dialogButtons(c, &f.open, L("Save"), false) && a.saveProvider(f) {
-				f.open = false
-			}
-		})
-	})
-}
-
-// settingsView is the Settings sheet: providers, the default one, MCP
-// servers, and the app's preferences.
-func (a *app) settingsView(c *ui.Context) {
-	t := c.Theme()
-	ui.Modal(c, &a.settings, func() {
-		ui.Column(c).Width(540).Gap(14).Children(func() {
-			dialogTitle(c, L("Settings"), "")
-			ui.Scroll(c).MaxHeight(560).Children(func() {
-				ui.Column(c).Gap(6).Padding(0, 12, 0, 0).Children(func() {
-					a.generalView(c)
-					sectionTitle(c, L("Providers"))
-					ps, _ := a.st.Providers()
-					def := a.st.Setting(team.SettingDefaultProvider)
-					if len(ps) == 0 {
-						note := L("No provider yet: bots run on the environment's (GOBOT_API_KEY or ANTHROPIC_API_KEY).")
-						if a.fallback.APIKey == "" {
-							note = L("No provider yet. Add one to start chatting.")
-						}
-						ui.Text(c, note).FontSize(12).TextColor(t.TextMuted)
-					}
-					ui.Column(c).Gap(1).Children(func() {
-						for _, p := range ps {
-							p := p
-							isDef := p.ID == def || (def == "" && p.ID == ps[0].ID)
-							row := ui.Row(c.Key(p.ID)).Height(40).Padding(0, 8).Gap(8).Radius(rowRadius).AlignItems(ui.Center).Label(p.Name)
-							styleRow(row, t, rowPlain)
-							var action func()
-							menu := func(m *ui.Menu) {
-								if m.Item(L("Make Default")).Disabled(isDef).Chosen() {
-									action = func() { a.st.SetSetting(team.SettingDefaultProvider, p.ID) }
-								}
-								if m.Item(L("Edit…")).Chosen() {
-									action = func() { a.settings = false; a.editProvider(p) }
-								}
-								m.Separator()
-								if m.Item(L("Delete")).Chosen() {
-									action = func() {
-										a.settings = false
-										a.ask(L("Delete %s?", p.Name), L("Bots on it move to the default provider."), L("Delete"), func() {
-											a.do(a.st.DeleteProvider(p.ID))
-											if a.st.Setting(team.SettingDefaultProvider) == p.ID {
-												a.st.SetSetting(team.SettingDefaultProvider, "")
-											}
-										})
-									}
-								}
-							}
-							row.ContextMenu(menu)
-							if row.DoubleClicked() {
-								action = func() { a.settings = false; a.editProvider(p) }
-							}
-							row.Children(func() {
-								ui.Icon(c, iconPlug).FontSize(iconSize).TextColor(t.TextMuted).Shrink(0)
-								ui.Column(c).Grow(1).MinWidth(0).Children(func() {
-									ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
-										ui.Text(c, p.Name).FontSize(13).FontWeight(600).SingleLine().Shrink(1).MinWidth(0)
-										if isDef {
-											badge(c, L("default"))
-										}
-									})
-									ui.Text(c, apiLabel(p.API)+" · "+strings.Join(p.Models, ", ")).FontSize(11).TextColor(t.TextMuted).SingleLine().MinWidth(0)
-								})
-								if smallButton(c.Key("edit-"+p.ID), L("Edit…"), secondary).Clicked() {
-									action = func() { a.settings = false; a.editProvider(p) }
-								}
-								iconButton(c.Key("more-"+p.ID), iconMore, L("More")).Menu(menu)
-							})
-							if action != nil {
-								action()
-							}
-						}
-					})
-					if smallButton(c.Key("add-provider"), L("Add Provider…"), secondary).AlignSelf(ui.Start).Clicked() {
-						a.settings = false
-						a.provSheet = &providerForm{open: true, api: apiLabels[0], web: true}
-					}
-					a.pluginsView(c)
-					a.prefsView(c)
-				})
-			})
-			ui.Row(c).Justify(ui.End).Children(func() {
-				if primaryButton(c, L("Done"), false).Clicked() {
-					a.settings = false
-				}
-			})
-		})
-	})
 }
 
 // confirmView asks before a delete, as an alert.
@@ -456,16 +326,6 @@ func (a *app) sheets(c *ui.Context) {
 		if !a.groupSheet.open {
 			a.groupSheet = nil
 		}
-	}
-	if a.provSheet != nil {
-		a.providerSheetView(c)
-		if !a.provSheet.open {
-			a.provSheet = nil
-			a.settings = true // back to Settings
-		}
-	}
-	if a.settings {
-		a.settingsView(c)
 	}
 	if a.confirm != nil {
 		a.confirmView(c)
@@ -491,5 +351,5 @@ func (a *app) sheets(c *ui.Context) {
 }
 
 func (a *app) hasSheet() bool {
-	return a.botSheet != nil || a.groupSheet != nil || a.provSheet != nil || a.settings || a.confirm != nil || a.palette != nil || a.memSheet != nil || a.routine != nil
+	return a.botSheet != nil || a.groupSheet != nil || a.confirm != nil || a.palette != nil || a.memSheet != nil || a.routine != nil
 }

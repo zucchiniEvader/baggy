@@ -96,6 +96,16 @@ func (p *approvals) allowed(call agent.Part) bool {
 	return false
 }
 
+func (p *approvals) removeRule(rule string) {
+	var rs []string
+	for _, r := range p.rules() {
+		if r != rule {
+			rs = append(rs, r)
+		}
+	}
+	p.a.st.SetSetting("allow_rules", strings.Join(rs, "\n"))
+}
+
 func (p *approvals) alwaysAllow(call agent.Part) {
 	rs := append(p.rules(), rule(call))
 	sort.Strings(rs)

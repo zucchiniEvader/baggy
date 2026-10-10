@@ -362,7 +362,7 @@ func (a *app) failedReply(c *ui.Context, ch store.Chat, v *chatView, r row) {
 		ui.Row(c).Gap(6).Children(func() {
 			if noModel || !a.hasProvider() {
 				if smallButton(c.Key("open-settings"), L("Open Settings"), secondary).Clicked() {
-					a.settings = true
+					a.openSettings(paneModels)
 				}
 			}
 			if smallButton(c.Key("retry"), L("Retry"), secondary).Disabled(!a.hasProvider()).Clicked() {

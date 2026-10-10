@@ -76,6 +76,29 @@ func main() {
 	mygo.App.WhenReady(func() {
 		mygo.App.SetMenu(buildMenu(a, func(fn func()) { a.post(fn) }))
 		a.onLanguage = func() { mygo.App.SetMenu(buildMenu(a, func(fn func()) { a.post(fn) })) }
+		var settingsWin *mygo.Window
+		a.showSettings = func() {
+			if settingsWin != nil {
+				settingsWin.Show()
+				settingsWin.Focus()
+				settingsWin.Update(func() {})
+				return
+			}
+			settingsWin = mygo.NewWindow(mygo.WindowOptions{
+				Title:                L("Settings"),
+				Width:                800,
+				Height:               580,
+				MinWidth:             640,
+				MinHeight:            420,
+				StateKey:             "settings",
+				TitleBarStyle:        mygo.TitleBarHiddenInset,
+				TitleBarHeight:       titleBarHeight,
+				TrafficLightPosition: &mygo.Point{X: 14, Y: (titleBarHeight - 14) / 2},
+				Vibrancy:             mygo.VibrancySidebar,
+				Content:              ui.View(a.settingsRoot),
+			})
+			settingsWin.OnClosed(func() { settingsWin = nil })
+		}
 		win := mygo.NewWindow(mygo.WindowOptions{
 			Title:          "gobot",
 			Width:          1180,
@@ -91,6 +114,7 @@ func main() {
 			Content:              ui.View(a.root),
 		})
 		a.vibrancy = runtime.GOOS == "darwin"
+		a.redrawMain = func() { win.Update(func() {}) }
 		a.post = win.Update
 		a.openFolder = func(p string) { go mygo.Shell.OpenPath(p) }
 		a.mcpPath = filepath.Join(dataDir(), "mcp.json")
@@ -175,7 +199,7 @@ func buildMenu(a *app, post func(func())) *mygo.Menu {
 		{Role: mygo.RoleAppMenu, Submenu: []*mygo.MenuItem{
 			{Role: mygo.RoleAbout},
 			mygo.Separator(),
-			{Label: L("Settings…"), Accelerator: "CmdOrCtrl+,", Click: do(func() { a.settings = true })},
+			{Label: L("Settings…"), Accelerator: "CmdOrCtrl+,", Click: do(func() { a.openSettings("") })},
 			mygo.Separator(),
 			{Role: mygo.RoleServices},
 			mygo.Separator(),

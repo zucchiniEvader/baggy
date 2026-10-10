@@ -2,8 +2,6 @@ package main
 
 import (
 	"context"
-	"os"
-	"path/filepath"
 
 	"github.com/egoist/mygo/ui"
 )
@@ -39,7 +37,6 @@ func (a *app) pluginsView(c *ui.Context) {
 	if a.team.Plugins == nil {
 		return
 	}
-	sectionTitle(c, L("MCP Servers"))
 	ui.Text(c, L("Servers in mcp.json (the format Claude Desktop and Cursor use) give every bot their tools, which it calls from codemode scripts.")).FontSize(12).LineHeight(1.5).TextColor(t.TextMuted)
 	if err := a.team.Plugins.FileError(); err != nil {
 		errorRow(c, err.Error())
@@ -48,7 +45,7 @@ func (a *app) pluginsView(c *ui.Context) {
 	if servers == nil {
 		servers = a.team.Plugins.Known()
 	}
-	ui.Column(c).Gap(1).Children(func() {
+	ui.Column(c).Radius(cardRadius).Background(pal(c).surface).Border(1, pal(c).border).Padding(4).Gap(1).Children(func() {
 		for _, s := range servers {
 			ui.Row(c.Key("mcp-"+s.ID)).Height(40).Gap(8).AlignItems(ui.Center).Padding(0, 8).Radius(rowRadius).Children(func() {
 				ui.Icon(c, iconPlug).FontSize(iconSize).TextColor(t.TextMuted).Shrink(0)
@@ -74,16 +71,13 @@ func (a *app) pluginsView(c *ui.Context) {
 			})
 		}
 		if len(servers) == 0 {
-			ui.Text(c, L("No servers yet.")).FontSize(12).TextColor(t.TextMuted)
+			ui.Text(c, L("No servers yet.")).FontSize(12).TextColor(t.TextMuted).Padding(8, 10)
 		}
 	})
 	ui.Row(c).Gap(8).Children(func() {
 		if a.openFolder != nil && a.mcpPath != "" {
 			if smallButton(c.Key("open-mcp"), L("Open mcp.json"), secondary).Clicked() {
-				if _, err := os.Stat(a.mcpPath); err != nil {
-					os.MkdirAll(filepath.Dir(a.mcpPath), 0o755)
-					os.WriteFile(a.mcpPath, []byte(mcpTemplate), 0o644)
-				}
+				ensureMCP(a.mcpPath)
 				a.openFolder(a.mcpPath)
 			}
 		}

@@ -247,7 +247,7 @@ func TestPaletteRunsCommand(t *testing.T) {
 	h.tt.Key(0, ui.KeyEnter)
 	h.tt.Frame()
 	if !h.a.settings || h.a.palette != nil {
-		t.Fatalf("settings %v palette %v", h.a.settings, h.a.palette)
+		t.Fatalf("settings %v palette %v", h.a.settings, h.a.palette) // no windows here: wanted, not shown
 	}
 }
 
@@ -330,6 +330,22 @@ func TestRender(t *testing.T) {
 		png.Encode(f, h.tt.Image())
 		f.Close()
 	}
+	// Settings: Models with two providers, and General.
+	h.st.SaveProvider(store.Provider{Name: "DeepSeek", API: "anthropic", BaseURL: "https://api.deepseek.com/anthropic", APIKey: "sk-x", Models: []string{"deepseek-flash", "deepseek-v4-pro"}, Options: map[string]bool{"web_search": true}})
+	h.st.SaveProvider(store.Provider{Name: "Ollama", API: "chat", BaseURL: "http://localhost:11434/v1", APIKey: "ollama", Models: []string{"qwen3"}})
+	for _, pane := range []string{paneModels, paneGeneral} {
+		h.a.set.pane = pane
+		st := ui.NewTester(h.a.settingsRoot, 800, 580)
+		st.Frame()
+		f, _ := os.Create(filepath.Join(dir, "settings-"+pane+".png"))
+		png.Encode(f, st.Image())
+		f.Close()
+	}
+	ps, _ := h.st.Providers()
+	for _, p := range ps {
+		h.st.DeleteProvider(p.ID)
+	}
+
 	// The setup, before any model.
 	dmScout, _ := h.st.DMOf(scout.ID)
 	h.a.selectChat(dmScout.ID)
@@ -532,20 +548,74 @@ func TestSetupThenRetry(t *testing.T) {
 func TestLanguageInSettings(t *testing.T) {
 	defer setLanguage("English", "")
 	h := newHarness(t, script(func(string, []agent.Message) agent.Message { return say("ok") }))
-	h.a.settings = true
-	h.tt.Frame()
-	if !h.tt.HasText("General") || !h.tt.HasText("Follow System") {
-		t.Fatalf("no language field: %q", h.tt.Texts())
+	h.a.openSettings("")
+	st := ui.NewTester(h.a.settingsRoot, 800, 580)
+	if !h.tt.HasText("Search chats") || !st.HasText("General") || !st.HasText("Follow System") {
+		t.Fatalf("no language field: %q", st.Texts())
 	}
-	if err := h.tt.Click("Follow System"); err != nil {
+	if err := st.Click("Follow System"); err != nil {
 		t.Fatal(err)
 	}
-	if err := h.tt.ChooseMenuItem("简体中文"); err != nil {
+	if err := st.ChooseMenuItem("简体中文"); err != nil {
 		t.Fatal(err)
 	}
+	st.Frame()
+	st.Frame()
 	h.tt.Frame()
-	h.tt.Frame()
-	if h.a.prefs.language != "中文" || !h.tt.HasText("设置") || h.st.Setting("pref.language") != "中文" {
-		t.Fatalf("language %q texts %q", h.a.prefs.language, h.tt.Texts())
+	if h.a.prefs.language != "中文" || !st.HasText("通用") || !h.tt.HasText("搜索聊天") || h.st.Setting("pref.language") != "中文" {
+		t.Fatalf("language %q settings %q", h.a.prefs.language, st.Texts())
+	}
+}
+
+func TestSettingsModelsAndCommands(t *testing.T) {
+	h := newHarness(t, script(func(string, []agent.Message) agent.Message { return say("ok") }))
+	h.a.openSettings(paneModels)
+	st := ui.NewTester(h.a.settingsRoot, 800, 580)
+	if !st.HasText("Add a provider to give your bots a model.") {
+		t.Fatalf("models: %q", st.Texts())
+	}
+	st.Click("Add Provider")
+	st.Frame()
+	h.a.set.prov.name, h.a.set.prov.key, h.a.set.prov.models = "DeepSeek", "sk-x", "deepseek-flash, deepseek-v4-pro"
+	st.Frame()
+	if err := st.Click("Save"); err != nil {
+		t.Fatal(err)
+	}
+	st.Frame()
+	ps, _ := h.st.Providers()
+	if len(ps) != 1 || len(ps[0].Models) != 2 || h.st.Setting(team.SettingDefaultProvider) != ps[0].ID || !st.HasText("Saved.") || !st.HasText("default") {
+		t.Fatalf("providers %+v texts %q", ps, st.Texts())
+	}
+	st.Click("Delete")
+	st.Frame()
+	if h.a.set.confirm == nil {
+		t.Fatal("no confirmation")
+	}
+	h.a.set.confirm.run()
+	h.a.set.confirm = nil // the alert closed
+	if ps, _ := h.st.Providers(); len(ps) != 0 {
+		t.Fatal("not deleted")
+	}
+
+	h.st.SetSetting("allow_rules", "shell:ls -la\ntool:github__create_issue")
+	h.a.openSettings(paneCommands)
+	st.Frame()
+	if !st.HasText("ls -la") || !st.HasText("github__create_issue") {
+		t.Fatalf("rules: %q", st.Texts())
+	}
+	if err := st.Click("Remove"); err != nil {
+		t.Fatal(err)
+	}
+	st.Frame()
+	if r := h.a.approvals.rules(); len(r) != 1 {
+		t.Fatalf("rules %v", r)
+	}
+	st.Key(0, ui.KeyDown) // the list keeps no focus yet: nothing moves
+	if err := st.Click("About"); err != nil {
+		t.Fatal(err)
+	}
+	st.Frame()
+	if !st.HasText(h.st.Dir()) {
+		t.Fatalf("about: %q", st.Texts())
 	}
 }

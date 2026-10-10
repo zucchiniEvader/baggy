@@ -29,7 +29,7 @@ func (a *app) commands() []command {
 	cs = append(cs,
 		command{L("New Bot…"), a.newBot},
 		command{L("New Group…"), a.newGroup},
-		command{L("Settings…"), func() { a.settings = true }},
+		command{L("Settings…"), func() { a.openSettings("") }},
 		command{L("Toggle Info"), func() { a.inspector = !a.inspector }},
 	)
 	if ch := a.chat(a.sel); ch != nil {
@@ -137,7 +137,7 @@ func (a *app) shortcuts(c *ui.Context) {
 	case c.Shortcut(ui.Cmd, ui.KeyN):
 		a.newBot()
 	case c.Shortcut(ui.Cmd, ui.KeyComma):
-		a.settings = true
+		a.openSettings("")
 	case c.Shortcut(ui.Cmd|ui.Shift, ui.KeyB):
 		a.toggleSidebar()
 	case c.Shortcut(ui.Cmd, ui.KeyF):

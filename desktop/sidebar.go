@@ -136,7 +136,7 @@ func (a *app) sidebar(c *ui.Context) {
 		ui.Scroll(c).Grow(1).MinHeight(0).Padding(0, sidebarPad, sidebarPad).Children(func() { a.chatList(c) })
 		ui.Row(c).Shrink(0).Height(titleBarHeight).Padding(0, sidebarPad).Gap(2).AlignItems(ui.Center).Children(func() {
 			if iconButton(c, iconSettings, L("Settings (⌘,)")).Clicked() {
-				a.settings = true
+				a.openSettings("")
 			}
 			ui.Spacer(c)
 			if !a.hasProvider() {
