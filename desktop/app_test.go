@@ -1234,3 +1234,20 @@ func TestInspectorSlides(t *testing.T) {
 		t.Fatalf("Reduce Motion slides: %v", width())
 	}
 }
+
+func TestWorkspacesDir(t *testing.T) {
+	home, _ := os.UserHomeDir()
+	t.Setenv("GOBOT_WORKSPACES", "")
+	t.Setenv("GOBOT_DATA", "")
+	if got := workspacesDir(); got != filepath.Join(home, ".gobot", "workspaces") {
+		t.Fatalf("default %q", got)
+	}
+	t.Setenv("GOBOT_DATA", t.TempDir())
+	if workspacesDir() != "" {
+		t.Fatal("a test data folder's workspaces left it")
+	}
+	t.Setenv("GOBOT_WORKSPACES", "/x")
+	if workspacesDir() != "/x" || tilde(filepath.Join(home, "a")) != "~/a" || tilde(home+"x") != home+"x" {
+		t.Fatal("override or tilde")
+	}
+}

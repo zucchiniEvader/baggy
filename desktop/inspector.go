@@ -1,7 +1,6 @@
 package main
 
 import (
-	"os"
 	"strings"
 	"time"
 
@@ -238,7 +237,7 @@ func (a *app) about(c *ui.Context, key, text string) {
 		if open {
 			label = L("Less")
 		}
-		more := ui.ButtonBase(c.Key("about-"+key)).AlignSelf(ui.Start).Label(label).FocusRing(false)
+		more := ui.ButtonBase(c.Key("about-" + key)).AlignSelf(ui.Start).Label(label).FocusRing(false)
 		more.Children(func() { ui.Text(c, label).FontSize(12).FontWeight(600) })
 		if more.Clicked() {
 			if a.aboutOpen == nil {
@@ -292,12 +291,7 @@ func meter(c *ui.Context, frac float64) {
 func (a *app) folderRow(c *ui.Context, b store.Bot) {
 	t := c.Theme()
 	dir := a.st.WorkDir(b)
-	shown := dir
-	if home, err := os.UserHomeDir(); err == nil {
-		if rest, ok := strings.CutPrefix(dir, home); ok {
-			shown = "~" + rest
-		}
-	}
+	shown := tilde(dir)
 	if b.Workdir == "" {
 		shown = L("Its own workspace")
 	}

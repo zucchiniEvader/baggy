@@ -22,13 +22,14 @@ import (
 var ErrNotFound = errors.New("not found")
 
 type Store struct {
-	db  *sql.DB
-	dir string
+	db         *sql.DB
+	dir        string
+	workspaces string // the bots' folders: dir/workspaces unless UseWorkspaces moved them
 }
 
 // Open opens (creating as needed) dir/gobot.db and dir/workspaces.
 func Open(dir string) (*Store, error) {
-	if err := os.MkdirAll(filepath.Join(dir, "workspaces"), 0o755); err != nil {
+	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return nil, err
 	}
 	db, err := sql.Open("sqlite", "file:"+filepath.Join(dir, "gobot.db")+"?_pragma=foreign_keys(1)&_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)")
@@ -36,7 +37,7 @@ func Open(dir string) (*Store, error) {
 		return nil, err
 	}
 	db.SetMaxOpenConns(1) // one writer; reads are quick
-	s := &Store{db: db, dir: dir}
+	s := &Store{db: db, dir: dir, workspaces: filepath.Join(dir, "workspaces")}
 	if err := s.migrate(); err != nil {
 		db.Close()
 		return nil, err
@@ -51,7 +52,56 @@ func (s *Store) Dir() string { return s.dir }
 
 // Workspace is a bot's own folder, keyed by id: MEMORY.md, memory/, the
 // files attached to its chats, and its work unless it has a Workdir.
-func (s *Store) Workspace(botID string) string { return filepath.Join(s.dir, "workspaces", botID) }
+func (s *Store) Workspace(botID string) string { return filepath.Join(s.workspaces, botID) }
+
+// Workspaces is the folder the bots' workspaces are in.
+func (s *Store) Workspaces() string { return s.workspaces }
+
+// UseWorkspaces keeps the bots' workspaces in root (as ~/.gobot/workspaces)
+// rather than beside the database. A workspace still in the old folder is
+// moved over, unless root has one for that bot already; the old folder goes
+// when nothing is left in it.
+func (s *Store) UseWorkspaces(root string) error {
+	if err := os.MkdirAll(root, 0o755); err != nil {
+		return err
+	}
+	old := s.workspaces
+	s.workspaces = root
+	if filepath.Clean(old) == filepath.Clean(root) {
+		return nil
+	}
+	ents, err := os.ReadDir(old)
+	if err != nil {
+		return nil // nothing to move
+	}
+	var failed []string
+	for _, e := range ents {
+		from, to := filepath.Join(old, e.Name()), filepath.Join(root, e.Name())
+		if _, err := os.Lstat(to); err == nil {
+			continue // already there: the old one stays where it was
+		}
+		if err := move(from, to); err != nil {
+			failed = append(failed, e.Name()+": "+err.Error())
+		}
+	}
+	os.Remove(old) // only when empty
+	if len(failed) > 0 {
+		return fmt.Errorf("some workspaces were not moved to %s: %s", root, strings.Join(failed, "; "))
+	}
+	return nil
+}
+
+// move renames a folder, copying it when the two are on different volumes.
+func move(from, to string) error {
+	if err := os.Rename(from, to); err == nil {
+		return nil
+	}
+	if err := os.CopyFS(to, os.DirFS(from)); err != nil {
+		os.RemoveAll(to)
+		return err
+	}
+	return os.RemoveAll(from)
+}
 
 // checkWorkdir refuses a working folder that is not a full path to a
 // folder there is.

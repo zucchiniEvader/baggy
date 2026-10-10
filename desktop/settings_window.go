@@ -328,14 +328,32 @@ func (a *app) aboutPane(c *ui.Context) {
 	})
 	sectionTitle(c, L("Data"))
 	card(c, func() {
-		settingRow(c, a.st.Dir(), L("The chats, bots and settings (gobot.db), the bots' workspaces, and mcp.json."), func() {
+		settingRow(c, tilde(a.st.Dir()), L("The chats, bots and settings (gobot.db), the attached files, and mcp.json."), func() {
 			if a.openFolder != nil {
 				if smallButton(c.Key("show-data"), L("Show Folder"), secondary).Clicked() {
 					a.openFolder(a.st.Dir())
 				}
 			}
 		})
+	}, func() {
+		settingRow(c, tilde(a.st.Workspaces()), L("The bots' workspaces, one folder each: their files and memory."), func() {
+			if a.openFolder != nil {
+				if smallButton(c.Key("show-workspaces"), L("Show Folder"), secondary).Clicked() {
+					a.openFolder(a.st.Workspaces())
+				}
+			}
+		})
 	})
+}
+
+// tilde is a path with the home folder as ~.
+func tilde(p string) string {
+	if home, err := os.UserHomeDir(); err == nil {
+		if rest, ok := strings.CutPrefix(p, home); ok && (rest == "" || strings.HasPrefix(rest, "/")) {
+			return "~" + rest
+		}
+	}
+	return p
 }
 
 // ---- Models: the providers, a list and the one chosen ----

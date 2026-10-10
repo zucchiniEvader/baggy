@@ -39,6 +39,23 @@ func dataDir() string {
 	return filepath.Join(base, "gobot")
 }
 
+// workspacesDir is where the bots' workspaces live: GOBOT_WORKSPACES, else
+// ~/.gobot/workspaces; "" (beside the database) for a data folder of
+// GOBOT_DATA, so a test copy of the app keeps to itself.
+func workspacesDir() string {
+	if d := os.Getenv("GOBOT_WORKSPACES"); d != "" {
+		return d
+	}
+	if os.Getenv("GOBOT_DATA") != "" {
+		return ""
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return ""
+	}
+	return filepath.Join(home, ".gobot", "workspaces")
+}
+
 func main() {
 	mygo.App.SetName("gobot")
 	if !mygo.App.RequestSingleInstanceLock() {
@@ -49,6 +66,11 @@ func main() {
 		log.Fatal(err)
 	}
 	defer st.Close()
+	if root := workspacesDir(); root != "" {
+		if err := st.UseWorkspaces(root); err != nil {
+			log.Print(err) // the ones not moved stay where they were
+		}
+	}
 	if _, err := st.Seed(); err != nil {
 		log.Fatal(err)
 	}

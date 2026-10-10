@@ -9,7 +9,7 @@ go test ./...                              # views run in MyGo's offscreen Teste
 GOBOT_RENDER=<folder> go test -run TestRender ./...   # writes group-light.png and group-dark.png
 ```
 
-State is a `store` in `GOBOT_DATA` (default: the user config folder's `gobot`), seeded with Chef. Bots run on the providers added in Settings; with none, on the environment's (`connect.FromEnv`: `GOBOT_API`, `GOBOT_BASE_URL`, `GOBOT_API_KEY`, `GOBOT_MODEL`, or `ANTHROPIC_API_KEY`). A bot's tools are `shell`, `read_file`, `write_file`, `edit_file`, `find` and `grep` in its workspace, plus the team's and its memory's; failed model calls are retried (`agent.DefaultRetry`), the header reading "Retrying: …" meanwhile and the partial reply dropped.
+State is a `store` in `GOBOT_DATA` (default: the user config folder's `gobot`, on macOS `~/Library/Application Support/gobot`), seeded with Chef. The bots' workspaces are in `~/.gobot/workspaces/<bot id>` (`GOBOT_WORKSPACES` names another folder; with `GOBOT_DATA` set and no `GOBOT_WORKSPACES` they stay beside the database, so a test copy keeps to itself), moved there from the data folder on the first start that finds them. Settings' About shows both folders with Show Folder. Bots run on the providers added in Settings; with none, on the environment's (`connect.FromEnv`: `GOBOT_API`, `GOBOT_BASE_URL`, `GOBOT_API_KEY`, `GOBOT_MODEL`, or `ANTHROPIC_API_KEY`). A bot's tools are `shell`, `read_file`, `write_file`, `edit_file`, `find` and `grep` in its workspace, plus the team's and its memory's; failed model calls are retried (`agent.DefaultRetry`), the header reading "Retrying: …" meanwhile and the partial reply dropped.
 
 ## Icon and builds
 
