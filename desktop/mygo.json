@@ -3,5 +3,9 @@
   "identifier": "io.github.zucchinievader.baggy",
   "version": "0.1.0",
   "icon": "resources/icon.png",
-  "out": "build"
+  "out": "build",
+  "updates": {
+    "publicKey": "AruIPEnx+znYC6CJBpmEOGJLqf4Om/qNhhNuDuJxcC8=",
+    "github": "zucchiniEvader/baggy"
+  }
 }

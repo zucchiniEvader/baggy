@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/egoist/mygo/plugins/updater"
 	"github.com/egoist/mygo/ui"
 	"github.com/zucchiniEvader/baggy/agent"
 	"github.com/zucchiniEvader/baggy/provider"
@@ -324,8 +325,27 @@ func (a *app) aboutPane(c *ui.Context) {
 		ui.Column(c).Gap(4).AlignItems(ui.Center).Children(func() {
 			ui.Text(c, "Baggy").FontSize(17).Bold()
 			ui.Text(c, L("A desktop assistant with group chat.")).FontSize(12).TextColor(t.TextMuted)
+			if a.version != "" {
+				ui.Text(c, L("Version %s", a.version)).FontSize(12).TextColor(t.TextMuted)
+			}
 		})
 	})
+	if a.checkUpdates != nil {
+		sectionTitle(c, L("Updates"))
+		card(c, func() {
+			settingRow(c, L("Check for updates"), L("Once a day, in the background; a new version asks before it installs."), func() {
+				if ui.Switch(c, a.autoUpdates).Label(L("Check for updates")).Changed() {
+					updater.SetAutomaticChecks(*a.autoUpdates)
+				}
+			})
+		}, func() {
+			settingRow(c, L("Check now"), "", func() {
+				if smallButton(c.Key("check-updates"), L("Check for Updates…"), secondary).Clicked() {
+					a.checkUpdates()
+				}
+			})
+		})
+	}
 	sectionTitle(c, L("Data"))
 	card(c, func() {
 		settingRow(c, tilde(a.st.Dir()), L("The chats, bots and settings (baggy.db), the attached files, and mcp.json."), func() {

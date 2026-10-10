@@ -1,0 +1,30 @@
+# Vets and tests both modules on every push and pull request.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: |
+            go.sum
+            desktop/go.sum
+      - name: The agent core
+        run: go vet ./... && go test ./...
+      - name: The desktop app
+        working-directory: desktop
+        run: go vet ./... && go test ./...
+      - name: The other platforms compile
+        working-directory: desktop
+        run: |
+          for t in windows/amd64 linux/amd64 linux/arm64; do
+            GOOS=${t%/*} GOARCH=${t#*/} go build -o /dev/null . && echo "$t ok"
+          done

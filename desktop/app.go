@@ -68,6 +68,9 @@ type app struct {
 	pickFiles      func(done func(paths []string)) // asks for files to attach; done runs on the main thread with the ones chosen
 	pickImage      func(done func(path string))    // asks for a picture, as pickFiles
 	pickFolder     func(done func(path string))    // asks for a folder, as pickFiles
+	version        string                          // the app's version, "" in tests
+	checkUpdates   func()                          // shows the update window, checking now; nil without updates
+	autoUpdates    *bool                           // background checks, when the app can update itself
 	openFolder     func(path string)
 	revealFile     func(path string) // shows a file in Finder
 	onLanguage     func()            // the language changed: the menu bar is made again

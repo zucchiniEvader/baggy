@@ -17,6 +17,8 @@ import (
 	"time"
 
 	"github.com/egoist/mygo"
+	"github.com/egoist/mygo/plugins/updater"
+	"github.com/egoist/mygo/plugins/updater/native"
 	"github.com/egoist/mygo/ui"
 	"github.com/zucchiniEvader/baggy/agent"
 	"github.com/zucchiniEvader/baggy/mcp"
@@ -123,6 +125,16 @@ func main() {
 	}
 	tm.StartRoutines(context.Background())
 	a.applyPrefs()
+	// Updates: MyGo's update window in native UI, a check a day; the menu's
+	// Check for Updates… and Settings' About check at once.
+	updateLang := map[string]string{"English": "en", "中文": "zh-Hans"}[a.prefs.language]
+	mygo.Use(native.New(updater.Options{Language: updateLang}))
+	a.version = mygo.App.Version()
+	if mygo.Updater.Enabled() {
+		a.checkUpdates = updater.CheckForUpdates
+		on := updater.AutomaticChecks()
+		a.autoUpdates = &on
+	}
 
 	mygo.App.WhenReady(func() {
 		if runtime.GOOS == "darwin" {
@@ -284,6 +296,7 @@ func buildMenu(a *app, post func(func())) *mygo.Menu {
 	return mygo.NewMenu([]*mygo.MenuItem{
 		{Role: mygo.RoleAppMenu, Submenu: []*mygo.MenuItem{
 			{Role: mygo.RoleAbout},
+			{Label: L("Check for Updates…"), Click: func(*mygo.MenuItem, *mygo.Window) { updater.CheckForUpdates() }},
 			mygo.Separator(),
 			{Label: L("Settings…"), Accelerator: "CmdOrCtrl+,", Click: do(func() { a.openSettings("") })},
 			mygo.Separator(),

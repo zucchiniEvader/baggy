@@ -42,6 +42,8 @@ terminal/   commands in pseudo-terminals: questions, input, background (docs/ter
 shellenv/   the login shell's environment
 desktop/    the MyGo app, its own module (docs/desktop.md)
 docs/       one doc per subject, written as the system is
+site/       the website on GitHub Pages (docs/release.md)
+.github/    CI, the release workflow, the Pages deploy
 ```
 
 ## Rules
@@ -112,6 +114,6 @@ One machine, one user; no Runners, relay, phone app or marketplace. Milestones r
 8. ~~Plugins.~~ The user's MCP servers in `mcp.json` (Claude Desktop's format: stdio and HTTP), their tools reached from **codemode** scripts in a goja sandbox (`tools.<server>__<tool>`, only the output reaching the model), the desktop's MCP section.
 9. ~~Terminal sessions.~~ A command in a pseudo-terminal of its own on macOS and Linux: `bash_input`, `bash_output`, background commands, the login shell's environment, the command's card and Running tasks.
 10. ~~Review and reach.~~ Auto-review of commands and plugin calls by a small model with Always allow; system notifications and unread counts; `list_teammates` and `edit_bot`; `ls`, several edits per `edit_file`, `.gitignore` in `find`/`grep`, `recall` by time; bot looks; context size per chat.
-11. **Ship.** `mygo build` for macOS and Windows, a shell for Windows (Git Bash, else PowerShell), updater, icon, onboarding, Windows testing, and a look at the window by hand.
+11. **Ship.** Done: the icon, the release workflow for macOS, Windows and Linux with signed updates and Developer ID signing, the update window, the website (docs/release.md). Still open: a shell for Windows (Git Bash, else PowerShell), Windows code signing, onboarding, Windows testing, and a look at the window by hand.
 
 Decisions made: codemode on goja (pure Go); no ChatGPT or Grok subscription sign-in for now; SQLite through `modernc.org/sqlite`; markdown through goldmark folded into `ui.RichText` as `../lorca/desktop/markdown_view.go` does; API keys in the app's config file until a keychain is worth it.
