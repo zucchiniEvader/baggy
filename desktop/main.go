@@ -153,8 +153,13 @@ func main() {
 				}
 			}
 		}()
+		// Closing the window hides it while bots keep working; quitting
+		// (⌘Q, the Dock, the tray, SIGTERM) closes every window, which must
+		// then go, or the quit is cancelled.
+		quitting := false
+		mygo.App.OnBeforeQuit(func(*mygo.QuitEvent) { quitting = true })
 		win.OnClose(func(e *mygo.CloseEvent) {
-			if a.prefs.keepRunning {
+			if keepOpen(a.prefs.keepRunning, quitting) {
 				e.PreventDefault()
 				win.Hide()
 			}
@@ -231,3 +236,7 @@ func buildMenu(a *app, post func(func())) *mygo.Menu {
 		{Role: mygo.RoleWindowMenu},
 	})
 }
+
+// keepOpen reports whether closing the main window only hides it: while
+// bots should keep running, unless the app is quitting.
+func keepOpen(keepRunning, quitting bool) bool { return keepRunning && !quitting }

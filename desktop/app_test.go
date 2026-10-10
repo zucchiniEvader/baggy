@@ -673,3 +673,9 @@ func TestTestConnection(t *testing.T) {
 		t.Fatalf("%v %q", ok, msg)
 	}
 }
+
+func TestQuitIsNotHeldByKeepRunning(t *testing.T) {
+	if !keepOpen(true, false) || keepOpen(true, true) || keepOpen(false, false) {
+		t.Fatal("closing hides only while keeping running and not quitting")
+	}
+}
