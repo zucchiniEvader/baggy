@@ -69,6 +69,8 @@ type app struct {
 	pickImage      func(done func(path string))    // asks for a picture, as pickFiles
 	pickFolder     func(done func(path string))    // asks for a folder, as pickFiles
 	version        string                          // the app's version, "" in tests
+	copyText       func(string)                    // puts text on the clipboard
+	copied         string                          // the copy button just used (copiedKey), shown done for a moment
 	checkUpdates   func()                          // shows the update window, checking now; nil without updates
 	autoUpdates    *bool                           // background checks, when the app can update itself
 	openFolder     func(path string)
@@ -132,6 +134,10 @@ func (a *app) reload() {
 	}
 	a.chats, _ = a.st.Chats()
 	a.previews, _ = a.st.Previews()
+	for id, p := range a.previews { // a reply's markdown reads as text
+		p.Text = strings.Join(strings.Fields(plainText(p.Text)), " ")
+		a.previews[id] = p
+	}
 	a.countUnread()
 	if a.sel != "" && a.chat(a.sel) == nil {
 		a.sel = ""

@@ -119,6 +119,7 @@ func main() {
 	a.fallback = fallback
 	a.locale = mygo.App.Locale()
 	a.readImage = func() []byte { return mygo.Clipboard.ReadImage() }
+	a.copyText = func(s string) { mygo.Clipboard.WriteText(s) }
 	tm.Approve = a.approvals.approve
 	if tm.Compaction != nil {
 		tm.Compaction.Policy = a.compactionPolicy

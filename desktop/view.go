@@ -275,11 +275,11 @@ func (a *app) transcript(c *ui.Context, ch store.Chat, v *chatView) {
 			hovered := col.Hovered()
 			col.Children(func() {
 				if it.first {
-					ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
+					ui.Row(c).Height(20).Gap(6).AlignItems(ui.Center).Children(func() {
 						ui.Text(c, a.name(r.author)).FontSize(12).FontWeight(600).TextColor(c.Theme().TextMuted).SingleLine().Shrink(1).MinWidth(0)
 						ui.Spacer(c)
-						if r.kind == rowAssistant {
-							msgTime(c, r.at, hovered)
+						if r.kind == rowAssistant && hovered {
+							a.replyActions(c, r)
 						}
 					})
 				}
@@ -289,8 +289,8 @@ func (a *app) transcript(c *ui.Context, ch store.Chat, v *chatView) {
 				}
 				ui.Box(c).Children(func() {
 					a.drawRow(c, ch, v, r, it.first)
-					if !it.first && hovered && r.at != 0 {
-						ui.Box(c).Absolute().Top(0).Right(0).Padding(0, 0, 0, 8).Background(pal(c).appBg).Children(func() { msgTime(c, r.at, true) })
+					if !it.first && hovered && (r.at != 0 || r.text != "") {
+						ui.Row(c).Absolute().Top(0).Right(0).Gap(6).AlignItems(ui.Center).Padding(0, 0, 0, 8).Background(pal(c).appBg).Children(func() { a.replyActions(c, r) })
 					}
 				})
 			})
@@ -470,15 +470,59 @@ func (a *app) reasoning(c *ui.Context, v *chatView, r row) {
 	})
 }
 
-// rowMenu gives a message Reply and the editing commands.
+// rowMenu gives a message Reply, a reply Copy Text and Copy as Markdown,
+// and the editing commands.
 func (a *app) rowMenu(e ui.Element, r row) {
+	var action func()
 	e.Selectable().ContextMenu(func(m *ui.Menu) {
 		if m.Item(L("Reply")).Disabled(r.seq == 0).Chosen() {
-			a.replyTo(r)
+			action = func() { a.replyTo(r) }
+		}
+		if r.kind == rowAssistant && strings.TrimSpace(r.text) != "" && a.copyText != nil {
+			m.Separator()
+			if m.Item(L("Copy Text")).Chosen() {
+				action = func() { a.copyReply(r, false) }
+			}
+			if m.Item(L("Copy as Markdown")).Chosen() {
+				action = func() { a.copyReply(r, true) }
+			}
 		}
 		m.Separator()
 		m.EditItems()
 	})
+	if action != nil {
+		action()
+	}
+}
+
+// replyActions are what a reply shows while the pointer is over it: its
+// time, and Copy and Copy as Markdown.
+func (a *app) replyActions(c *ui.Context, r row) {
+	msgTime(c, r.at, true)
+	if strings.TrimSpace(r.text) == "" || a.copyText == nil || r.seq == 0 {
+		return
+	}
+	a.copyButton(c, r, false, iconCopy, L("Copy Text"))
+	a.copyButton(c, r, true, iconCode, L("Copy as Markdown"))
+}
+
+func (a *app) copyButton(c *ui.Context, r row, asMarkdown bool, svg *ui.SVG, label string) {
+	done := a.copied == copiedKey(r, asMarkdown)
+	tip := label
+	if done {
+		svg, tip = iconCheck, L("Copied")
+	}
+	b := ui.ButtonBase(c.Key(copiedKey(r, asMarkdown))).Size(20, 20).Radius(4).Center().Label(label).Tooltip(tip).FocusRing(false).Shrink(0)
+	styleButton(b, c.Theme(), ghost, false)
+	b.Children(func() {
+		ic := ui.Icon(c, svg).FontSize(12)
+		if done {
+			ic.TextColor(pal(c).greenBar)
+		}
+	})
+	if b.Clicked() {
+		a.copyReply(r, asMarkdown)
+	}
 }
 
 func quoteView(c *ui.Context, who, text string) {
