@@ -904,3 +904,64 @@ func TestAttachedPictureShowsAsAThumbnail(t *testing.T) {
 		t.Fatalf("thumbnail at %+v %v", r, ok)
 	}
 }
+
+func TestProviderModelsFromTheServer(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"data":[{"id":"qwen3"},{"id":"llama4","context_length":131072},{"id":"nomic-embed-text"}]}`))
+	}))
+	defer srv.Close()
+	h := newHarness(t, script(func(string, []agent.Message) agent.Message { return say("ok") }))
+	h.a.openSettings(paneModels)
+	st := ui.NewTester(h.a.settingsRoot, 800, 900)
+	if err := st.Click("Add Provider…"); err != nil {
+		t.Fatal(err)
+	}
+	st.Frame()
+	f := h.a.set.prov
+	f.name, f.api, f.base = "Local", apiLabel(connect.Chat), srv.URL+"/v1"
+	st.Frame()
+	if err := st.Click("Load from Server"); err != nil {
+		t.Fatal(err)
+	}
+	h.pump("the list", func() bool { return !f.listing })
+	st.Frame()
+	if !st.HasText("2 models; check the ones to use.") || !st.HasText("131K") || st.HasText("nomic-embed-text") || f.models != "qwen3" {
+		t.Fatalf("list %q, models %q", st.Texts(), f.models)
+	}
+	if err := st.Click("llama4"); err != nil {
+		t.Fatal(err)
+	}
+	st.Frame()
+	st.Click("qwen3")
+	st.Frame()
+	if f.models != "llama4" {
+		t.Fatalf("models %q", f.models)
+	}
+	if toggleModel("a, b", "c") != "a, b, c" || windowText(1048576) != "1M" || windowText(200000) != "200K" {
+		t.Fatal("helpers")
+	}
+}
+
+func TestNewProviderListsModelsOnceTheURLRests(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"data":[{"id":"qwen3"}]}`))
+	}))
+	defer srv.Close()
+	h := newHarness(t, script(func(string, []agent.Message) agent.Message { return say("ok") }))
+	h.a.openSettings(paneModels)
+	st := ui.NewTester(h.a.settingsRoot, 800, 900)
+	st.Click("Add Provider…")
+	st.Frame()
+	f := h.a.set.prov
+	f.api, f.base = apiLabel(connect.Chat), srv.URL+"/v1"
+	st.Frame()
+	if f.listing || f.listed != nil {
+		t.Fatal("listed while typing")
+	}
+	time.Sleep(listRest + 100*time.Millisecond)
+	st.Frame()
+	h.pump("the list", func() bool { return f.listed != nil })
+	if f.models != "qwen3" {
+		t.Fatalf("models %q", f.models)
+	}
+}

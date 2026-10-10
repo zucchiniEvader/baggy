@@ -2,8 +2,11 @@ package main
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -657,7 +660,7 @@ func (a *app) providerDetail(c *ui.Context, f *providerForm, stored *store.Provi
 			fieldRow(c, L("Models"), L("Comma separated; the first is the default."), func() {
 				textField(c.Key("p-models"+f.id), &f.models, "deepseek-flash, deepseek-v4-pro")
 			})
-		})
+		}, func() { a.modelList(c, f) })
 		var rows []func()
 		if apiID(f.api) != connect.Chat {
 			rows = append(rows, func() {
@@ -759,6 +762,156 @@ func (a *app) testProvider(f *providerForm) {
 			}
 		})
 	}()
+}
+
+// listSig is what a model list depends on.
+func (f *providerForm) listSig() string {
+	return apiID(f.api) + "\x00" + strings.TrimSpace(f.base) + "\x00" + strings.TrimSpace(f.key)
+}
+
+// modelList is the models the server lists, to check the ones to use. A
+// new provider's list comes once its URL or key rests for a moment; Load
+// from Server asks again.
+func (a *app) modelList(c *ui.Context, f *providerForm) {
+	t := c.Theme()
+	if sig := f.listSig(); f.id == "" && !f.listing && sig != f.listedFor && (strings.TrimSpace(f.key) != "" || strings.TrimSpace(f.base) != "") {
+		switch {
+		case sig != f.pendingFor:
+			f.pendingFor, f.editedAt = sig, time.Now()
+			if post, redraw := a.post, a.redrawSettings; post != nil && redraw != nil {
+				time.AfterFunc(listRest+50*time.Millisecond, func() { post(redraw) })
+			}
+		case time.Since(f.editedAt) >= listRest:
+			a.loadModels(f)
+		}
+	}
+	ui.Column(c).Padding(10, 14).Gap(8).Children(func() {
+		ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
+			label := L("Load from Server")
+			if f.listed != nil {
+				label = L("Reload")
+			}
+			if smallButton(c.Key("p-list"+f.id), label, secondary).Clicked() && !f.listing {
+				a.loadModels(f)
+			}
+			switch {
+			case f.listing:
+				ui.Spinner(c).Size(12, 12)
+			case f.listErr != "":
+				ui.Text(c, f.listErr).FontSize(12).TextColor(t.TextMuted).SingleLine().Shrink(1).MinWidth(0).Tooltip(f.listErr)
+			case f.listed != nil:
+				ui.Text(c, L("%d models; check the ones to use.", len(f.listed))).FontSize(12).TextColor(t.TextMuted).SingleLine().Shrink(1).MinWidth(0)
+			}
+		})
+		if len(f.listed) > 10 {
+			focus := false
+			searchField(c.Key("p-filter"+f.id), &f.listQuery, L("Filter models"), &focus)
+		}
+		if len(f.listed) == 0 {
+			return
+		}
+		chosen := modelsOf(f.models)
+		q := strings.ToLower(strings.TrimSpace(f.listQuery))
+		ui.Scroll(c).MaxHeight(264).Children(func() {
+			ui.Column(c).Gap(1).FocusGroup(ui.Vertical).Children(func() {
+				for _, m := range f.listed {
+					if q != "" && !strings.Contains(strings.ToLower(m.ID+" "+m.Name), q) {
+						continue
+					}
+					on := slices.Contains(chosen, m.ID)
+					row := listRow(c.Key("m-"+m.ID), rowPlain).Label(m.ID).Role(ui.RoleCheckBox).Checked(on)
+					if row.Clicked() {
+						f.models = toggleModel(f.models, m.ID)
+					}
+					row.Children(func() {
+						ui.Text(c, m.ID).FontSize(13).SingleLine().Shrink(0).MaxWidth(280)
+						if m.Name != "" {
+							ui.Text(c, m.Name).FontSize(12).TextColor(t.TextMuted).SingleLine().Shrink(1).MinWidth(0)
+						}
+						ui.Spacer(c)
+						if m.Images {
+							ui.Icon(c, iconImage).FontSize(11).TextColor(t.TextMuted).Shrink(0).Tooltip(L("Takes images"))
+						}
+						if m.Window > 0 {
+							ui.Text(c, windowText(m.Window)).FontSize(11).TextColor(t.TextMuted).Shrink(0).Tooltip(L("Context window"))
+						}
+						ic := ui.Icon(c, iconCheck).FontSize(iconSize).Shrink(0)
+						if !on {
+							ic.TextColor(ui.Transparent) // keeps the column
+						}
+					})
+				}
+			})
+		})
+	})
+}
+
+// listRest is how long a typed URL or key rests before its list is asked.
+const listRest = 800 * time.Millisecond
+
+// loadModels asks the form's server for its models, in the background.
+func (a *app) loadModels(f *providerForm) {
+	api, base, key := apiID(f.api), strings.TrimSpace(f.base), strings.TrimSpace(f.key)
+	f.listing, f.listErr, f.listedFor, f.pendingFor = true, "", f.listSig(), f.listSig()
+	redraw := a.redrawSettings
+	go func() {
+		ms, err := connect.ListModels(context.Background(), api, base, key)
+		a.post(func() {
+			f.listing, f.listed = false, ms
+			switch {
+			case errors.Is(err, connect.ErrKey):
+				f.listErr = L("The server refused the API key.")
+			case errors.Is(err, connect.ErrNoList):
+				f.listErr = L("This server does not list its models: type them in.")
+			case err != nil:
+				f.listErr = oneLine(err.Error(), 160)
+			case len(ms) == 0:
+				f.listErr = L("The server lists no chat models.")
+			}
+			if err == nil && len(ms) > 0 && len(modelsOf(f.models)) == 0 {
+				f.models = ms[0].ID // the first is a start
+			}
+			if redraw != nil {
+				redraw()
+			}
+		})
+	}()
+}
+
+// modelsOf is a comma-separated list of models.
+func modelsOf(s string) []string {
+	var out []string
+	for _, m := range strings.Split(s, ",") {
+		if m = strings.TrimSpace(m); m != "" {
+			out = append(out, m)
+		}
+	}
+	return out
+}
+
+// toggleModel checks or unchecks a model in a comma-separated list, a
+// checked one going last.
+func toggleModel(list, id string) string {
+	ms := modelsOf(list)
+	if i := slices.Index(ms, id); i >= 0 {
+		ms = slices.Delete(ms, i, i+1)
+	} else {
+		ms = append(ms, id)
+	}
+	return strings.Join(ms, ", ")
+}
+
+// windowText is a context window as "128K" or "1M".
+func windowText(n int) string {
+	switch {
+	case n >= 1000000 && n%1000000 < 50000:
+		return fmt.Sprintf("%dM", (n+500000)/1000000)
+	case n >= 1000000:
+		return fmt.Sprintf("%.1fM", float64(n)/1000000)
+	case n >= 1000:
+		return fmt.Sprintf("%dK", (n+500)/1000)
+	}
+	return fmt.Sprint(n)
 }
 
 // mcpTemplatePath writes an mcp.json to start from when there is none.

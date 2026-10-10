@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/egoist/mygo/ui"
 	"github.com/spike/gobot/provider/connect"
@@ -259,6 +260,15 @@ type providerForm struct {
 	models                 string // comma separated
 	replay, encrypted, web bool
 	err                    string
+
+	// What the server lists (connect.ListModels), to check models from.
+	listing    bool
+	listed     []connect.Listed
+	listErr    string
+	listQuery  string
+	listedFor  string    // the protocol, URL and key the list is for
+	pendingFor string    // and those being typed, listed once they rest
+	editedAt   time.Time // when pendingFor last changed
 }
 
 var apiLabels = []string{"Anthropic Messages", "OpenAI Chat Completions", "OpenAI Responses"}
