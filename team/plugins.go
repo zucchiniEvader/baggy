@@ -232,7 +232,7 @@ func (t *Team) RunCheck(ctx context.Context, r store.Routine) (string, error) {
 	}
 	own := map[string]tool.Tool{}
 	if t.Tools != nil {
-		for _, tl := range t.Tools(b, t.Store.Workspace(b.ID)) {
+		for _, tl := range t.Tools(b, t.Store.WorkDir(b)) {
 			if readOnly[tl.Name()] {
 				own[tl.Name()] = tl
 			}

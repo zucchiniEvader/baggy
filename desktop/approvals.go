@@ -129,7 +129,7 @@ func (p *approvals) approve(ctx context.Context, b store.Bot, chat store.Chat, c
 	reason := ""
 	if mode == ModeReview {
 		if m, err := p.a.team.Model(b); err == nil {
-			ok, why := team.Review(ctx, m, b, p.a.team.LastRequest(chat.ID), describe(call), p.a.st.Workspace(b.ID))
+			ok, why := team.Review(ctx, m, b, p.a.team.LastRequest(chat.ID), describe(call), p.a.st.WorkDir(b))
 			if ok {
 				return nil
 			}

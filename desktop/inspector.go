@@ -150,8 +150,8 @@ func (a *app) botDetails(c *ui.Context, id string) {
 			a.editBot(id)
 		}
 		if a.openFolder != nil {
-			if smallButton(c.Key("show-folder"), L("Show Folder"), secondary).Tooltip(a.st.Workspace(b.ID)).Clicked() {
-				a.openFolder(a.st.Workspace(b.ID))
+			if smallButton(c.Key("show-folder"), L("Show Folder"), secondary).Tooltip(a.st.WorkDir(b)).Clicked() {
+				a.openFolder(a.st.WorkDir(b))
 			}
 		}
 	})

@@ -2,6 +2,9 @@ package team
 
 import (
 	"bytes"
+	"context"
+	"github.com/spike/gobot/store"
+	"github.com/spike/gobot/tool"
 	"image"
 	"image/png"
 	"os"
@@ -49,4 +52,47 @@ func TestSendFilesPlacesThemInTheWorkspace(t *testing.T) {
 	if len(user.Parts) != 2 || user.Parts[1].Kind != agent.PartImage {
 		t.Fatalf("parts %+v", user.Parts)
 	}
+}
+
+func TestABotsToolsRunInItsWorkdir(t *testing.T) {
+	var system string
+	var seen []agent.Message
+	m := script(func(bot string, msgs []agent.Message) agent.Message { seen = msgs; return say("ok") })
+	f := setup(t, systemSpy{m, &system})
+	var ranIn string
+	f.team.Tools = func(b store.Bot, ws string) []tool.Tool { ranIn = ws; return nil }
+	project := t.TempDir()
+	b, err := f.st.CreateBot(store.Bot{Name: "Coder", Workdir: project})
+	if err != nil {
+		t.Fatal(err)
+	}
+	dm, _ := f.st.DMOf(b.ID)
+	if err := f.team.SendFiles(dm.ID, "see", []Attachment{{Name: "spec.txt", Data: []byte("x")}}, nil, nil); err != nil {
+		t.Fatal(err)
+	}
+	f.team.Wait()
+	if ranIn != project {
+		t.Fatalf("tools ran in %q", ranIn)
+	}
+	if !strings.Contains(system, "Your working folder is "+project) || !strings.Contains(system, "Your own folder, with your memory, is "+f.st.Workspace(b.ID)) {
+		t.Fatalf("system %q", system)
+	}
+	es, _ := f.st.Messages(dm.ID, 0)
+	if text := seen[0].Parts[0].Text; !strings.Contains(text, "[Attached file: "+f.st.FilePath(es[0].Meta.Files[0])) {
+		t.Fatalf("file line %q", text)
+	}
+	if _, err := os.Stat(filepath.Join(project, "attachments")); err == nil {
+		t.Fatal("attachments went into the project")
+	}
+}
+
+// systemSpy keeps the system prompt of the last call.
+type systemSpy struct {
+	m      agent.Model
+	system *string
+}
+
+func (s systemSpy) Call(ctx context.Context, system string, msgs []agent.Message, tools []tool.Tool, emit func(agent.Event)) agent.Message {
+	*s.system = system
+	return s.m.Call(ctx, system, msgs, tools, emit)
 }

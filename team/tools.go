@@ -80,14 +80,14 @@ func (t *Team) teamTools(b store.Bot, chat store.Chat, r *run) []tool.Tool {
 				return tool.Result{Text: fmt.Sprintf("Delivered to %s, who answers in its direct chat with the user.", to.Name)}
 			}},
 		Func{N: "create_bot", D: "Create a new bot, a teammate with its own name, description (its system prompt: what it does and how) and workspace. Only when the user agreed to it.",
-			S: `{"type":"object","properties":{"name":{"type":"string"},"description":{"type":"string"},"join":{"type":"boolean","description":"also add it to this group"}},"required":["name","description"],"additionalProperties":false}`,
+			S: `{"type":"object","properties":{"name":{"type":"string"},"description":{"type":"string"},"workdir":{"type":"string","description":"a full path to an existing folder its tools run in, as a project the user named; its own workspace when left out"},"join":{"type":"boolean","description":"also add it to this group"}},"required":["name","description"],"additionalProperties":false}`,
 			F: func(ctx context.Context, raw json.RawMessage) tool.Result {
 				var a struct {
-					Name, Description string
-					Join              bool
+					Name, Description, Workdir string
+					Join                       bool
 				}
 				json.Unmarshal(raw, &a)
-				nb, err := t.Store.CreateBot(store.Bot{Name: a.Name, Description: a.Description, Provider: b.Provider, Model: b.Model, Thinking: b.Thinking})
+				nb, err := t.Store.CreateBot(store.Bot{Name: a.Name, Description: a.Description, Provider: b.Provider, Model: b.Model, Thinking: b.Thinking, Workdir: a.Workdir})
 				if err != nil {
 					return errResult("%v", err)
 				}
@@ -167,11 +167,11 @@ func (t *Team) listTeammates(b store.Bot) tool.Tool {
 
 func (t *Team) editBot(b store.Bot) tool.Tool {
 	return Func{N: "edit_bot", D: "Change a teammate's profile, or your own: only the fields given change. A description is the complete account of the bot's job and how it works; it applies from that bot's next turn. Only when the user asked for it.",
-		S: `{"type":"object","properties":{"bot":{"type":"string","description":"id or name"},"name":{"type":"string"},"description":{"type":"string"},"model":{"type":"string"},"thinking":{"type":"string","enum":["","off","low","medium","high"]}},"required":["bot"],"additionalProperties":false}`,
+		S: `{"type":"object","properties":{"bot":{"type":"string","description":"id or name"},"name":{"type":"string"},"description":{"type":"string"},"model":{"type":"string"},"thinking":{"type":"string","enum":["","off","low","medium","high"]},"workdir":{"type":"string","description":"a full path to an existing folder its tools run in; \"\" puts it back in its own workspace"}},"required":["bot"],"additionalProperties":false}`,
 		F: func(ctx context.Context, raw json.RawMessage) tool.Result {
 			var a struct {
 				Bot, Name, Description, Model string
-				Thinking                      *string
+				Thinking, Workdir             *string
 			}
 			json.Unmarshal(raw, &a)
 			o, err := t.findBot(a.Bot)
@@ -190,10 +190,13 @@ func (t *Team) editBot(b store.Bot) tool.Tool {
 			if a.Thinking != nil {
 				o.Thinking = *a.Thinking
 			}
+			if a.Workdir != nil {
+				o.Workdir = *a.Workdir
+			}
 			if err := t.Store.UpdateBot(o); err != nil {
 				return errResult("%v", err)
 			}
 			t.emit(Event{Kind: EventChanged, BotID: o.ID})
-			return tool.Result{Text: fmt.Sprintf("Updated %s (id %s).", o.Name, o.ID)}
+			return tool.Result{Text: fmt.Sprintf("Updated %s (id %s); its tools run in %s.", o.Name, o.ID, t.Store.WorkDir(o))}
 		}}
 }

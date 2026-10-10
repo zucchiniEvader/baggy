@@ -49,8 +49,43 @@ func (s *Store) Close() error { return s.db.Close() }
 // Dir is the folder the store lives in.
 func (s *Store) Dir() string { return s.dir }
 
-// Workspace is a bot's folder: its files, MEMORY.md, and memory/.
+// Workspace is a bot's own folder, keyed by id: MEMORY.md, memory/, the
+// files attached to its chats, and its work unless it has a Workdir.
 func (s *Store) Workspace(botID string) string { return filepath.Join(s.dir, "workspaces", botID) }
+
+// checkWorkdir refuses a working folder that is not a full path to a
+// folder there is.
+func (s *Store) checkWorkdir(b Bot) error {
+	d := strings.TrimSpace(b.Workdir)
+	if d == "" {
+		return nil
+	}
+	if d != "~" && !strings.HasPrefix(d, "~/") && !filepath.IsAbs(d) {
+		return fmt.Errorf("the working folder %q is not a full path", d)
+	}
+	if info, err := os.Stat(s.WorkDir(b)); err != nil || !info.IsDir() {
+		return fmt.Errorf("there is no folder %s", d)
+	}
+	return nil
+}
+
+// WorkDir is where a bot's tools run: its Workdir, ~ read as the home
+// folder, else its workspace.
+func (s *Store) WorkDir(b Bot) string {
+	d := strings.TrimSpace(b.Workdir)
+	if d == "" {
+		return s.Workspace(b.ID)
+	}
+	if home, err := os.UserHomeDir(); err == nil {
+		if d == "~" {
+			return home
+		}
+		if rest, ok := strings.CutPrefix(d, "~/"); ok {
+			return filepath.Join(home, rest)
+		}
+	}
+	return d
+}
 
 var migrations = []string{`
 CREATE TABLE providers (
@@ -111,6 +146,8 @@ ALTER TABLE chats ADD COLUMN read_seq INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE chats ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0;
 `, `
 ALTER TABLE bots ADD COLUMN avatar TEXT NOT NULL DEFAULT '';
+`, `
+ALTER TABLE bots ADD COLUMN workdir TEXT NOT NULL DEFAULT '';
 `}
 
 func (s *Store) migrate() error {
@@ -249,14 +286,15 @@ type Bot struct {
 	Icon        string `json:"icon"`     // its look: an icon's name (the desktop's set); "" is the default
 	Color       string `json:"color"`    // its avatar's color, a name of the desktop's set; "" is one picked by its id
 	Avatar      string `json:"avatar"`   // its own picture, a file in avatars/ (SaveAvatar); "" is its icon
+	Workdir     string `json:"workdir"`  // where its tools run (~ is the home folder); "" is its workspace
 	Created     int64  `json:"created"`
 }
 
-const botCols = `id, name, description, provider, model, thinking, emoji, color, avatar, created` // emoji holds the icon
+const botCols = `id, name, description, provider, model, thinking, emoji, color, avatar, workdir, created` // emoji holds the icon
 
 func scanBot(sc interface{ Scan(...any) error }) (Bot, error) {
 	var b Bot
-	err := sc.Scan(&b.ID, &b.Name, &b.Description, &b.Provider, &b.Model, &b.Thinking, &b.Icon, &b.Color, &b.Avatar, &b.Created)
+	err := sc.Scan(&b.ID, &b.Name, &b.Description, &b.Provider, &b.Model, &b.Thinking, &b.Icon, &b.Color, &b.Avatar, &b.Workdir, &b.Created)
 	if errors.Is(err, sql.ErrNoRows) {
 		err = ErrNotFound
 	}
@@ -268,6 +306,9 @@ func (s *Store) CreateBot(b Bot) (Bot, error) {
 	b.Name = strings.TrimSpace(b.Name)
 	if b.Name == "" {
 		return Bot{}, errors.New("a bot needs a name")
+	}
+	if err := s.checkWorkdir(b); err != nil {
+		return Bot{}, err
 	}
 	if b.ID == "" {
 		b.ID = NewID("bot")
@@ -281,8 +322,8 @@ func (s *Store) CreateBot(b Bot) (Bot, error) {
 		return Bot{}, err
 	}
 	defer tx.Rollback()
-	if _, err := tx.Exec(`INSERT INTO bots(`+botCols+`) VALUES(?,?,?,?,?,?,?,?,?,?)`,
-		b.ID, b.Name, b.Description, b.Provider, b.Model, b.Thinking, b.Icon, b.Color, b.Avatar, b.Created); err != nil {
+	if _, err := tx.Exec(`INSERT INTO bots(`+botCols+`) VALUES(?,?,?,?,?,?,?,?,?,?,?)`,
+		b.ID, b.Name, b.Description, b.Provider, b.Model, b.Thinking, b.Icon, b.Color, b.Avatar, strings.TrimSpace(b.Workdir), b.Created); err != nil {
 		return Bot{}, err
 	}
 	chat := NewID("chat")
@@ -300,12 +341,15 @@ func (s *Store) UpdateBot(b Bot) error {
 	if strings.TrimSpace(b.Name) == "" {
 		return errors.New("a bot needs a name")
 	}
+	if err := s.checkWorkdir(b); err != nil {
+		return err
+	}
 	old, err := s.Bot(b.ID)
 	if err != nil {
 		return err
 	}
-	res, err := s.db.Exec(`UPDATE bots SET name=?, description=?, provider=?, model=?, thinking=?, emoji=?, color=?, avatar=? WHERE id=?`,
-		strings.TrimSpace(b.Name), b.Description, b.Provider, b.Model, b.Thinking, b.Icon, b.Color, b.Avatar, b.ID)
+	res, err := s.db.Exec(`UPDATE bots SET name=?, description=?, provider=?, model=?, thinking=?, emoji=?, color=?, avatar=?, workdir=? WHERE id=?`,
+		strings.TrimSpace(b.Name), b.Description, b.Provider, b.Model, b.Thinking, b.Icon, b.Color, b.Avatar, strings.TrimSpace(b.Workdir), b.ID)
 	if err := notFound(res, err); err != nil {
 		return err
 	}

@@ -312,7 +312,7 @@ func TestProjectNamesSpeakersMentionsAndReplies(t *testing.T) {
 func TestSystemPromptGroup(t *testing.T) {
 	bots := []store.Bot{{ID: "bot-a", Name: "A", Description: "Does A."}, {ID: "bot-b", Name: "B"}, {ID: "bot-c", Name: "C", Description: "Outside."}}
 	chat := store.Chat{Kind: store.Group, Title: "G", Description: "launch", Owner: "bot-b", Members: []string{"bot-a", "bot-b"}}
-	s := SystemPrompt(bots[0], chat, bots, "/w")
+	s := SystemPrompt(bots[0], chat, bots, "/w", "/w")
 	for _, want := range []string{"Does A.", "You are A (id bot-a)", "- A (id bot-a) — you", "- B (id bot-b) — owner", "for: launch", "PASS", "- C (id bot-c): Outside."} {
 		if !strings.Contains(s, want) {
 			t.Fatalf("missing %q in:\n%s", want, s)

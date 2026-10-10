@@ -66,6 +66,7 @@ type app struct {
 	readImage      func() []byte                   // the clipboard's image as PNG, or nil
 	pickFiles      func(done func(paths []string)) // asks for files to attach; done runs on the main thread with the ones chosen
 	pickImage      func(done func(path string))    // asks for a picture, as pickFiles
+	pickFolder     func(done func(path string))    // asks for a folder, as pickFiles
 	openFolder     func(path string)
 	revealFile     func(path string) // shows a file in Finder
 	onLanguage     func()            // the language changed: the menu bar is made again

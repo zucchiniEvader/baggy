@@ -147,17 +147,17 @@ func userView(m agent.Message, meta store.Meta, botID string, byID map[string]st
 		}
 		m.Parts[i].Text = text
 	}
-	return withFiles(m, meta.Files)
+	return withFiles(m, meta.Files, byID[botID].Workdir != "")
 }
 
 // withFiles is a user message with a line per attached file before its
 // images.
-func withFiles(m agent.Message, fs []store.File) agent.Message {
+func withFiles(m agent.Message, fs []store.File, absolute bool) agent.Message {
 	if len(fs) == 0 {
 		return m
 	}
 	m.Parts = append([]agent.Part(nil), m.Parts...)
-	lines := fileLines(fs)
+	lines := fileLines(fs, absolute)
 	if len(m.Parts) > 0 && m.Parts[0].Kind == agent.PartText {
 		m.Parts[0].Text += "\n\n" + lines
 	} else {
@@ -168,13 +168,17 @@ func withFiles(m agent.Message, fs []store.File) agent.Message {
 
 // fileLines name a message's attached files by their paths in the
 // workspace.
-func fileLines(fs []store.File) string {
+func fileLines(fs []store.File, absolute bool) string {
 	var b strings.Builder
 	for i, f := range fs {
 		if i > 0 {
 			b.WriteByte('\n')
 		}
-		fmt.Fprintf(&b, "[Attached file: %s (%s", f.Rel(), size(f.Size))
+		path := f.Rel() // in the bot's workspace, where its tools run
+		if absolute && f.Path != "" {
+			path = f.Path
+		}
+		fmt.Fprintf(&b, "[Attached file: %s (%s", path, size(f.Size))
 		if f.Type != "" {
 			b.WriteString(", " + f.Type)
 		}
@@ -215,13 +219,17 @@ func QuoteOf(e store.Entry) *store.Quote {
 // SystemPrompt is a bot's system prompt in a chat: its description, who and
 // where it is, and its teammates. It changes only when those do, so the
 // provider's prompt cache holds.
-func SystemPrompt(b store.Bot, chat store.Chat, bots []store.Bot, workspace string) string {
+func SystemPrompt(b store.Bot, chat store.Chat, bots []store.Bot, workdir, workspace string) string {
 	byID := botNames(bots)
 	var s strings.Builder
 	if d := strings.TrimSpace(b.Description); d != "" {
 		s.WriteString(d + "\n\n")
 	}
-	fmt.Fprintf(&s, "You are %s (id %s), one of the user's bots in gobot, a desktop assistant. Your workspace folder is %s; your tools run there.\n", b.Name, b.ID, workspace)
+	fmt.Fprintf(&s, "You are %s (id %s), one of the user's bots in gobot, a desktop assistant. Your working folder is %s; your tools run there.", b.Name, b.ID, workdir)
+	if workdir != workspace {
+		fmt.Fprintf(&s, " Your own folder, with your memory, is %s.", workspace)
+	}
+	s.WriteString("\n")
 	if chat.Kind == store.DM {
 		s.WriteString("\nThis is your direct chat with the user.\n")
 	} else {

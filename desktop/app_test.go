@@ -1165,3 +1165,31 @@ func TestRunningToolShowsWhatItHasSoFar(t *testing.T) {
 		t.Fatal("the partial output stays after the end")
 	}
 }
+
+func TestBotFolder(t *testing.T) {
+	h := newHarness(t, script(func(string, []agent.Message) agent.Message { return say("ok") }))
+	chef := h.a.bots[0]
+	project := t.TempDir()
+	h.a.pickFolder = func(done func(string)) { h.a.post(func() { done(project) }) }
+	h.a.editBot(chef.ID)
+	h.tt.Frame()
+	if err := h.tt.Click("Choose…"); err != nil {
+		t.Fatal(err)
+	}
+	h.pump("the folder", func() bool { return h.a.botSheet.workdir == project })
+	h.tt.Click("Save")
+	h.tt.Frame()
+	if b, _ := h.st.Bot(chef.ID); h.st.WorkDir(b) != project {
+		t.Fatalf("workdir %q", b.Workdir)
+	}
+	// A folder that is not there is refused, and the sheet says so.
+	h.a.editBot(chef.ID)
+	h.tt.Frame()
+	h.a.botSheet.workdir = filepath.Join(project, "missing")
+	h.tt.Frame()
+	h.tt.Click("Save")
+	h.tt.Frame()
+	if h.a.botSheet.err == "" || !h.a.botSheet.open {
+		t.Fatal("a missing folder saved")
+	}
+}

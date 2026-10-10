@@ -26,6 +26,7 @@ type botForm struct {
 	color               string // a botColors name; "" until one is picked
 	avatar              string // its picture (store.Bot.Avatar); "" for the icon
 	stored              string // the picture it had, kept until it saves
+	workdir             string // where its tools run; "" is its workspace
 	err                 string
 }
 
@@ -73,7 +74,7 @@ func (a *app) editBot(id string) {
 		}
 	}
 	a.botSheet = &botForm{open: true, id: b.ID, name: b.Name, description: b.Description, providerName: a.providerName(b.Provider), model: b.Model, thinking: th,
-		icon: b.Icon, color: colorName(b), avatar: b.Avatar, stored: b.Avatar}
+		icon: b.Icon, color: colorName(b), avatar: b.Avatar, stored: b.Avatar, workdir: b.Workdir}
 }
 
 func (a *app) saveBot(f *botForm) bool {
@@ -82,7 +83,7 @@ func (a *app) saveBot(f *botForm) bool {
 		th = ""
 	}
 	b := store.Bot{ID: f.id, Name: f.name, Description: f.description, Provider: a.providerID(f.providerName), Model: strings.TrimSpace(f.model), Thinking: th,
-		Icon: f.icon, Color: f.color, Avatar: f.avatar}
+		Icon: f.icon, Color: f.color, Avatar: f.avatar, Workdir: strings.TrimSpace(f.workdir)}
 	var err error
 	if f.id == "" {
 		b, err = a.st.CreateBot(b)
@@ -129,6 +130,7 @@ func (a *app) botSheetView(c *ui.Context) {
 				ui.Field(c, L("Provider"), func() { popup(c, &f.providerName, a.providerNames()) })
 				ui.Field(c, L("Model"), func() { textField(c, &f.model, a.modelHint(f.providerName)) })
 				ui.Field(c, L("Thinking"), func() { popup(c, &f.thinking, thinkingLevels) })
+				ui.Field(c, L("Folder"), func() { a.folderField(c, f) })
 			})
 			if f.err != "" {
 				ui.Text(c, f.err).FontSize(12).TextColor(pal(c).red)
@@ -178,6 +180,20 @@ func (a *app) avatarEditor(c *ui.Context, f *botForm) {
 			a.iconPicker(c, &f.icon)
 			a.colorPicker(c, &f.color)
 		})
+	})
+}
+
+// folderField is where a bot's tools run: a folder the user chose, or its
+// own workspace when empty.
+func (a *app) folderField(c *ui.Context, f *botForm) {
+	ui.Column(c).Gap(4).Children(func() {
+		ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
+			ui.Box(c).Grow(1).MinWidth(0).Children(func() { textField(c.Key("workdir"), &f.workdir, L("Its own workspace")) })
+			if a.pickFolder != nil && smallButton(c.Key("pick-folder"), L("Choose…"), secondary).Clicked() {
+				a.pickFolder(func(path string) { f.workdir = path })
+			}
+		})
+		ui.Text(c, L("Where its tools run, as a project folder. Its memory stays in its own workspace.")).FontSize(11).TextColor(c.Theme().TextMuted)
 	})
 }
 

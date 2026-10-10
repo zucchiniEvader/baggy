@@ -245,7 +245,7 @@ func (t *Team) SendFiles(chatID, text string, files []Attachment, mentions []str
 		if err != nil {
 			return err
 		}
-		f.Image, f.Note = part != nil, note
+		f.Image, f.Note, f.Path = part != nil, note, t.Store.FilePath(f)
 		if part != nil {
 			msg.Parts = append(msg.Parts, *part)
 		}
@@ -283,7 +283,8 @@ func (t *Team) deliver(chatID, author string, meta store.Meta, msg agent.Message
 		if len(meta.Files) > 0 {
 			r.plain[msg.ID] = msg // kept without the file lines Project adds
 		}
-		r.steering.Push(withFiles(msg, meta.Files))
+		owner, _ := t.Store.Bot(chat.Owner)
+		r.steering.Push(withFiles(msg, meta.Files, owner.Workdir != ""))
 		return nil
 	}
 	e, err := t.Store.Append(chatID, author, "", meta, msg)
@@ -400,7 +401,7 @@ func (t *Team) turn(ctx context.Context, chat store.Chat, botID string, r *run, 
 		msgs = append(msgs, agent.Message{Role: agent.RoleUser, Parts: []agent.Part{{Kind: agent.PartText, Text: strings.Join(notes, "\n\n")}}})
 	}
 
-	ws := t.Store.Workspace(b.ID)
+	ws := t.Store.WorkDir(b)
 	var tools []tool.Tool
 	if t.Tools != nil {
 		tools = t.Tools(b, ws)
@@ -427,7 +428,7 @@ func (t *Team) turn(ctx context.Context, chat store.Chat, botID string, r *run, 
 		tools = append(tools, t.resourceTools(plugins)...)
 		tools = append(tools, t.codemodeTool(b, chat, tools, hooks, plugins))
 	}
-	system := SystemPrompt(b, chat, bots, ws)
+	system := SystemPrompt(b, chat, bots, ws, t.Store.Workspace(b.ID))
 	if terminals {
 		system += "\n\n" + terminalsPrompt
 	}

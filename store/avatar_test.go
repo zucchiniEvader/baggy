@@ -30,3 +30,32 @@ func TestBotAvatarAndColor(t *testing.T) {
 		t.Fatal("a deleted bot's picture is kept")
 	}
 }
+
+func TestBotWorkdir(t *testing.T) {
+	s := open(t)
+	home, _ := os.UserHomeDir()
+	b, _ := s.CreateBot(Bot{Name: "Scout"})
+	if s.WorkDir(b) != s.Workspace(b.ID) {
+		t.Fatal("the default is the workspace")
+	}
+	dir := t.TempDir()
+	b.Workdir = dir
+	if err := s.UpdateBot(b); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := s.Bot(b.ID); s.WorkDir(got) != dir {
+		t.Fatalf("workdir %q", s.WorkDir(got))
+	}
+	if s.WorkDir(Bot{Workdir: "~"}) != home {
+		t.Fatal("~")
+	}
+	for _, bad := range []string{"relative/path", dir + "/missing"} {
+		b.Workdir = bad
+		if s.UpdateBot(b) == nil {
+			t.Fatalf("%q taken", bad)
+		}
+	}
+	if _, err := s.CreateBot(Bot{Name: "X", Workdir: "nope"}); err == nil {
+		t.Fatal("created with a relative folder")
+	}
+}

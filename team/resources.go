@@ -78,7 +78,9 @@ func (t *Team) resourceTools(plugins []mcp.Status) []tool.Tool {
 	}
 	return []tool.Tool{
 		list("list_mcp_resources", "List the resources plugins offer (files, records, pages: things to read rather than actions), a page at a time.",
-			func(ctx context.Context, id, cursor string) (any, string, error) { return t.Plugins.Resources(ctx, id, cursor) }),
+			func(ctx context.Context, id, cursor string) (any, string, error) {
+				return t.Plugins.Resources(ctx, id, cursor)
+			}),
 		list("list_mcp_resource_templates", "List the resource templates plugins offer: URI patterns such as file:///{path} to fill in and read with read_mcp_resource.",
 			func(ctx context.Context, id, cursor string) (any, string, error) {
 				return t.Plugins.ResourceTemplates(ctx, id, cursor)

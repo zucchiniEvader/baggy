@@ -35,9 +35,13 @@ Every message a turn produces is stored on its `message_end`, with the turn id; 
 
 Its bot answers. A message sent while it works goes to the run's steering queue and reaches the bot at its next model call; it is stored when the loop injects it (with its author and meta kept by message id), and one that arrives after the last read starts the next turn. `Interrupt(chat)` after a send cuts the bot's step short so it reads the message at once.
 
+## Working folder
+
+A bot's tools (files, search, shell, terminal sessions, routine checks) run in `Store.WorkDir(bot)`: its `Workdir`, a folder of the user's such as a project (`~` is the home folder), else its own workspace. Its memory and the files attached to its chats stay in its workspace either way. The store refuses a working folder that is not a full path or not a folder.
+
 ## Attachments
 
-`SendFiles(chat, text, files, mentions, reply)` sends a message with files (each at most `MaxFile`, 50 MB). The store keeps each one's bytes at `attachments/<file id>/<name>` in its folder (`Store.SaveFile`, the name stripped of folders) and lists it in `Meta.Files` with its size and media type. Each bot that reads the chat (a DM's bot, a group's members) gets a copy at the same path in its workspace (`Store.Place`), at once and again before each of its turns, so a bot added later or a copy that failed is made then, and a relative path the bot reads opens it. A picture (PNG, JPEG, GIF, WebP, or HEIC) also goes in the message as an image part, made one a model takes by `images.Fit`: turned upright by its EXIF orientation, scaled down to fit 2000×2000, kept under 5 MB (as PNG for a PNG or GIF, else JPEG), a HEIC converted with the Mac's `sips`. What it changed, or why the file could not be one, is the file's `Note`. The message the store keeps is what the user wrote; the bots read a line per file after the text, `[Attached file: attachments/<id>/report.pdf (1.2 MB, application/pdf)]`, an image's ending `; attached below as an image, scaled down from 4032×3024 to 2000×1500`. A file sent to a busy DM reaches the bot with those lines through the steering queue and is stored without them.
+`SendFiles(chat, text, files, mentions, reply)` sends a message with files (each at most `MaxFile`, 50 MB). The store keeps each one's bytes at `attachments/<file id>/<name>` in its folder (`Store.SaveFile`, the name stripped of folders) and lists it in `Meta.Files` with its size and media type. Each bot that reads the chat (a DM's bot, a group's members) gets a copy at the same path in its own workspace, never in a working folder of the user's (`Store.Place`), at once and again before each of its turns, so a bot added later or a copy that failed is made then, and a relative path the bot reads opens it. A picture (PNG, JPEG, GIF, WebP, or HEIC) also goes in the message as an image part, made one a model takes by `images.Fit`: turned upright by its EXIF orientation, scaled down to fit 2000×2000, kept under 5 MB (as PNG for a PNG or GIF, else JPEG), a HEIC converted with the Mac's `sips`. What it changed, or why the file could not be one, is the file's `Note`. The message the store keeps is what the user wrote; the bots read a line per file after the text, `[Attached file: attachments/<id>/report.pdf (1.2 MB, application/pdf)]` (for a bot with a working folder of its own, the store's copy by its full path, `File.Path`), an image's ending `; attached below as an image, scaled down from 4032×3024 to 2000×1500`. A file sent to a busy DM reaches the bot with those lines through the steering queue and is stored without them.
 
 ## Group: the room
 
@@ -47,7 +51,7 @@ After `../lorca/docs/architecture/bots.md`. A user message offers every member a
 
 `Project(entries, bot, bots)` is the chat from the newest `compaction` entry on: the bot's own messages as they are; the user's as user messages, the first `@Name` of each mention followed by `(id …)` and a reply prefixed `[Replying to your message: "…"]` (or `their earlier message`, or `Scout's message`), and a line per attached file after the text (see Attachments); a `message_bot` delivery as `[Message from Chef (id …) via message_bot]`; other bots' replies as user messages `[Name]: text`, without their tool calls, results, or failed turns.
 
-`SystemPrompt` is the bot's description, then who and where it is (its id and workspace), the chat (a DM, or the group's members in turn order with "you" and "owner", its description, and how the room works), the user's other bots with their first description line, and when to use `create_bot`. It changes only when those do, so the provider's prompt cache holds.
+`SystemPrompt` is the bot's description, then who and where it is (its id and working folder, and its own folder with its memory when that is another), the chat (a DM, or the group's members in turn order with "you" and "owner", its description, and how the room works), the user's other bots with their first description line, and when to use `create_bot`. It changes only when those do, so the provider's prompt cache holds.
 
 ## Compaction
 
@@ -79,10 +83,10 @@ With `Plugins` (an `mcp.Manager`) or `Codemode` set, every turn has the `codemod
 ## Team tools
 
 - `message_bot(bot, text)`: by id or a name only one bot has; delivers into that bot's DM, where it answers. It refuses the bot itself and a member of the current group (talk there). Each delivery carries `Hops`, one more than the message that started the sender's turn (a user message resets it); past `MaxHops` (eight) it refuses, so two bots cannot loop.
-- `create_bot(name, description, join)`: a new bot on the creator's provider and model; `join` also seats it in the current group.
+- `create_bot(name, description, workdir?, join)`: a new bot on the creator's provider and model, its tools running in `workdir` when given (a full path to an existing folder); `join` also seats it in the current group.
 - `hand_off(bot)` (groups): the owner makes another member the owner.
 - `list_teammates`: every bot with its id, the model and thinking it runs with, whether it is working, and its description.
-- `edit_bot(bot, name?, description?, model?, thinking?)`: changes a teammate's profile or the bot's own, only the fields given, from that bot's next turn.
+- `edit_bot(bot, name?, description?, model?, thinking?, workdir?)`: changes a teammate's profile or the bot's own, only the fields given, from that bot's next turn.
 
 ## Review
 

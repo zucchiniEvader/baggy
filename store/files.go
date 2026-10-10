@@ -18,6 +18,9 @@ type File struct {
 	// what making it one changed, or why it could not be.
 	Image bool   `json:"image,omitempty"`
 	Note  string `json:"note,omitempty"`
+	// Path is the store's copy, named to a bot whose tools run in a folder
+	// other than its workspace.
+	Path string `json:"path,omitempty"`
 }
 
 // Rel is the file's path relative to a workspace or the store's folder.

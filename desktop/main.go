@@ -156,6 +156,14 @@ func main() {
 				}
 			}()
 		}
+		a.pickFolder = func(done func(path string)) {
+			go func() {
+				paths, _ := mygo.Dialog.Open(mygo.OpenDialogOptions{Parent: win, Title: L("Choose a Folder"), Directory: true, CreateDirectories: true})
+				if len(paths) > 0 {
+					win.Update(func() { done(paths[0]) })
+				}
+			}()
+		}
 		a.pickImage = func(done func(path string)) {
 			go func() {
 				paths, _ := mygo.Dialog.Open(mygo.OpenDialogOptions{Parent: win, Title: L("Choose Picture"),
