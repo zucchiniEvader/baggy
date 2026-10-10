@@ -55,7 +55,7 @@ func (a *app) memorySheetView(c *ui.Context) {
 	f := a.memSheet
 	m := a.memoryOf(f.bot)
 	ui.Modal(c, &f.open, func() {
-		ui.Column(c).Width(580).Gap(14).Children(func() {
+		dialogBody(c, 580, 14).Children(func() {
 			dialogTitle(c, L("%s's memory", f.bot.Name), L("MEMORY.md opens every turn of this bot. Credentials are redacted when saved."))
 			ui.Box(c).Padding(8, 10).Radius(rowRadius).Background(pal(c).codeBg).Children(func() {
 				ui.TextAreaBase(c, &f.text).Height(320).Font(monoFont).FontSize(12).LineHeight(1.45).Label(L("Memory"))

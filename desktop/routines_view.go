@@ -101,7 +101,7 @@ func (a *app) routineSheetView(c *ui.Context) {
 		return
 	}
 	ui.Modal(c, &f.open, func() {
-		ui.Column(c).Width(520).Gap(14).Children(func() {
+		dialogBody(c, 520, 14).Children(func() {
 			dialogTitle(c, r.Name, routineLine(r, time.Now()))
 			tz := r.Timezone
 			if tz == "" {

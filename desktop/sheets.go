@@ -106,7 +106,7 @@ func (a *app) botSheetView(c *ui.Context) {
 		if f.id != "" {
 			title, action = L("Edit %s", f.name), L("Save")
 		}
-		ui.Column(c).Width(480).Gap(18).Children(func() {
+		dialogBody(c, 480, 18).Children(func() {
 			dialogTitle(c, title, L("A bot is a name, a description (its system prompt), the model it runs on, and a workspace folder of its own."))
 			ui.Form(c, func() {
 				ui.Field(c, L("Name"), func() { textField(c, &f.name, L("For example Scout")).AutoFocus() })
@@ -211,7 +211,7 @@ func (a *app) groupSheetView(c *ui.Context) {
 		if f.id != "" {
 			title, action = L("Edit Group"), L("Save")
 		}
-		ui.Column(c).Width(480).Gap(18).Children(func() {
+		dialogBody(c, 480, 18).Children(func() {
 			dialogTitle(c, title, L("Members take turns: the ones you @ go first, and each replies or passes."))
 			ui.Form(c, func() {
 				ui.Field(c, L("Name"), func() { textField(c, &f.title, L("For example Launch")).AutoFocus() })

@@ -89,7 +89,7 @@ After `../tsubomi` (whose `AGENTS.md`, `theme.go` and `controls.go` set it out, 
 - **The conversation**: at most 760 wide, centered. The user's messages in a neutral bubble on the right; a bot's replies as text, under its icon and name at the start of a turn; thinking closed under a "Thinking" line that opens it; a run of tool calls as one card of rows (disclosure arrow, icon, label, a muted summary, the status: a spinner, a check, a red mark), each opening on its arguments and result in code blocks; an error as a pill-gray row of red text with an alert icon, not a red block.
 - **Composer**: a card (surface, border, radius 12) holding the text, a hint line ("↩ Send · ⇧↩ New line"), and a round send button that becomes stop while the chat works.
 - **Empty states**: centered: a small icon in a gray tile, a line, one or two actions or a few suggestions. No long explanations.
-- **Dialogs**: a 17 bold title over a 12 muted line, fields in a `ui.Form`, Cancel and the primary action at the bottom right; confirmations are `ui.AlertDialog`.
+- **Dialogs**: a 17 bold title over a 12 muted line, fields in a `ui.Form`, Cancel and the primary action at the bottom right; confirmations are `ui.AlertDialog`. A press on nothing in a dialog focuses nothing: build its content in `dialogBody`, else MyGo's dialog, keeping the keyboard, hands the focus to its first field.
 
 **Motion**: 150–220ms, ease-in-out; the sidebar slides and clips; under Reduce Motion everything completes at once; no bounces, no scaled entrances, no skeletons.
 

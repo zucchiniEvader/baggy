@@ -316,3 +316,15 @@ func iconTile(c *ui.Context, svg *ui.SVG, size float32) ui.Element {
 		ui.Icon(c, svg).FontSize(size * 0.5).TextColor(c.Theme().TextMuted)
 	})
 }
+
+// dialogBody is a dialog's content, width wide. It takes the focus itself
+// (without a ring) when a press lands on nothing in it, so the focus stays
+// in the dialog there: else the dialog, keeping the keyboard, would hand
+// it to its first field.
+func dialogBody(c *ui.Context, width, gap float32) ui.Element {
+	body := ui.Column(c.Key("dialog-body")).Width(width).Gap(gap).Focusable().FocusRing(false)
+	if body.Pressed() {
+		body.Focus()
+	}
+	return body
+}

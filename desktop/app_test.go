@@ -679,3 +679,33 @@ func TestQuitIsNotHeldByKeepRunning(t *testing.T) {
 		t.Fatal("closing hides only while keeping running and not quitting")
 	}
 }
+
+func TestBlankPressInDialogKeepsFieldsUnfocused(t *testing.T) {
+	h := newHarness(t, script(func(string, []agent.Message) agent.Message { return say("ok") }))
+	h.a.newBot()
+	h.tt.Frame()
+	h.tt.Frame()
+	h.tt.Type("Scout") // the name field has the focus as the sheet opens
+	h.tt.Frame()
+	f := h.a.botSheet
+	if f.name != "Scout" {
+		t.Fatalf("name %q", f.name)
+	}
+	h.tt.Click("Description") // a field's label focuses its field, as forms do
+	h.tt.Frame()
+	h.tt.Type("Finds")
+	h.tt.Frame()
+	if f.description != "Finds" {
+		t.Fatalf("description %q", f.description)
+	}
+	// A press on nothing: what is typed then goes nowhere.
+	if err := h.tt.Click("A bot is a name, a description (its system prompt), the model it runs on, and a workspace folder of its own."); err != nil {
+		t.Fatal(err)
+	}
+	h.tt.Frame()
+	h.tt.Type("zz")
+	h.tt.Frame()
+	if f.name != "Scout" || f.description != "Finds" || h.a.botSheet == nil {
+		t.Fatalf("name %q description %q", f.name, f.description)
+	}
+}
