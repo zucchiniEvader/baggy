@@ -395,6 +395,7 @@ func (a *app) providerList(c *ui.Context, ps []store.Provider, def string) {
 						a.set.provSel = "new"
 					}
 				})
+				a.contextSettings(c)
 				return
 			}
 			box := ui.Column(c.Key("providers")).Radius(cardRadius).Background(p.surface).Border(1, p.border).Clip().
@@ -477,8 +478,79 @@ func (a *app) providerList(c *ui.Context, ps []store.Provider, def string) {
 					a.set.provSel = "new"
 				}
 			})
+			a.contextSettings(c)
 		})
 	})
+}
+
+var (
+	warmShares = []float64{0.5, 0.6, 0.7, 0.8, 0.9}
+	coldShares = []float64{0, 0.3, 0.4, 0.5, 0.6}
+	cacheTTLs  = []time.Duration{5 * time.Minute, time.Hour, 24 * time.Hour}
+)
+
+func shareLabel(v float64) string {
+	if v == 0 {
+		return L("Never")
+	}
+	return L("At %d%% of the window", int(v*100+0.5))
+}
+
+func ttlLabel(d time.Duration) string {
+	switch d {
+	case time.Hour:
+		return L("1 hour")
+	case 24 * time.Hour:
+		return L("1 day")
+	}
+	return L("5 minutes")
+}
+
+// choose is a popup over values, by their labels; it reports a change.
+func choose[T comparable](c *ui.Context, v *T, values []T, label func(T) string) bool {
+	labels := make([]string, len(values))
+	for i, x := range values {
+		labels[i] = label(x)
+	}
+	cur := label(*v)
+	popup(c, &cur, labels).Width(200)
+	for i, l := range labels {
+		if l == cur && values[i] != *v {
+			*v = values[i]
+			return true
+		}
+	}
+	return false
+}
+
+// contextSettings is when long chats are summarized: early once the
+// provider's cache has expired, late while it is warm.
+func (a *app) contextSettings(c *ui.Context) {
+	pr := a.prefs
+	changed := false
+	sectionTitle(c, L("Context"))
+	ui.Text(c, L("A long chat is summarized to keep requests small. While the provider's cache is warm, a long context costs little; once it has expired, the next request pays for all of it, so that is when to summarize sooner.")).FontSize(12).LineHeight(1.5).TextColor(c.Theme().TextMuted).Padding(0, 0, 6)
+	card(c,
+		func() {
+			settingRow(c, L("While the cache is warm"), L("Summarize when a request fills this much of the model's window."), func() {
+				changed = choose(c, &pr.compactWarm, warmShares, shareLabel) || changed
+			})
+		},
+		func() {
+			settingRow(c, L("Once the cache has expired"), L("Summarize sooner, on the first request after a pause."), func() {
+				changed = choose(c, &pr.compactCold, coldShares, shareLabel) || changed
+			})
+		},
+		func() {
+			settingRow(c, L("The cache lasts"), L("Anthropic keeps it 5 minutes (or an hour, paid); OpenAI about 5 to 10; DeepSeek for hours."), func() {
+				changed = choose(c, &pr.cacheTTL, cacheTTLs, ttlLabel) || changed
+			})
+		},
+	)
+	if changed {
+		pr.save()
+		a.applyPrefs()
+	}
 }
 
 func (a *app) askDeleteProvider(pr store.Provider) {

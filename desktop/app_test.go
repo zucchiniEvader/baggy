@@ -775,3 +775,28 @@ func TestAttachDoesNotBlockTheFrame(t *testing.T) {
 	close(chosen)
 	h.pump("the image", func() bool { return h.tt.HasText("1 image(s) attached") })
 }
+
+func TestContextSettings(t *testing.T) {
+	h := newHarness(t, script(func(string, []agent.Message) agent.Message { return say("ok") }))
+	if w, c, ttl := h.a.compactionPolicy(); w != 0.8 || c != 0.4 || ttl != 5*time.Minute {
+		t.Fatalf("defaults %v %v %v", w, c, ttl)
+	}
+	h.a.openSettings(paneModels)
+	st := ui.NewTester(h.a.settingsRoot, 800, 900)
+	if !st.HasText("Once the cache has expired") {
+		t.Fatalf("no context settings: %q", st.Texts())
+	}
+	if err := st.Click("At 40% of the window"); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.ChooseMenuItem("At 30% of the window"); err != nil {
+		t.Fatal(err)
+	}
+	st.Frame()
+	if _, c, _ := h.a.compactionPolicy(); c != 0.3 || h.st.Setting("pref.compact_cold") != "0.30" {
+		t.Fatalf("cold %v, stored %q", c, h.st.Setting("pref.compact_cold"))
+	}
+	if p := loadPrefs(h.st); p.compactCold != 0.3 || p.compactWarm != 0.8 || p.cacheTTL != 5*time.Minute {
+		t.Fatalf("reloaded %+v", p)
+	}
+}

@@ -2,6 +2,7 @@ package main
 
 import (
 	"strings"
+	"sync/atomic"
 
 	"github.com/egoist/mygo/ui"
 	"github.com/spike/gobot/agent"
@@ -55,6 +56,7 @@ type app struct {
 	routine    *routineSheet
 	setup      *setup
 	approvals  *approvals
+	policy     atomic.Value // compactPolicy
 	prefs      *prefs
 
 	fallback       connect.Config                  // the provider when none is stored

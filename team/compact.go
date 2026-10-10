@@ -19,9 +19,18 @@ type Compaction struct {
 	// Window is the model's context window; nil looks it up in the catalog.
 	Window func(model string) int
 	// Threshold is the share of the window a request may fill before it
-	// compacts (0.8 when zero); Keep the share the newest messages kept
-	// verbatim may take (0.25 when zero).
-	Threshold, Keep float64
+	// compacts while the provider's prompt cache is likely warm (0.8 when
+	// zero), and Cold the share once it has likely expired (none when
+	// zero): a request after the cache expired pays for its whole context
+	// anyway, so that is when a long one is cheapest to compact. Keep is
+	// the share the newest messages kept verbatim may take (0.25 when zero).
+	Threshold, Cold, Keep float64
+	// CacheTTL is how long the provider keeps a prompt cached after a call
+	// reads it (five minutes when zero).
+	CacheTTL time.Duration
+	// Policy, when set, gives Threshold, Cold and CacheTTL at each call
+	// instead, as preferences that change while the app runs.
+	Policy func() (threshold, cold float64, ttl time.Duration)
 	// NoFlush skips the memory flush that runs first.
 	NoFlush bool
 	// FlushTimeout bounds the flush (two minutes when zero).
@@ -65,15 +74,53 @@ func or(v, def float64) float64 {
 }
 
 // compactor is the Compact hook of a turn.
+// limit is the share of the window a request may fill, given how long
+// ago the bot last called the model in the chat.
+func (c *Compaction) limit(since time.Duration) float64 {
+	threshold, cold, ttl := c.Threshold, c.Cold, c.CacheTTL
+	if c.Policy != nil {
+		threshold, cold, ttl = c.Policy()
+	}
+	threshold = or(threshold, 0.8)
+	if ttl <= 0 {
+		ttl = 5 * time.Minute
+	}
+	if cold > 0 && cold < threshold && since > ttl {
+		return cold
+	}
+	return threshold
+}
+
+// lastCall is when the bot last called the model in the chat: its newest
+// reply there.
+func (t *Team) lastCall(chatID, botID string) time.Time {
+	es, err := t.Store.Messages(chatID, 0)
+	if err != nil {
+		return time.Time{}
+	}
+	for i := len(es) - 1; i >= 0; i-- {
+		if es[i].Author == botID && es[i].Msg.Role == agent.RoleAssistant {
+			return time.UnixMilli(es[i].Created)
+		}
+	}
+	return time.Time{}
+}
+
 func (t *Team) compactor(b store.Bot, chat store.Chat, model agent.Model, modelID, system string, tools []tool.Tool) func(context.Context, []agent.Message, bool) ([]agent.Message, bool) {
 	c := t.Compaction
+	last := t.lastCall(chat.ID, b.ID) // the calls of this turn follow on, the cache warm
 	return func(ctx context.Context, msgs []agent.Message, force bool) ([]agent.Message, bool) {
+		since := t.now().Sub(last)
+		if last.IsZero() {
+			since = 0 // a first call: nothing was cached to lose
+		}
+		last = t.now()
 		window := c.window(modelID)
 		fixed := agent.TextTokens(system)
 		for _, tl := range tools {
 			fixed += agent.TextTokens(tl.Description()) + agent.TextTokens(string(tl.Schema()))
 		}
-		if !force && fixed+agent.EstimateTokens(msgs) < int(or(c.Threshold, 0.8)*float64(window)) {
+		if !force && fixed+agent.EstimateTokens(msgs) < int(c.limit(since)*float64(window)) {
 			return nil, false
 		}
 		k := cutPoint(msgs, int(or(c.Keep, 0.25)*float64(window)))

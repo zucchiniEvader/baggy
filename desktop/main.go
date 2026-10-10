@@ -70,6 +70,9 @@ func main() {
 	a.locale = mygo.App.Locale()
 	a.readImage = func() []byte { return mygo.Clipboard.ReadImage() }
 	tm.Approve = a.approvals.approve
+	if tm.Compaction != nil {
+		tm.Compaction.Policy = a.compactionPolicy
+	}
 	tm.StartRoutines(context.Background())
 	a.applyPrefs()
 

@@ -146,3 +146,43 @@ func TestWhen(t *testing.T) {
 		t.Error("soon read")
 	}
 }
+
+func TestCompactionWaitsForTheCacheToExpire(t *testing.T) {
+	c := &Compaction{Threshold: 0.8, Cold: 0.4, CacheTTL: 5 * time.Minute}
+	if c.limit(time.Minute) != 0.8 || c.limit(10*time.Minute) != 0.4 || (&Compaction{}).limit(time.Hour) != 0.8 {
+		t.Fatal("limits")
+	}
+	// A chat at 60% of the window: left alone while the cache is warm,
+	// compacted on the first call after it expired.
+	now := time.Now()
+	model := &summarizing{reply: func(msgs []agent.Message) agent.Message { return say("ok") }}
+	f := setup(t, model)
+	f.team.Now = func() time.Time { return now }
+	f.team.Compaction = &Compaction{Window: func(string) int { return 10000 }, Threshold: 0.8, Cold: 0.4, Keep: 0.1, NoFlush: true}
+	a := f.bot(t, "A")
+	dm, _ := f.st.DMOf(a.ID)
+	for i := 0; i < 3; i++ { // about 2000 tokens each
+		f.st.Append(dm.ID, store.User, "", store.Meta{}, agent.Message{ID: store.NewID("msg"), Role: agent.RoleUser, Parts: []agent.Part{{Kind: agent.PartText, Text: strings.Repeat("word ", 1600)}}})
+		f.st.Append(dm.ID, a.ID, "t", store.Meta{}, say(strings.Repeat("ok ", 10)))
+	}
+	compacted := func() bool {
+		es, _ := f.st.Messages(dm.ID, 0)
+		for _, e := range es {
+			if e.Msg.Kind == KindCompaction {
+				return true
+			}
+		}
+		return false
+	}
+	f.team.Send(dm.ID, "next", nil, nil) // the bot's last reply was just now
+	f.team.Wait()
+	if compacted() {
+		t.Fatal("compacted with the cache warm")
+	}
+	now = now.Add(20 * time.Minute) // a coffee break
+	f.team.Send(dm.ID, "back", nil, nil)
+	f.team.Wait()
+	if !compacted() {
+		t.Fatal("not compacted after the cache expired")
+	}
+}

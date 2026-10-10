@@ -2,6 +2,7 @@ package main
 
 import (
 	"strconv"
+	"time"
 
 	"github.com/spike/gobot/store"
 )
@@ -12,9 +13,14 @@ type prefs struct {
 	showThinking bool
 	commands     string // ModeRun, ModeAsk, ModeReview
 	keepRunning  bool   // closing the window hides it; the tray brings it back
-	language     string // "Auto", "English", "中文"
-	sideWidth    float32
-	inspector    bool
+	// Compaction: the share of the window a chat may fill while the cache is
+	// warm, and once it has expired (0: no earlier compaction), and how long
+	// a provider keeps the cache.
+	compactWarm, compactCold float64
+	cacheTTL                 time.Duration
+	language                 string // "Auto", "English", "中文"
+	sideWidth                float32
+	inspector                bool
 }
 
 // languages are the stored choices; languageLabel names them.
@@ -50,6 +56,16 @@ func loadPrefs(st *store.Store) *prefs {
 		}
 	}
 	p.keepRunning = get("pref.keep_running", true)
+	p.compactWarm, p.compactCold, p.cacheTTL = 0.8, 0.4, 5*time.Minute
+	if v, err := strconv.ParseFloat(st.Setting("pref.compact_warm"), 64); err == nil && v > 0 {
+		p.compactWarm = v
+	}
+	if v, err := strconv.ParseFloat(st.Setting("pref.compact_cold"), 64); err == nil && v >= 0 {
+		p.compactCold = v
+	}
+	if v, err := time.ParseDuration(st.Setting("pref.cache_ttl")); err == nil && v > 0 {
+		p.cacheTTL = v
+	}
 	p.inspector = get("pref.inspector", false)
 	if l := st.Setting("pref.language"); l != "" {
 		p.language = l
@@ -70,6 +86,9 @@ func (p *prefs) save() {
 	p.st.SetSetting("pref.show_thinking", b(p.showThinking))
 	p.st.SetSetting("pref.commands", p.commands)
 	p.st.SetSetting("pref.keep_running", b(p.keepRunning))
+	p.st.SetSetting("pref.compact_warm", strconv.FormatFloat(p.compactWarm, 'f', 2, 64))
+	p.st.SetSetting("pref.compact_cold", strconv.FormatFloat(p.compactCold, 'f', 2, 64))
+	p.st.SetSetting("pref.cache_ttl", p.cacheTTL.String())
 	p.st.SetSetting("pref.inspector", b(p.inspector))
 	p.st.SetSetting("pref.language", p.language)
 	p.st.SetSetting("pref.side_width", strconv.FormatFloat(float64(p.sideWidth), 'f', 0, 32))
@@ -78,6 +97,7 @@ func (p *prefs) save() {
 // apply puts the preferences into effect.
 func (a *app) applyPrefs() {
 	a.approvals.setMode(a.prefs.commands)
+	a.policy.Store(compactPolicy{a.prefs.compactWarm, a.prefs.compactCold, a.prefs.cacheTTL})
 	setLanguage(a.prefs.language, a.locale)
 }
 
@@ -116,4 +136,17 @@ func modeOf(label string) string {
 		}
 	}
 	return ModeRun
+}
+
+// compactPolicy is the compaction preferences as the turns read them, from
+// their goroutines (app.policy holds one).
+type compactPolicy struct {
+	warm, cold float64
+	ttl        time.Duration
+}
+
+// compactionPolicy is team.Compaction's Policy over the preferences.
+func (a *app) compactionPolicy() (float64, float64, time.Duration) {
+	p, _ := a.policy.Load().(compactPolicy)
+	return p.warm, p.cold, p.ttl
 }
