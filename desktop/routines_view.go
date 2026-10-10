@@ -54,32 +54,33 @@ func outcomeText(o string) string {
 func (a *app) routinesDetails(c *ui.Context, b store.Bot) {
 	t := c.Theme()
 	rs, _ := a.st.Routines(b.ID)
-	sectionTitle(c, L("Routines"))
-	if len(rs) == 0 {
-		ui.Text(c, L("Ask %s in chat to set one up, such as a morning brief.", b.Name)).FontSize(12).TextColor(t.TextMuted)
-		return
-	}
-	now := time.Now()
-	ui.Column(c).Gap(1).AlignSelf(ui.Stretch).Children(func() {
-		for _, r := range rs {
-			r := r
-			row := ui.Row(c.Key("routine-"+r.ID)).Height(40).Gap(8).AlignItems(ui.Center).Padding(0, 4, 0, 8).Radius(rowRadius).Label(r.Name)
-			styleRow(row, t, rowPlain)
-			if row.Clicked() {
-				a.routine = &routineSheet{open: true, id: r.ID}
-			}
-			row.Children(func() {
-				ui.Icon(c, iconClock).FontSize(iconSize).TextColor(t.TextMuted).Shrink(0)
-				ui.Column(c).Grow(1).MinWidth(0).Children(func() {
-					ui.Text(c, r.Name).FontSize(13).SingleLine().MinWidth(0)
-					ui.Text(c, routineLine(r, now)).FontSize(11).TextColor(t.TextMuted).SingleLine().MinWidth(0)
-				})
-				on := r.Enabled
-				if ui.Switch(c.Key("on-"+r.ID), &on).Label(L("On")).Changed() {
-					a.setRoutineOn(r, on)
-				}
-			})
+	inspectorSection(c, L("Routines"), func() {
+		if len(rs) == 0 {
+			ui.Text(c, L("Ask %s in chat to set one up, such as a morning brief.", b.Name)).FontSize(12).LineHeight(1.45).TextColor(t.TextMuted).Padding(0, inspectorInset)
+			return
 		}
+		now := time.Now()
+		ui.Column(c).Gap(1).Children(func() {
+			for _, r := range rs {
+				r := r
+				row := ui.Row(c.Key("routine-"+r.ID)).Height(40).Gap(8).AlignItems(ui.Center).Padding(0, 4, 0, 8).Radius(rowRadius).Label(r.Name)
+				styleRow(row, t, rowPlain)
+				if row.Clicked() {
+					a.routine = &routineSheet{open: true, id: r.ID}
+				}
+				row.Children(func() {
+					ui.Box(c).Size(20, 20).Center().Shrink(0).Children(func() { ui.Icon(c, iconClock).FontSize(iconSize).TextColor(t.TextMuted) })
+					ui.Column(c).Grow(1).MinWidth(0).Children(func() {
+						ui.Text(c, r.Name).FontSize(13).SingleLine().MinWidth(0)
+						ui.Text(c, routineLine(r, now)).FontSize(11).TextColor(t.TextMuted).SingleLine().MinWidth(0)
+					})
+					on := r.Enabled
+					if ui.Switch(c.Key("on-"+r.ID), &on).Label(L("On")).Changed() {
+						a.setRoutineOn(r, on)
+					}
+				})
+			}
+		})
 	})
 }
 

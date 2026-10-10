@@ -30,24 +30,37 @@ func (a *app) memoryOf(b store.Bot) *memory.Memory { return memory.New(a.st.Work
 func (a *app) memoryDetails(c *ui.Context, b store.Bot) {
 	t := c.Theme()
 	m := a.memoryOf(b)
-	sectionTitle(c, L("Memory"))
 	lines, bytes, cut := m.Loaded()
-	status := L("Empty")
-	if lines > 0 {
-		status = L("%d lines, %.1f of %d KB load", lines, float64(bytes)/1024, memory.LoadBytes>>10)
-	}
-	if cut > 0 {
-		status += " · " + L("%d lines past the budget", cut)
-	}
-	row := listRow(c.Key("edit-memory"), rowPlain).Label(L("Edit…"))
-	if row.Clicked() {
-		text := m.Read()
-		a.memSheet = &memoryForm{open: true, bot: b, was: text, text: text}
-	}
-	row.Children(func() {
-		ui.Icon(c, iconPin).FontSize(iconSize).TextColor(t.TextMuted).Shrink(0)
-		ui.Text(c, "MEMORY.md").FontSize(13).Shrink(0)
-		ui.Text(c, status).FontSize(11).TextColor(t.TextMuted).SingleLine().Shrink(1).MinWidth(0)
+	inspectorSection(c, L("Memory"), func() {
+		row := listRow(c.Key("edit-memory"), rowPlain).Label(L("Edit…")).Tooltip(L("Edit…"))
+		if row.Clicked() {
+			text := m.Read()
+			a.memSheet = &memoryForm{open: true, bot: b, was: text, text: text}
+		}
+		row.Children(func() {
+			ui.Box(c).Size(20, 20).Center().Shrink(0).Children(func() { ui.Icon(c, iconFile).FontSize(iconSize).TextColor(t.TextMuted) })
+			ui.Text(c, "MEMORY.md").FontSize(13).SingleLine().Grow(1).MinWidth(0)
+			status := L("Empty")
+			if lines > 0 {
+				status = L("%d lines", lines)
+			}
+			ui.Text(c, status).FontSize(11).TextColor(t.TextMuted).Shrink(0)
+			ui.Icon(c, iconChevronRight).FontSize(11).TextColor(t.TextMuted).Shrink(0)
+		})
+		if lines == 0 {
+			return
+		}
+		ui.Column(c).Gap(4).Padding(4, inspectorInset, 0).Children(func() {
+			ui.Row(c).Children(func() {
+				ui.Text(c, L("Opens every turn")).FontSize(11).TextColor(t.TextMuted)
+				ui.Spacer(c)
+				ui.Text(c, L("%.1f of %d KB", float64(bytes)/1024, memory.LoadBytes>>10)).FontSize(11).TextColor(t.TextMuted)
+			})
+			meter(c, float64(bytes)/float64(memory.LoadBytes))
+			if cut > 0 {
+				ui.Text(c, L("%d lines past the budget", cut)).FontSize(11).TextColor(pal(c).orange)
+			}
+		})
 	})
 }
 

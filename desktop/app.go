@@ -32,6 +32,7 @@ type app struct {
 
 	side         listNav
 	previews     map[string]store.Preview // the chats' last words
+	aboutOpen    map[string]bool          // the inspector's descriptions opened past their first lines
 	bitmaps      map[string]*ui.Bitmap    // pictures by path (avatars, attachments); nil while made or unreadable
 	sidebarShown bool
 	dragWidth    float32

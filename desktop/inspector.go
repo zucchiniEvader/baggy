@@ -1,6 +1,9 @@
 package main
 
 import (
+	"os"
+	"strings"
+
 	"github.com/egoist/mygo/ui"
 	"github.com/spike/gobot/store"
 )
@@ -24,28 +27,26 @@ func (a *app) inspectorPane(c *ui.Context, ch store.Chat) {
 }
 
 func (a *app) groupDetails(c *ui.Context, ch store.Chat) {
-	t := c.Theme()
-	ui.Row(c).Gap(10).AlignItems(ui.Center).Padding(0, 0, 8).Children(func() {
-		a.chatAvatar(c, ch, 36, pal(c).appBg)
-		ui.Column(c).Grow(1).MinWidth(0).Children(func() {
-			ui.Text(c, ch.Title).FontSize(15).Bold().SingleLine().MinWidth(0)
-			ui.Text(c, L("%d bots", len(ch.Members))).FontSize(12).TextColor(t.TextMuted)
-		})
-	})
-	if ch.Description != "" {
-		ui.Text(c, ch.Description).FontSize(12).LineHeight(1.5).Selectable()
-	}
-	ui.Row(c).Gap(6).Padding(8, 0, 0).Children(func() {
-		if smallButton(c.Key("edit-group"), L("Edit…"), secondary).Clicked() {
+	a.inspectorHeader(c, func() { a.chatAvatar(c, ch, 56, pal(c).appBg) }, ch.Title, L("%d bots", len(ch.Members)), func() {
+		if inspectorAction(c, "edit-group", iconPencil, L("Edit…")).Clicked() {
 			a.editGroup(ch)
 		}
+		a.moreMenu(c, L("Delete Group"), func() { a.deleteChat(ch) })
 	})
-	sectionTitle(c, L("Members"))
-	ui.Column(c).Gap(1).Children(func() {
-		for _, id := range ch.Members {
-			a.memberRow(c, ch, id)
-		}
+	a.about(c, "group-"+ch.ID, ch.Description)
+	inspectorSection(c, L("Members"), func() {
+		ui.Column(c).Gap(1).Children(func() {
+			for _, id := range ch.Members {
+				a.memberRow(c, ch, id)
+			}
+		})
+		a.addMemberRow(c, ch)
 	})
+	a.usageSection(c, ch)
+}
+
+func (a *app) addMemberRow(c *ui.Context, ch store.Chat) {
+	t := c.Theme()
 	var outside []store.Bot
 	for _, b := range a.bots {
 		if !member(ch, b.ID) {
@@ -63,19 +64,12 @@ func (a *app) groupDetails(c *ui.Context, ch store.Chat) {
 		}
 	})
 	row.Children(func() {
-		ui.Icon(c, iconPlus).FontSize(iconSize).TextColor(t.TextMuted)
+		ui.Box(c).Size(20, 20).Center().Shrink(0).Children(func() { ui.Icon(c, iconPlus).FontSize(iconSize).TextColor(t.TextMuted) })
 		ui.Text(c, L("Add Bot")).FontSize(13).TextColor(t.TextMuted)
 	})
 	if action != nil {
 		action()
 	}
-	sectionTitle(c, L("Usage"))
-	a.spentRow(c, ch)
-	ui.Row(c).Padding(16, 0, 0).Children(func() {
-		if smallButton(c.Key("delete-group"), L("Delete Group"), danger).Clicked() {
-			a.deleteChat(ch)
-		}
-	})
 }
 
 func member(c store.Chat, id string) bool {
@@ -126,54 +120,185 @@ func (a *app) memberRow(c *ui.Context, ch store.Chat, id string) {
 }
 
 func (a *app) botDetails(c *ui.Context, id string) {
-	t := c.Theme()
 	b, ok := a.byID[id]
 	if !ok {
 		return
 	}
-	ui.Row(c).Gap(10).AlignItems(ui.Center).Padding(0, 0, 8).Children(func() {
-		a.avatar(c, b.ID, 36)
-		ui.Column(c).Grow(1).MinWidth(0).Children(func() {
-			ui.Text(c, b.Name).FontSize(15).Bold().SingleLine().MinWidth(0)
-			model := b.Model
-			if cfg, err := teamConfig(a, b); err == nil {
-				model = cfg.Model
-			}
-			ui.Text(c, a.providerName(b.Provider)+" · "+model).FontSize(12).TextColor(t.TextMuted).SingleLine().MinWidth(0)
-		})
-	})
-	if b.Description != "" {
-		ui.Text(c, b.Description).FontSize(12).LineHeight(1.5).Selectable()
+	model := b.Model
+	if cfg, err := teamConfig(a, b); err == nil {
+		model = cfg.Model
 	}
-	ui.Row(c).Gap(6).Padding(8, 0, 0).Children(func() {
-		if smallButton(c.Key("edit-bot"), L("Edit…"), secondary).Clicked() {
+	dm, dmErr := a.st.DMOf(id)
+	line := a.providerName(b.Provider)
+	if model != "" {
+		line += " · " + model
+	}
+	a.inspectorHeader(c, func() { a.avatar(c, b.ID, 56) }, b.Name, line, func() {
+		if inspectorAction(c, "edit-bot", iconPencil, L("Edit…")).Clicked() {
 			a.editBot(id)
 		}
-		if a.openFolder != nil {
-			if smallButton(c.Key("show-folder"), L("Show Folder"), secondary).Tooltip(a.st.WorkDir(b)).Clicked() {
-				a.openFolder(a.st.WorkDir(b))
-			}
+		if a.openFolder != nil && inspectorAction(c, "show-folder", iconFolder, L("Show Folder")).Tooltip(a.st.WorkDir(b)).Clicked() {
+			a.openFolder(a.st.WorkDir(b))
+		}
+		if dmErr == nil {
+			a.moreMenu(c, L("Delete Bot"), func() { a.deleteChat(dm) })
 		}
 	})
+	a.about(c, "bot-"+b.ID, b.Description)
+	inspectorSection(c, L("Folder"), func() { a.folderRow(c, b) })
 	a.routinesDetails(c, b)
 	a.memoryDetails(c, b)
-	if dm, err := a.st.DMOf(id); err == nil {
-		sectionTitle(c, L("Usage"))
-		a.spentRow(c, dm)
-		ui.Row(c).Padding(16, 0, 0).Children(func() {
-			if smallButton(c.Key("delete-bot"), L("Delete Bot"), danger).Clicked() {
-				a.deleteChat(dm)
-			}
-		})
+	if dmErr == nil {
+		a.usageSection(c, dm)
 	}
 }
 
-func (a *app) spentRow(c *ui.Context, ch store.Chat) {
+// inspectorHeader is who the inspector shows: its avatar, name and a muted
+// line, centered, over a row of actions.
+func (a *app) inspectorHeader(c *ui.Context, avatar func(), name, line string, actions func()) {
 	t := c.Theme()
-	if es, err := a.st.Messages(ch.ID, 0); err == nil {
-		ui.Text(c, L("Spent in this chat: %s", money(spent(es)))).FontSize(12).TextColor(t.TextMuted)
+	ui.Column(c).AlignItems(ui.Center).Gap(10).Padding(4, 0, 12).Children(func() {
+		avatar()
+		ui.Column(c).AlignItems(ui.Center).Gap(2).MaxWidth(inspectorWidth - 32).Children(func() {
+			ui.Text(c, name).FontSize(15).Bold().SingleLine().MinWidth(0)
+			ui.Text(c, line).FontSize(12).TextColor(t.TextMuted).SingleLine().MinWidth(0)
+		})
+		ui.Row(c).Gap(6).Children(actions)
+	})
+}
+
+// inspectorAction is one of the header's actions: an icon in a gray
+// circle, its name as its tooltip.
+func inspectorAction(c *ui.Context, key string, svg *ui.SVG, label string) ui.Element {
+	b := ui.ButtonBase(c.Key(key)).Size(30, 30).Radius(15).Center().Label(label).Tooltip(label).FocusRing(false)
+	styleButton(b, c.Theme(), secondary, false)
+	b.Children(func() { ui.Icon(c, svg).FontSize(iconSize) })
+	return b
+}
+
+// moreMenu is the header's ⋯: the delete, in red words in a menu rather
+// than a red button.
+func (a *app) moreMenu(c *ui.Context, label string, run func()) {
+	var action func()
+	inspectorAction(c, "more", iconMore, L("More")).Menu(func(m *ui.Menu) {
+		if m.Item(label + "…").Chosen() {
+			action = run
+		}
+	})
+	if action != nil {
+		action()
 	}
-	if line := a.contextLine(ch.ID); line != "" {
-		ui.Text(c, line).FontSize(12).TextColor(t.TextMuted)
+}
+
+// aboutLines is how many lines of a description show until More.
+const aboutLines = 4
+
+// about is a description, muted, its first lines until More opens it.
+func (a *app) about(c *ui.Context, key, text string) {
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return
 	}
+	t := c.Theme()
+	open := a.aboutOpen[key]
+	ui.Column(c).Gap(2).Padding(0, inspectorInset, 4).Children(func() {
+		body := ui.Text(c, text).FontSize(12).LineHeight(1.5).TextColor(t.TextMuted).Selectable()
+		long := len([]rune(text)) > 160 || strings.Count(text, "\n") >= aboutLines
+		if long && !open {
+			body.MaxLines(aboutLines)
+		}
+		if !long {
+			return
+		}
+		label := L("More")
+		if open {
+			label = L("Less")
+		}
+		more := ui.ButtonBase(c.Key("about-"+key)).AlignSelf(ui.Start).Label(label).FocusRing(false)
+		more.Children(func() { ui.Text(c, label).FontSize(12).FontWeight(600) })
+		if more.Clicked() {
+			if a.aboutOpen == nil {
+				a.aboutOpen = map[string]bool{}
+			}
+			a.aboutOpen[key] = !open
+		}
+	})
+}
+
+// inspectorInset lines the inspector's words up with its rows' icons.
+const inspectorInset = 8
+
+// inspectorSection is a titled part of the inspector, a hairline above it.
+func inspectorSection(c *ui.Context, title string, body func()) {
+	ui.Column(c).BorderWidth(1, 0, 0, 0).BorderColor(pal(c).border).Padding(4, 0, 8).Margin(8, 0, 0).Children(func() {
+		ui.Box(c).Padding(0, inspectorInset).Children(func() { sectionTitle(c, title) })
+		body()
+	})
+}
+
+// valueRow is a label on the left and its value on the right.
+func valueRow(c *ui.Context, label, value string) {
+	t := c.Theme()
+	ui.Row(c).Height(24).Gap(8).AlignItems(ui.Center).Padding(0, inspectorInset).Children(func() {
+		ui.Text(c, label).FontSize(12).TextColor(t.TextMuted).SingleLine().Shrink(0)
+		ui.Spacer(c)
+		ui.Text(c, value).FontSize(12).SingleLine().Shrink(1).MinWidth(0)
+	})
+}
+
+// meter is a thin bar of how full something is; orange past 80%.
+func meter(c *ui.Context, frac float64) {
+	p := pal(c)
+	frac = min(max(frac, 0), 1)
+	fill := c.Theme().TextMuted
+	if frac > 0.8 {
+		fill = p.orange
+	}
+	ui.Row(c).Height(4).Radius(2).Background(p.pill).Clip().Children(func() {
+		if frac > 0 {
+			ui.Box(c).Grow(float32(frac)).Background(fill)
+		}
+		if frac < 1 {
+			ui.Box(c).Grow(float32(1 - frac))
+		}
+	})
+}
+
+// folderRow is where the bot's tools run, opening in Finder on a click.
+func (a *app) folderRow(c *ui.Context, b store.Bot) {
+	t := c.Theme()
+	dir := a.st.WorkDir(b)
+	shown := dir
+	if home, err := os.UserHomeDir(); err == nil {
+		if rest, ok := strings.CutPrefix(dir, home); ok {
+			shown = "~" + rest
+		}
+	}
+	if b.Workdir == "" {
+		shown = L("Its own workspace")
+	}
+	row := listRow(c.Key("folder-row"), rowPlain).Label(dir).Tooltip(dir)
+	if row.Clicked() && a.openFolder != nil {
+		a.openFolder(dir)
+	}
+	row.Children(func() {
+		ui.Box(c).Size(20, 20).Center().Shrink(0).Children(func() { ui.Icon(c, iconFolder).FontSize(iconSize).TextColor(t.TextMuted) })
+		ui.Text(c, shown).FontSize(13).SingleLine().Grow(1).MinWidth(0)
+		ui.Icon(c, iconChevronRight).FontSize(11).TextColor(t.TextMuted).Shrink(0)
+	})
+}
+
+// usageSection is what the chat cost and how full its last request was.
+func (a *app) usageSection(c *ui.Context, ch store.Chat) {
+	inspectorSection(c, L("Usage"), func() {
+		if es, err := a.st.Messages(ch.ID, 0); err == nil {
+			valueRow(c, L("Spent in this chat"), money(spent(es)))
+		}
+		used, window := a.contextUse(ch.ID)
+		if used == 0 {
+			return
+		}
+		valueRow(c, L("Context"), L("%s of %s", short(used), short(window)))
+		ui.Box(c).Padding(2, inspectorInset, 0).Children(func() { meter(c, float64(used)/float64(max(window, 1))) })
+	})
 }

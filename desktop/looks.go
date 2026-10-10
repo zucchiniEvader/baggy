@@ -12,18 +12,27 @@ import (
 // contextLine is how full the chat's last request was: tokens against the
 // model's window.
 func (a *app) contextLine(chatID string) string {
+	used, window := a.contextUse(chatID)
+	if used == 0 {
+		return ""
+	}
+	return L("Context: %s of %s tokens (%d%%)", short(used), short(window), used*100/max(window, 1))
+}
+
+// contextUse is how many tokens the chat's last request took, and the
+// model's window; 0 before any.
+func (a *app) contextUse(chatID string) (used, window int) {
 	es, err := a.st.Messages(chatID, 0)
 	if err != nil {
-		return ""
+		return 0, 0
 	}
 	for i := len(es) - 1; i >= 0; i-- {
 		m := es[i].Msg
 		if m.Role == agent.RoleAssistant && m.Usage.Context() > 0 {
-			used, window := m.Usage.Context(), catalog.Window(m.Model)
-			return L("Context: %s of %s tokens (%d%%)", short(used), short(window), used*100/max(window, 1))
+			return m.Usage.Context(), catalog.Window(m.Model)
 		}
 	}
-	return ""
+	return 0, 0
 }
 
 func short(n int) string {
