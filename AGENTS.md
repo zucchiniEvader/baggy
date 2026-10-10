@@ -92,7 +92,7 @@ After `../tsubomi` (whose `AGENTS.md`, `theme.go` and `controls.go` set it out, 
 - **Empty states**: centered: a small icon in a gray tile, a line, one or two actions or a few suggestions. No long explanations.
 - **Dialogs**: a 17 bold title over a 12 muted line, fields in a `ui.Form`, Cancel and the primary action at the bottom right; confirmations are `ui.AlertDialog`. Never call what waits for the user (`mygo.Dialog.Open`, `Save`, `Message`) from a frame: it waits on the thread that draws, and the window hangs; ask from a goroutine and bring the answer back with the window's `Update`. A press on nothing in a dialog focuses nothing: build its content in `dialogBody`, else MyGo's dialog, keeping the keyboard, hands the focus to its first field.
 
-**Motion**: 150–220ms, ease-in-out; the sidebar slides and clips; under Reduce Motion everything completes at once; no bounces, no scaled entrances, no skeletons.
+**Motion**: 150–220ms, ease-in-out; the sidebar and the inspector slide and clip; under Reduce Motion everything completes at once; no bounces, no scaled entrances, no skeletons.
 
 **Layout**: all text shrinks in a narrow space (`MinWidth(0)` and one line with an ellipsis), never spilling over other controls; secondary text that does not fit hides whole rather than leaving a lone "…".
 

@@ -24,8 +24,8 @@ func (a *app) root(c *ui.Context) {
 		a.sidebarPane(c)
 		a.sidebarResizer(c)
 		ui.Column(c).Grow(1).MinWidth(0).Background(p.appBg).Children(func() { a.main(c) })
-		if ch := a.chat(a.sel); ch != nil && a.inspector {
-			a.inspectorPane(c, *ch)
+		if ch := a.chat(a.sel); ch != nil {
+			a.inspectorSlide(c, *ch)
 		}
 	})
 	a.sheets(c)

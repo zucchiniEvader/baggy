@@ -3,16 +3,40 @@ package main
 import (
 	"os"
 	"strings"
+	"time"
 
 	"github.com/egoist/mygo/ui"
 	"github.com/spike/gobot/store"
 )
 
+// inspectorSlide is the inspector as it slides open and closed from the
+// window's edge: a clip whose width moves, over the panel at its full
+// width, as the sidebar does.
+func (a *app) inspectorSlide(c *ui.Context, ch store.Chat) {
+	target := float32(0)
+	if a.inspector {
+		target = inspectorWidth
+	}
+	d := 200 * time.Millisecond
+	if a.reduceMotion(c) {
+		d = 0
+	}
+	clip := ui.Column(c).Shrink(0).Clip()
+	width := clip.AnimateWith("width", target, d, ui.EaseInOut)
+	clip.Width(width)
+	if width <= 0 {
+		return
+	}
+	clip.Children(func() {
+		ui.Column(c).Absolute().Top(0).Bottom(0).Left(0).Width(inspectorWidth).Children(func() { a.inspectorPane(c, ch) })
+	})
+}
+
 // inspectorPane is the chat's details beside it: a DM's bot, or a group's
 // name, description and members, with their owner.
 func (a *app) inspectorPane(c *ui.Context, ch store.Chat) {
 	p := pal(c)
-	ui.Column(c).Width(inspectorWidth).Shrink(0).Background(p.appBg).BorderWidth(0, 0, 0, 1).BorderColor(p.border).Children(func() {
+	ui.Column(c).Width(inspectorWidth).Grow(1).Shrink(0).Background(p.appBg).BorderWidth(0, 0, 0, 1).BorderColor(p.border).Children(func() {
 		ui.Row(c).Height(titleBarHeight).Shrink(0).DragWindow()
 		ui.Scroll(c).Grow(1).MinHeight(0).Children(func() {
 			ui.Column(c).Padding(0, 16, 16).Gap(2).Children(func() {

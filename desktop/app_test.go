@@ -448,6 +448,8 @@ func TestRoutineInspectorAndSheet(t *testing.T) {
 	r, _ := h.st.SaveRoutine(store.Routine{BotID: chef.ID, Name: "Brief", Prompt: "Summarize", Schedule: "0 8 * * 1-5", Timezone: "UTC", Enabled: true})
 	h.a.inspector = true
 	h.tt.Frame()
+	time.Sleep(250 * time.Millisecond) // it slides open
+	h.tt.Frame()
 	if !h.tt.HasText("Brief") || !h.tt.HasText("Weekdays at 8:00 · next ") {
 		t.Fatalf("inspector: %q", h.tt.Texts())
 	}
@@ -1191,5 +1193,44 @@ func TestBotFolder(t *testing.T) {
 	h.tt.Frame()
 	if h.a.botSheet.err == "" || !h.a.botSheet.open {
 		t.Fatal("a missing folder saved")
+	}
+}
+
+func TestInspectorSlides(t *testing.T) {
+	h := newHarness(t, script(func(string, []agent.Message) agent.Message { return say("ok") }))
+	width := func() float32 {
+		r, ok := h.tt.Find("Spent in this chat")
+		if !ok {
+			return 0
+		}
+		return 1000 - r.X // how far in from the window's right edge
+	}
+	h.a.inspector = true
+	h.tt.Frame()
+	h.tt.Frame()
+	mid := width()
+	time.Sleep(250 * time.Millisecond)
+	h.tt.Frame()
+	open := width()
+	if !(mid < open) || open < 200 {
+		t.Fatalf("not sliding: %v then %v", mid, open)
+	}
+	h.a.inspector = false
+	h.tt.Frame()
+	h.tt.Frame()
+	if h.tt.HasText("Spent in this chat") && width() >= open {
+		t.Fatal("closed at once or not at all")
+	}
+	time.Sleep(250 * time.Millisecond)
+	h.tt.Frame()
+	if h.tt.HasText("Spent in this chat") {
+		t.Fatal("still open")
+	}
+	h.tt.SetPreferences(ui.Preferences{ReduceMotion: true})
+	h.a.inspector = true
+	h.tt.Frame()
+	h.tt.Frame()
+	if width() < 200 {
+		t.Fatalf("Reduce Motion slides: %v", width())
 	}
 }
