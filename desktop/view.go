@@ -529,6 +529,8 @@ func (a *app) toolGroup(c *ui.Context, ch store.Chat, v *chatView, idx []int) {
 				if r.result == nil && !r.pending {
 					if sess := a.sessionOf(ch.ID, r.call); sess != nil {
 						live = strings.TrimSpace(sess.Last(8))
+					} else if r.partial != "" {
+						live = lastLines(r.partial, 8)
 					}
 				}
 				if r.pending || open || live != "" {
@@ -686,4 +688,13 @@ func clock(now, t time.Time) string {
 		return fmt.Sprintf("%d/%d %s", t.Month(), t.Day(), hm)
 	}
 	return fmt.Sprintf("%d/%d/%d %s", t.Year(), t.Month(), t.Day(), hm)
+}
+
+// lastLines is the end of a text, at most n lines.
+func lastLines(s string, n int) string {
+	lines := strings.Split(strings.TrimRight(s, "\n"), "\n")
+	if len(lines) > n {
+		lines = lines[len(lines)-n:]
+	}
+	return strings.Join(lines, "\n")
 }

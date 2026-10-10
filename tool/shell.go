@@ -1,7 +1,6 @@
 package tool
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -49,9 +48,12 @@ func (s Shell) Execute(ctx context.Context, args json.RawMessage) Result {
 	cmd := exec.CommandContext(tctx, "bash", "-c", a.Command)
 	cmd.Dir = s.Dir
 	killGroup(cmd)
-	var out bytes.Buffer
+	var out liveBuffer // shown as it comes (Update)
 	cmd.Stdout, cmd.Stderr = &out, &out
+	stop := make(chan struct{})
+	go out.report(ctx, 250*time.Millisecond, stop)
 	err := cmd.Run()
+	close(stop)
 
 	text, cut := truncateTail(out.String())
 	if cut {

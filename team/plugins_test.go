@@ -2,6 +2,7 @@ package team
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -80,5 +81,30 @@ func TestPluginsPrompt(t *testing.T) {
 	}
 	if strings.Contains(p, "Off") || PluginsPrompt(nil) != "" {
 		t.Fatal(p)
+	}
+}
+
+func TestCodemodeShowsWhatItPrintsAsItRuns(t *testing.T) {
+	f := setup(t, script(func(string, []agent.Message) agent.Message { return say("x") }))
+	f.team.Codemode = true
+	a := f.bot(t, "A")
+	dm, _ := f.st.DMOf(a.ID)
+	tl := f.team.codemodeTool(a, dm, nil, agent.Hooks{}, nil)
+	var seen []string
+	ctx := tool.WithUpdate(context.Background(), func(r tool.Result) { seen = append(seen, r.Text) })
+	r := tl.Execute(ctx, json.RawMessage(`{"code":"console.log('step 1'); console.log('step 2'); return 'ok'"}`))
+	if r.IsError || len(seen) != 2 || seen[1] != "step 1\nstep 2\n" {
+		t.Fatalf("result %+v, updates %q", r, seen)
+	}
+	p := &scriptProgress{ctx: ctx}
+	p.print("a\n")
+	p.call("c1", "github__search: 1/2 halfway")
+	if seen[len(seen)-1] != "a\ngithub__search: 1/2 halfway\n" {
+		t.Fatalf("with a call %q", seen[len(seen)-1])
+	}
+	p.done("c1")
+	p.print("a\nb\n")
+	if seen[len(seen)-1] != "a\nb\n" {
+		t.Fatalf("after the call %q", seen[len(seen)-1])
 	}
 }

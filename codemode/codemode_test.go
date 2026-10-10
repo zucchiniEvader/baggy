@@ -130,3 +130,11 @@ func TestTimeoutBudgetStoreAndOptions(t *testing.T) {
 		t.Fatalf("stop: %v", r.Err)
 	}
 }
+
+func TestProgressGetsWhatIsPrinted(t *testing.T) {
+	var seen []string
+	r := Run(context.Background(), `console.log("one"); console.log("two"); return 3`, &host{}, Options{Progress: func(p string) { seen = append(seen, p) }})
+	if r.Err != nil || len(seen) != 2 || seen[1] != "one\ntwo\n" {
+		t.Fatalf("%+v %q", r, seen)
+	}
+}

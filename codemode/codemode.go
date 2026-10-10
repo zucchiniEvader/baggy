@@ -46,6 +46,9 @@ type Options struct {
 	MaxCalls        int           // calls not yet awaited, 1000 when zero
 	Concurrency     int           // calls at once, 8 when zero
 	Store           Store
+	// Progress, when set, takes the end of what the script has printed so
+	// far each time it prints, for display while it runs.
+	Progress func(printed string)
 }
 
 // Result is how a script ended.
@@ -110,6 +113,9 @@ globalThis.console = { log: (...a) => __print(a), info: (...a) => __print(a), wa
 globalThis.print = (...a) => __print(a);
 `
 
+// progressTail is how much of the printed output Progress gets.
+const progressTail = 4096
+
 // Run runs code, the body of an async function: top-level await and return
 // work.
 func Run(ctx context.Context, code string, host Host, o Options) Result {
@@ -160,6 +166,13 @@ func Run(ctx context.Context, code string, host Host, o Options) Result {
 			out.WriteString(show(vm, a))
 		}
 		out.WriteByte('\n')
+		if o.Progress != nil {
+			p := out.String()
+			if len(p) > progressTail {
+				p = p[len(p)-progressTail:]
+			}
+			o.Progress(p)
+		}
 	})
 	vm.Set("__call", func(name string, args goja.Value) *goja.Promise {
 		p, resolve, reject := vm.NewPromise()

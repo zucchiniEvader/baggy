@@ -36,6 +36,7 @@ type row struct {
 	call     agent.Part
 	result   *tool.Result
 	pending  bool         // a tool call waiting for approval
+	partial  string       // what a running tool has so far (agent.EventToolUpdate)
 	images   int          // images in a user message with no files listed (older ones)
 	files    []store.File // files attached to a user message
 	searches []search

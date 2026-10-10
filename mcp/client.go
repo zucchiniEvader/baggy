@@ -15,6 +15,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -99,16 +100,20 @@ type Client struct {
 	Name         string // the server's own, from initialize
 	Instructions string
 	HasResources bool // it offers resources (its capabilities say so)
+
+	progress sync.Map // a call's progress token → func(Progress)
+	tokens   atomic.Int64
 }
 
 // Connect starts or reaches a server and initializes it.
 func Connect(ctx context.Context, s Server) (*Client, error) {
+	c := &Client{}
 	var t transport
 	var err error
 	if s.URL != "" {
-		t = newHTTP(s)
+		t = newHTTP(s, c.note)
 	} else if s.Command != "" {
-		t, err = newStdio(s)
+		t, err = newStdio(s, c.note)
 	} else {
 		err = errors.New("a server needs a command or a url")
 	}
@@ -137,7 +142,8 @@ func Connect(ctx context.Context, s Server) (*Client, error) {
 		return nil, err
 	}
 	res := init.Capabilities.Resources
-	return &Client{t: t, Name: init.ServerInfo.Name, Instructions: init.Instructions, HasResources: len(res) > 0 && string(res) != "null"}, nil
+	c.t, c.Name, c.Instructions, c.HasResources = t, init.ServerInfo.Name, init.Instructions, len(res) > 0 && string(res) != "null"
+	return c, nil
 }
 
 // Tools lists the server's tools, every page.
@@ -174,7 +180,14 @@ func (c *Client) Call(ctx context.Context, name string, args json.RawMessage) (R
 	if len(args) == 0 {
 		args = json.RawMessage(`{}`)
 	}
-	raw, err := c.t.call(ctx, "tools/call", map[string]any{"name": name, "arguments": args})
+	params := map[string]any{"name": name, "arguments": args}
+	if fn, ok := ctx.Value(progressKey{}).(func(Progress)); ok {
+		token := fmt.Sprintf("gobot-%d", c.tokens.Add(1))
+		params["_meta"] = map[string]any{"progressToken": token}
+		c.progress.Store(token, fn)
+		defer c.progress.Delete(token)
+	}
+	raw, err := c.t.call(ctx, "tools/call", params)
 	if err != nil {
 		return Result{}, err
 	}
@@ -184,6 +197,52 @@ func (c *Client) Call(ctx context.Context, name string, args json.RawMessage) (R
 }
 
 func (c *Client) Close() error { return c.t.close() }
+
+// Progress is a server's word on a call under way.
+type Progress struct {
+	Progress, Total float64
+	Message         string
+}
+
+// String is the progress as a line: "3/10 Indexing".
+func (p Progress) String() string {
+	n := strconv.FormatFloat(p.Progress, 'f', -1, 64)
+	if p.Total > 0 {
+		n += "/" + strconv.FormatFloat(p.Total, 'f', -1, 64)
+	}
+	return strings.TrimSpace(n + " " + p.Message)
+}
+
+type progressKey struct{}
+
+// WithProgress has the tool calls made with ctx ask for progress
+// notifications and pass them to fn.
+func WithProgress(ctx context.Context, fn func(Progress)) context.Context {
+	return context.WithValue(ctx, progressKey{}, fn)
+}
+
+// note takes a notification from the server: a call's progress.
+func (c *Client) note(m message) {
+	if m.Method != "notifications/progress" {
+		return
+	}
+	b, _ := json.Marshal(m.Params)
+	var p struct {
+		ProgressToken   json.RawMessage
+		Progress, Total float64
+		Message         string
+	}
+	if json.Unmarshal(b, &p) != nil {
+		return
+	}
+	token := string(p.ProgressToken)
+	if s, err := strconv.Unquote(token); err == nil {
+		token = s
+	}
+	if fn, ok := c.progress.Load(token); ok {
+		fn.(func(Progress))(Progress{Progress: p.Progress, Total: p.Total, Message: p.Message})
+	}
+}
 
 // ---- stdio ----
 
@@ -196,6 +255,7 @@ type stdio struct {
 	done    chan struct{}
 	stderr  *tail
 	err     error
+	onNote  func(message) // a notification from the server
 }
 
 // tail keeps the end of a command's stderr, for errors.
@@ -220,7 +280,7 @@ func (t *tail) String() string {
 	return strings.TrimSpace(string(t.buf))
 }
 
-func newStdio(s Server) (*stdio, error) {
+func newStdio(s Server, onNote func(message)) (*stdio, error) {
 	cmd := exec.Command(s.Command, s.Args...)
 	cmd.Dir = workDir(s.Cwd)
 	cmd.Env = os.Environ()
@@ -230,7 +290,7 @@ func newStdio(s Server) (*stdio, error) {
 	for k, v := range s.Env {
 		cmd.Env = append(cmd.Env, k+"="+v)
 	}
-	st := &stdio{cmd: cmd, done: make(chan struct{}), stderr: &tail{}}
+	st := &stdio{cmd: cmd, done: make(chan struct{}), stderr: &tail{}, onNote: onNote}
 	cmd.Stderr = st.stderr
 	in, err := cmd.StdinPipe()
 	if err != nil {
@@ -277,6 +337,9 @@ func (s *stdio) read(out io.Reader) {
 		case m.Method != "" && len(m.ID) > 0: // a request from the server: we offer nothing
 			s.send(message{JSONRPC: "2.0", ID: m.ID, Error: &rpcError{Code: -32601, Message: "method not found"}})
 		case m.Method != "": // a notification
+			if s.onNote != nil {
+				s.onNote(m)
+			}
 		default:
 			if ch, ok := s.pending.LoadAndDelete(string(m.ID)); ok {
 				ch.(chan message) <- m
@@ -351,10 +414,11 @@ type httpT struct {
 	next    atomic.Int64
 	mu      sync.Mutex
 	session string
+	onNote  func(message)
 }
 
-func newHTTP(s Server) *httpT {
-	return &httpT{url: s.URL, headers: s.Headers, client: &http.Client{}}
+func newHTTP(s Server, onNote func(message)) *httpT {
+	return &httpT{url: s.URL, headers: s.Headers, client: &http.Client{}, onNote: onNote}
 }
 
 func (h *httpT) post(ctx context.Context, m message) (*http.Response, error) {
@@ -424,6 +488,9 @@ func (h *httpT) call(ctx context.Context, method string, params any) (json.RawMe
 			}
 			if r, ok, err := found(m); ok {
 				return r, err
+			}
+			if m.Method != "" && len(m.ID) == 0 && h.onNote != nil {
+				h.onNote(m)
 			}
 		}
 		return nil, errors.New("the stream ended without a response")

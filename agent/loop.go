@@ -27,6 +27,7 @@ const (
 	EventMessageEnd    EventKind = "message_end" // Message is final: persist it here
 	EventToolStart     EventKind = "tool_start"  // Call is set
 	EventToolEnd       EventKind = "tool_end"    // Call and Result are set
+	EventToolUpdate    EventKind = "tool_update" // Call and Result (a partial result, for display) are set
 	EventTurnEnd       EventKind = "turn_end"
 	EventRetry         EventKind = "retry"       // the reply streaming failed and is asked again; Delta is why
 	EventServerTool    EventKind = "server_tool" // Call: a server tool's block (web search), as it completes
@@ -38,8 +39,8 @@ type Event struct {
 	Kind    EventKind
 	Delta   string       // text_delta, thinking_delta
 	Message *Message     // message_end, and message_start of an injected message
-	Call    *Part        // tool_start, tool_end
-	Result  *tool.Result // tool_end
+	Call    *Part        // tool_start, tool_update, tool_end
+	Result  *tool.Result // tool_update (what the tool has so far), tool_end
 }
 
 type Hooks struct {
@@ -193,7 +194,9 @@ func Run(ctx context.Context, m Model, msgs []Message, o Options) []Message {
 				go func() {
 					defer wg.Done()
 					emit(Event{Kind: EventToolStart, Call: &c})
-					r := execute(sctx, byName, o.Hooks, c)
+					up := newUpdates(func(r tool.Result) { emit(Event{Kind: EventToolUpdate, Call: &c, Result: &r}) })
+					r := execute(tool.WithUpdate(sctx, up.send), byName, o.Hooks, c)
+					up.stop()
 					if sctx.Err() != nil && ctx.Err() == nil && !r.IsError && r.Text == "" {
 						r = tool.Result{Text: Interrupted, IsError: true}
 					}

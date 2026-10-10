@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -81,6 +82,9 @@ func serve(in io.Reader, out io.Writer) {
 		if len(m.ID) == 0 {
 			continue
 		}
+		if n := progressNote(m.Params); n != "" {
+			fmt.Fprintln(out, n)
+		}
 		r, e := answer(m.Method, m.Params)
 		b, _ := json.Marshal(map[string]any{"jsonrpc": "2.0", "id": m.ID, "result": r, "error": e})
 		if e == nil {
@@ -88,6 +92,23 @@ func serve(in io.Reader, out io.Writer) {
 		}
 		fmt.Fprintln(out, string(b))
 	}
+}
+
+// progressNote is the progress notification a fake server sends for a
+// call that asks for one.
+func progressNote(params json.RawMessage) string {
+	var p struct {
+		Meta struct {
+			ProgressToken json.RawMessage `json:"progressToken"`
+		} `json:"_meta"`
+	}
+	json.Unmarshal(params, &p)
+	if len(p.Meta.ProgressToken) == 0 {
+		return ""
+	}
+	b, _ := json.Marshal(map[string]any{"jsonrpc": "2.0", "method": "notifications/progress",
+		"params": map[string]any{"progressToken": p.Meta.ProgressToken, "progress": 1, "total": 2, "message": "halfway"}})
+	return string(b)
 }
 
 func stdioServer(t *testing.T) Server {
@@ -113,7 +134,16 @@ func check(t *testing.T, s Server) {
 	if err != nil || len(tools) != 2 || !tools[0].Annotations.ReadOnlyHint {
 		t.Fatalf("tools %+v %v", tools, err)
 	}
-	r, err := c.Call(ctx, "echo", json.RawMessage(`{"x":1}`))
+	var heard []string
+	var hmu sync.Mutex
+	pctx := WithProgress(ctx, func(p Progress) { hmu.Lock(); heard = append(heard, p.String()); hmu.Unlock() })
+	r, err := c.Call(pctx, "echo", json.RawMessage(`{"x":1}`))
+	time.Sleep(50 * time.Millisecond) // a stdio note is read beside the reply
+	hmu.Lock()
+	if len(heard) != 1 || heard[0] != "1/2 halfway" {
+		t.Errorf("progress %q", heard)
+	}
+	hmu.Unlock()
 	if err != nil || r.Text() != `echo {"x":1}` || string(r.StructuredContent) != `{"x":1}` {
 		t.Fatalf("call %+v %v", r, err)
 	}
@@ -169,7 +199,11 @@ func TestStreamableHTTP(t *testing.T) {
 		b, _ := json.Marshal(map[string]any{"jsonrpc": "2.0", "id": m.ID, "result": res})
 		if m.Method == "tools/call" { // this one streams
 			w.Header().Set("content-type", "text/event-stream")
-			fmt.Fprintf(w, "event: message\ndata: {\"jsonrpc\":\"2.0\",\"method\":\"notifications/progress\"}\n\nevent: message\ndata: %s\n\n", b)
+			fmt.Fprintf(w, "event: message\ndata: {\"jsonrpc\":\"2.0\",\"method\":\"notifications/progress\"}\n\n")
+			if n := progressNote(m.Params); n != "" {
+				fmt.Fprintf(w, "event: message\ndata: %s\n\n", n)
+			}
+			fmt.Fprintf(w, "event: message\ndata: %s\n\n", b)
 			return
 		}
 		w.Header().Set("content-type", "application/json")

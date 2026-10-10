@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/spike/gobot/agent"
@@ -34,6 +36,54 @@ type scriptHost struct {
 	hooks    agent.Hooks
 	plugins  []mcp.Status
 	readOnly bool // a check: only tools that only read
+	progress *scriptProgress
+}
+
+// scriptProgress is what a running script shows: what it has printed, then
+// the newest word of each plugin call still under way.
+type scriptProgress struct {
+	ctx     context.Context
+	mu      sync.Mutex
+	printed string
+	calls   map[string]string // a call's tool name → its progress
+	order   []string
+}
+
+func (p *scriptProgress) print(s string) {
+	p.mu.Lock()
+	p.printed = s
+	p.mu.Unlock()
+	p.send()
+}
+
+func (p *scriptProgress) call(id, line string) {
+	p.mu.Lock()
+	if p.calls == nil {
+		p.calls = map[string]string{}
+	}
+	if _, ok := p.calls[id]; !ok {
+		p.order = append(p.order, id)
+	}
+	p.calls[id] = line
+	p.mu.Unlock()
+	p.send()
+}
+
+func (p *scriptProgress) done(id string) {
+	p.mu.Lock()
+	delete(p.calls, id)
+	p.order = slices.DeleteFunc(p.order, func(x string) bool { return x == id })
+	p.mu.Unlock()
+}
+
+func (p *scriptProgress) send() {
+	p.mu.Lock()
+	text := p.printed
+	for _, id := range p.order {
+		text += p.calls[id] + "\n"
+	}
+	p.mu.Unlock()
+	tool.Update(p.ctx, tool.Result{Text: text})
 }
 
 func (h *scriptHost) Tools() []codemode.ToolInfo {
@@ -78,6 +128,11 @@ func (h *scriptHost) Call(ctx context.Context, name string, args json.RawMessage
 			return nil, fmt.Errorf("%s does not only read, so a check may not call it", name)
 		}
 	}
+	if h.progress != nil {
+		id := call.CallID
+		ctx = mcp.WithProgress(ctx, func(pr mcp.Progress) { h.progress.call(id, name+": "+pr.String()) })
+		defer h.progress.done(id)
+	}
 	r, err := h.t.Plugins.Call(ctx, name, args)
 	if err != nil {
 		return nil, err
@@ -120,8 +175,9 @@ func (t *Team) codemodeTool(b store.Bot, chat store.Chat, own []tool.Tool, hooks
 		F: func(ctx context.Context, raw json.RawMessage) tool.Result {
 			var a struct{ Code string }
 			json.Unmarshal(raw, &a)
-			host := &scriptHost{t: t, own: byName, hooks: hooks, plugins: plugins}
-			r := codemode.Run(ctx, a.Code, host, codemode.Options{Store: scriptStore{t.Store, chat.ID, b.ID}})
+			progress := &scriptProgress{ctx: ctx}
+			host := &scriptHost{t: t, own: byName, hooks: hooks, plugins: plugins, progress: progress}
+			r := codemode.Run(ctx, a.Code, host, codemode.Options{Store: scriptStore{t.Store, chat.ID, b.ID}, Progress: progress.print})
 			return tool.Result{Text: r.Text(), IsError: r.Err != nil}
 		}}
 }

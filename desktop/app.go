@@ -262,6 +262,13 @@ func (v *chatView) applyAgent(e team.Event) {
 			delete(v.stream, e.Turn)
 		}
 		v.retrying = ev.Delta
+	case agent.EventToolUpdate:
+		for i := len(v.rows) - 1; i >= 0; i-- {
+			if r := &v.rows[i]; r.kind == rowTool && r.call.CallID == ev.Call.CallID {
+				r.partial = ev.Result.Text
+				break
+			}
+		}
 	case agent.EventToolEnd:
 		for i := len(v.rows) - 1; i >= 0; i-- {
 			if r := &v.rows[i]; r.kind == rowTool && r.call.CallID == ev.Call.CallID {

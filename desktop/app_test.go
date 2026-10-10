@@ -1135,3 +1135,33 @@ func TestMCPServerEditor(t *testing.T) {
 		t.Fatal("a bad env line")
 	}
 }
+
+// slowTool reports a line, then waits to be let go.
+type slowTool struct{ release chan struct{} }
+
+func (slowTool) Name() string            { return "find" }
+func (slowTool) Description() string     { return "finds slowly" }
+func (slowTool) Schema() json.RawMessage { return json.RawMessage(`{"type":"object"}`) }
+func (s slowTool) Execute(ctx context.Context, _ json.RawMessage) tool.Result {
+	tool.Update(ctx, tool.Result{Text: "scanning src/\nfound 3 so far"})
+	<-s.release
+	return tool.Result{Text: "found 5"}
+}
+
+func TestRunningToolShowsWhatItHasSoFar(t *testing.T) {
+	h := newHarness(t, script(func(bot string, msgs []agent.Message) agent.Message {
+		if msgs[len(msgs)-1].Role == agent.RoleTool {
+			return say("all done")
+		}
+		return agent.Message{StopReason: agent.StopToolUse, Parts: []agent.Part{{Kind: agent.PartToolCall, CallID: "c1", Name: "find", Args: json.RawMessage(`{}`)}}}
+	}))
+	slow := slowTool{release: make(chan struct{})}
+	h.a.team.Tools = func(store.Bot, string) []tool.Tool { return []tool.Tool{slow} }
+	h.send("look")
+	h.pump("the partial output", func() bool { return h.tt.HasText("scanning src/\nfound 3 so far") })
+	close(slow.release)
+	h.pump("the end", func() bool { return h.tt.HasText("all done") && h.idle() })
+	if h.tt.HasText("scanning src/\nfound 3 so far") {
+		t.Fatal("the partial output stays after the end")
+	}
+}

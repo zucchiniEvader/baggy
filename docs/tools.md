@@ -26,6 +26,10 @@ Each takes a `Dir`; relative paths resolve against it.
 
 `go run ./cmd/smoke [model]` gives a model these tools in a scratch directory and asks for a multi-step task; `GOBOT_TASK=edit` asks for one with `find`, `grep` and `edit_file` and no shell, which DeepSeek (`deepseek-chat`) did in five calls. Asking permission before a shell command is the desktop's (`desktop.md`, through `team.Team.Approve`).
 
+## Partial results
+
+A running tool may report what it has so far with `tool.Update(ctx, result)`: a whole partial result that replaces the one before, for display only (the model reads the final result). The loop gives each call's context the function (`tool.WithUpdate`) and passes the reports on as `tool_update` events. `shell` reports its output's end every 250 ms while it changes; codemode reports what a script has printed and its plugin calls' progress (`plugins.md`).
+
 ## Not yet
 
-Streaming partial output from a running tool; images in results.
+Images in results.
