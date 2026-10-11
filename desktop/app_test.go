@@ -384,7 +384,84 @@ func TestRender(t *testing.T) {
 	f, _ := os.Create(filepath.Join(dir, "setup-light.png"))
 	png.Encode(f, h.tt.Image())
 	f.Close()
+
+	// New Bot's templates, Scout's sheet, and a Writing Room.
+	h.a.fallback = connect.Config{APIKey: "test"}
+	shots := []struct {
+		name string
+		open func()
+	}{
+		{"gallery", h.a.newFromTemplate},
+		{"template-scout", func() { tp, _ := store.TemplateOf("scout"); h.a.fromTemplate(tp) }},
+		{"template-group", func() { h.a.groupFromTemplate(store.GroupTemplates[0]) }},
+	}
+	for _, s := range shots {
+		h.a.gallery, h.a.botSheet, h.a.groupSheet = nil, nil, nil
+		s.open()
+		h.tt.Frame()
+		h.tt.Frame()
+		f, _ := os.Create(filepath.Join(dir, s.name+".png"))
+		png.Encode(f, h.tt.Image())
+		f.Close()
+	}
 	_ = strings.TrimSpace
+}
+
+func TestBotFromTemplate(t *testing.T) {
+	h := newHarness(t, script(func(string, []agent.Message) agent.Message { return say("ok") }))
+	h.a.newFromTemplate()
+	h.tt.Frame()
+	if err := h.tt.Click("Scout"); err != nil {
+		t.Fatal(err)
+	}
+	h.tt.Frame()
+	if h.a.gallery != nil || h.a.botSheet == nil || h.a.botSheet.template != "scout" {
+		t.Fatalf("gallery %v sheet %+v", h.a.gallery, h.a.botSheet)
+	}
+	if err := h.tt.Click("Create"); err != nil {
+		t.Fatal(err)
+	}
+	h.tt.Frame()
+	h.tt.Frame()
+	scout, _ := store.TemplateOf("scout")
+	b := h.a.bots[1]
+	if b.Name != "Scout" || b.Template != "scout" || b.Description != scout.Description || b.Icon != "globe" {
+		t.Fatalf("bot %+v", b)
+	}
+	// Its empty chat offers its own first messages.
+	if !h.tt.HasText(scout.Suggestions[0]) || !h.tt.HasText(scout.Summary) {
+		t.Fatal("no suggestions of its template")
+	}
+}
+
+func TestGroupFromTemplate(t *testing.T) {
+	h := newHarness(t, script(func(string, []agent.Message) agent.Message { return say("ok") }))
+	chef := h.a.bots[0]
+	research := store.GroupTemplates[1] // Chef, Scout, Writer
+	h.a.newFromTemplate()
+	h.tt.Frame()
+	if err := h.tt.Click(research.Name); err != nil {
+		t.Fatal(err)
+	}
+	h.tt.Frame()
+	f := h.a.groupSheet
+	if f == nil || len(f.slots) != 3 || f.slots[0].bot != chef.ID || f.slots[1].bot != "" {
+		t.Fatalf("form %+v", f)
+	}
+	if err := h.tt.Click("Create"); err != nil {
+		t.Fatal(err)
+	}
+	h.tt.Frame()
+	if len(h.a.bots) != 3 {
+		t.Fatalf("%d bots", len(h.a.bots))
+	}
+	g := h.a.chat(h.a.sel)
+	if g == nil || g.Kind != store.Group || len(g.Members) != 3 || g.Members[0] != chef.ID || g.Owner != chef.ID {
+		t.Fatalf("group %+v", g)
+	}
+	if h.a.byID[g.Members[1]].Template != "scout" || h.a.byID[g.Members[2]].Template != "writer" {
+		t.Fatal("members out of order")
+	}
 }
 
 func TestMemoryEditorConflict(t *testing.T) {
@@ -1265,5 +1342,56 @@ func TestMoveFolder(t *testing.T) {
 	moveFolder(old, now)
 	if _, err := os.Stat(old); err != nil {
 		t.Fatal("moved over the new one")
+	}
+}
+
+func TestPhonePane(t *testing.T) {
+	h := newHarness(t, script(func(string, []agent.Message) agent.Message { return say("ok") }))
+	h.a.phone.port = 0 // any free port
+	defer h.a.phone.stop()
+	h.a.openSettings(panePhone)
+	st := ui.NewTester(h.a.settingsRoot, 800, 900)
+	if st.HasText("Pair") {
+		t.Fatal("pairing shown while off")
+	}
+	r, ok := st.Find("Connect a phone")
+	if !ok {
+		t.Fatalf("no switch: %q", st.Texts())
+	}
+	st.ClickAt(800-28-14-18, r.Y+r.H) // the switch, at the row's right
+	st.Frame()
+	token := h.st.Setting("phone.token")
+	if !h.a.phone.on || token == "" || h.st.Setting("pref.phone") != "1" {
+		t.Fatalf("on %v token %q", h.a.phone.on, token)
+	}
+	if !st.HasText("Reset pairing") || h.a.phone.err != "" {
+		t.Fatalf("no pairing: %q (%s)", st.Texts(), h.a.phone.err)
+	}
+	if err := st.Click("Reset"); err != nil {
+		t.Fatal(err)
+	}
+	st.Frame()
+	if now := h.st.Setting("phone.token"); now == "" || now == token {
+		t.Fatalf("reset kept the token")
+	}
+}
+
+func TestEditsReachThePhone(t *testing.T) {
+	h := newHarness(t, script(func(string, []agent.Message) agent.Message { return say("ok") }))
+	var told []string
+	h.a.changed = func(id string) { told = append(told, id) }
+	dm, _ := h.st.DMOf(h.a.bots[0].ID)
+	h.a.togglePin(*h.a.chat(dm.ID))
+	if len(told) != 1 {
+		t.Fatalf("pin: told %v", told)
+	}
+	// A reply read here clears the phone's count too.
+	h.a.sel, h.a.focused = "", true
+	h.st.Append(dm.ID, h.a.bots[0].ID, "t", store.Meta{}, agent.Message{Role: agent.RoleAssistant, StopReason: agent.StopEnd, Parts: []agent.Part{{Kind: agent.PartText, Text: "hi"}}})
+	h.a.reload()
+	told = nil
+	h.a.selectChat(dm.ID)
+	if len(told) != 1 || told[0] != dm.ID {
+		t.Fatalf("read: told %v", told)
 	}
 }

@@ -1,6 +1,7 @@
 package team
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -79,15 +80,28 @@ func (t *Team) teamTools(b store.Bot, chat store.Chat, r *run) []tool.Tool {
 				}
 				return tool.Result{Text: fmt.Sprintf("Delivered to %s, who answers in its direct chat with the user.", to.Name)}
 			}},
-		Func{N: "create_bot", D: "Create a new bot, a teammate with its own name, description (its system prompt: what it does and how) and workspace. Only when the user agreed to it.",
-			S: `{"type":"object","properties":{"name":{"type":"string"},"description":{"type":"string"},"workdir":{"type":"string","description":"a full path to an existing folder its tools run in, as a project the user named; its own workspace when left out"},"join":{"type":"boolean","description":"also add it to this group"}},"required":["name","description"],"additionalProperties":false}`,
+		Func{N: "create_bot", D: "Create a new bot, a teammate with its own name, description (its system prompt: what it does and how) and workspace. Only when the user agreed to it. A template fills in what is left out: " + templateList() + ".",
+			S: `{"type":"object","properties":{"name":{"type":"string"},"description":{"type":"string"},"template":{"type":"string","enum":` + templateIDs() + `,"description":"start from this template: its description, look and suggestions"},"workdir":{"type":"string","description":"a full path to an existing folder its tools run in, as a project the user named; its own workspace when left out"},"join":{"type":"boolean","description":"also add it to this group"}},"required":["name"],"additionalProperties":false}`,
 			F: func(ctx context.Context, raw json.RawMessage) tool.Result {
 				var a struct {
-					Name, Description, Workdir string
-					Join                       bool
+					Name, Description, Template, Workdir string
+					Join                                 bool
 				}
 				json.Unmarshal(raw, &a)
-				nb, err := t.Store.CreateBot(store.Bot{Name: a.Name, Description: a.Description, Provider: b.Provider, Model: b.Model, Thinking: b.Thinking, Workdir: a.Workdir})
+				nb := store.Bot{Name: a.Name, Description: a.Description, Workdir: a.Workdir}
+				if tp, ok := store.TemplateOf(a.Template); ok {
+					nb = tp.Bot()
+					nb.Name = cmp.Or(strings.TrimSpace(a.Name), nb.Name)
+					nb.Description = cmp.Or(strings.TrimSpace(a.Description), nb.Description)
+					nb.Workdir = cmp.Or(a.Workdir, nb.Workdir)
+				} else if a.Template != "" {
+					return errResult("there is no template %q", a.Template)
+				}
+				if strings.TrimSpace(nb.Description) == "" {
+					return errResult("a new bot needs a description or a template")
+				}
+				nb.Provider, nb.Model, nb.Thinking = b.Provider, b.Model, b.Thinking
+				nb, err := t.Store.CreateBot(nb)
 				if err != nil {
 					return errResult("%v", err)
 				}
@@ -199,4 +213,22 @@ func (t *Team) editBot(b store.Bot) tool.Tool {
 			t.emit(Event{Kind: EventChanged, BotID: o.ID})
 			return tool.Result{Text: fmt.Sprintf("Updated %s (id %s); its tools run in %s.", o.Name, o.ID, t.Store.WorkDir(o))}
 		}}
+}
+
+// templateList names the bot templates for create_bot's description.
+func templateList() string {
+	var parts []string
+	for _, tp := range store.Templates {
+		parts = append(parts, tp.ID+" ("+strings.TrimSuffix(tp.Summary, ".")+")")
+	}
+	return strings.Join(parts, ", ")
+}
+
+func templateIDs() string {
+	var ids []string
+	for _, tp := range store.Templates {
+		ids = append(ids, tp.ID)
+	}
+	b, _ := json.Marshal(ids)
+	return string(b)
 }

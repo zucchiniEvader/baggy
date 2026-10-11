@@ -31,7 +31,7 @@ func TestSeedReopenAndMessages(t *testing.T) {
 		t.Fatal("no Chef on first run")
 	}
 	chef := must(s.Bots())[0]
-	if chef.Name != "Chef" {
+	if chef.Name != "Chef" || chef.Template != "chef" || chef.Description != ChefDescription {
 		t.Fatalf("bad bot %+v", chef)
 	}
 	if _, err := os.Stat(s.Workspace(chef.ID)); err != nil {

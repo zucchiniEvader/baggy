@@ -104,7 +104,13 @@ func main() {
 	}
 	fallback := connect.FromEnv("claude-sonnet-5-5")
 	var a *app
-	tm := newTeam(st, fallback, func(e team.Event) { a.post(func() { a.apply(e) }) })
+	ph := newPhone(st)
+	tm := newTeam(st, fallback, func(e team.Event) {
+		a.post(func() { a.apply(e) })
+		ph.srv.Publish(e)
+	})
+	ph.srv.Team = tm
+	defer ph.stop()
 	tm.Plugins = mcp.NewManager(filepath.Join(dataDir(), "mcp.json"))
 	defer tm.Plugins.Close()
 	tm.Codemode = true
@@ -117,6 +123,9 @@ func main() {
 	pending := make(chan func(), 1024) // events before the window is up
 	a = newApp(st, tm, func(fn func()) { pending <- fn })
 	a.fallback = fallback
+	a.phone, ph.srv.Team = ph, tm
+	ph.srv.Changed = func(string) { a.post(a.countUnread) }
+	a.changed = func(chatID string) { ph.srv.Publish(team.Event{Kind: team.EventChanged, ChatID: chatID}) }
 	a.locale = mygo.App.Locale()
 	a.readImage = func() []byte { return mygo.Clipboard.ReadImage() }
 	a.copyText = func(s string) { mygo.Clipboard.WriteText(s) }
@@ -131,6 +140,8 @@ func main() {
 	updateLang := map[string]string{"English": "en", "中文": "zh-Hans"}[a.prefs.language]
 	mygo.Use(native.New(updater.Options{Language: updateLang}))
 	a.version = mygo.App.Version()
+	ph.srv.Version = a.version
+	ph.start()
 	if mygo.Updater.Enabled() {
 		a.checkUpdates = updater.CheckForUpdates
 		on := updater.AutomaticChecks()
@@ -310,7 +321,7 @@ func buildMenu(a *app, post func(func())) *mygo.Menu {
 			{Role: mygo.RoleQuit},
 		}},
 		{Label: L("File"), Submenu: []*mygo.MenuItem{
-			{Label: L("New Bot…"), Accelerator: "CmdOrCtrl+N", Click: do(a.newBot)},
+			{Label: L("New Bot…"), Accelerator: "CmdOrCtrl+N", Click: do(a.newFromTemplate)},
 			{Label: L("New Group…"), Accelerator: "CmdOrCtrl+Shift+N", Click: do(a.newGroup)},
 			mygo.Separator(),
 			{Role: mygo.RoleClose},

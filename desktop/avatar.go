@@ -94,16 +94,26 @@ func (a *app) chatAvatar(c *ui.Context, ch store.Chat, slot float32, backdrop ui
 	if ch.Kind == store.DM {
 		return a.avatar(c, ch.Owner, slot)
 	}
-	members := ch.Members[:min(len(ch.Members), 4)]
-	if len(members) == 0 {
+	if len(ch.Members) == 0 {
 		return iconTile(c, iconUsers, slot)
 	}
+	var looks []look
+	for _, id := range ch.Members {
+		looks = append(looks, a.lookOf(a.byID[id]))
+	}
+	return a.packedAvatar(c, looks, slot, backdrop).Label(a.title(ch))
+}
+
+// packedAvatar packs up to four avatars in a square slot, the front ones
+// ringed in backdrop.
+func (a *app) packedAvatar(c *ui.Context, looks []look, slot float32, backdrop ui.Color) ui.Element {
+	looks = looks[:min(len(looks), 4)]
 	size := float32(math.Round(float64(slot) * 0.6))
 	free := slot - size
 	var at [][2]float32
-	switch len(members) {
+	switch len(looks) {
 	case 1:
-		return a.avatar(c, members[0], slot)
+		return a.avatarOf(c, looks[0], slot)
 	case 2:
 		at = [][2]float32{{0, 0}, {free, free}}
 	case 3:
@@ -111,14 +121,14 @@ func (a *app) chatAvatar(c *ui.Context, ch store.Chat, slot float32, backdrop ui
 	default:
 		at = [][2]float32{{0, 0}, {free, 0}, {0, free}, {free, free}}
 	}
-	box := ui.Box(c).Size(slot, slot).Shrink(0).Label(a.title(ch))
+	box := ui.Box(c).Size(slot, slot).Shrink(0)
 	box.Children(func() {
-		for i, id := range members {
+		for i, l := range looks {
 			cell := ui.Box(c).Absolute().Left(at[i][0]).Top(at[i][1]).Size(size, size).Radius(size / 2)
 			if i > 0 {
 				cell.Shadow(0, 0, 0, 1.5, backdrop)
 			}
-			cell.Children(func() { a.avatar(c, id, size) })
+			cell.Children(func() { a.avatarOf(c, l, size) })
 		}
 	})
 	return box

@@ -205,6 +205,9 @@ ALTER TABLE chats ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE bots ADD COLUMN avatar TEXT NOT NULL DEFAULT '';
 `, `
 ALTER TABLE bots ADD COLUMN workdir TEXT NOT NULL DEFAULT '';
+`, `
+ALTER TABLE bots ADD COLUMN template TEXT NOT NULL DEFAULT '';
+UPDATE bots SET template = 'chef' WHERE name = 'Chef';
 `}
 
 func (s *Store) migrate() error {
@@ -344,14 +347,15 @@ type Bot struct {
 	Color       string `json:"color"`    // its avatar's color, a name of the desktop's set; "" is one picked by its id
 	Avatar      string `json:"avatar"`   // its own picture, a file in avatars/ (SaveAvatar); "" is its icon
 	Workdir     string `json:"workdir"`  // where its tools run (~ is the home folder); "" is its workspace
+	Template    string `json:"template"` // the Template it was made from; "" for none
 	Created     int64  `json:"created"`
 }
 
-const botCols = `id, name, description, provider, model, thinking, emoji, color, avatar, workdir, created` // emoji holds the icon
+const botCols = `id, name, description, provider, model, thinking, emoji, color, avatar, workdir, template, created` // emoji holds the icon
 
 func scanBot(sc interface{ Scan(...any) error }) (Bot, error) {
 	var b Bot
-	err := sc.Scan(&b.ID, &b.Name, &b.Description, &b.Provider, &b.Model, &b.Thinking, &b.Icon, &b.Color, &b.Avatar, &b.Workdir, &b.Created)
+	err := sc.Scan(&b.ID, &b.Name, &b.Description, &b.Provider, &b.Model, &b.Thinking, &b.Icon, &b.Color, &b.Avatar, &b.Workdir, &b.Template, &b.Created)
 	if errors.Is(err, sql.ErrNoRows) {
 		err = ErrNotFound
 	}
@@ -379,8 +383,8 @@ func (s *Store) CreateBot(b Bot) (Bot, error) {
 		return Bot{}, err
 	}
 	defer tx.Rollback()
-	if _, err := tx.Exec(`INSERT INTO bots(`+botCols+`) VALUES(?,?,?,?,?,?,?,?,?,?,?)`,
-		b.ID, b.Name, b.Description, b.Provider, b.Model, b.Thinking, b.Icon, b.Color, b.Avatar, strings.TrimSpace(b.Workdir), b.Created); err != nil {
+	if _, err := tx.Exec(`INSERT INTO bots(`+botCols+`) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)`,
+		b.ID, b.Name, b.Description, b.Provider, b.Model, b.Thinking, b.Icon, b.Color, b.Avatar, strings.TrimSpace(b.Workdir), b.Template, b.Created); err != nil {
 		return Bot{}, err
 	}
 	chat := NewID("chat")
@@ -517,9 +521,6 @@ func (s *Store) DeleteBot(id string) error {
 	return nil
 }
 
-// ChefDescription is the first bot's description.
-const ChefDescription = `You are Chef, the user's chief of staff. Plan the work the user brings you. Hand each task to the teammate best suited to it with message_bot; when no teammate fits, propose one and create it with create_bot once the user agrees. Do hands-on work yourself when that is quicker or nobody else can. Keep the user informed and keep replies short.`
-
 // Seed creates Chef when there are no bots yet and returns whether it did.
 func (s *Store) Seed() (bool, error) {
 	var n int
@@ -529,7 +530,8 @@ func (s *Store) Seed() (bool, error) {
 	if s.Setting("seeded") != "" {
 		return false, nil // the user deleted every bot; don't bring Chef back
 	}
-	if _, err := s.CreateBot(Bot{Name: "Chef", Description: ChefDescription, Color: "orange"}); err != nil {
+	chef, _ := TemplateOf("chef")
+	if _, err := s.CreateBot(chef.Bot()); err != nil {
 		return false, err
 	}
 	return true, s.SetSetting("seeded", "1")

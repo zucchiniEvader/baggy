@@ -27,6 +27,7 @@ const (
 	paneModels   = "models"
 	paneCommands = "commands"
 	paneServers  = "servers"
+	panePhone    = "phone"
 	paneAbout    = "about"
 
 	settingsNavWidth = 200
@@ -44,6 +45,7 @@ var settingsPanes = []settingsPane{
 	{paneModels, func() string { return L("Models") }, func() *ui.SVG { return iconSparkle }},
 	{paneCommands, func() string { return L("Commands") }, func() *ui.SVG { return iconShield }},
 	{paneServers, func() string { return L("MCP Servers") }, func() *ui.SVG { return iconPlug }},
+	{panePhone, func() string { return L("Phone") }, func() *ui.SVG { return iconPhone }},
 	{paneAbout, func() string { return L("About") }, func() *ui.SVG { return iconInfo }},
 }
 
@@ -138,6 +140,8 @@ func (a *app) settingsRoot(c *ui.Context) {
 							a.generalPane(c)
 						case paneCommands:
 							a.commandsPane(c)
+						case panePhone:
+							a.phonePane(c)
 						case paneAbout:
 							a.aboutPane(c)
 						}

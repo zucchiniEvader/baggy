@@ -102,7 +102,7 @@ func (a *app) newMenu(c *ui.Context) {
 	var action func()
 	iconButton(c, iconNewChat, L("New bot or group")).Menu(func(m *ui.Menu) {
 		if m.Item(L("New Bot…")).Shortcut(ui.Cmd, ui.KeyN).Chosen() {
-			action = a.newBot
+			action = a.newFromTemplate
 		}
 		if m.Item(L("New Group…")).Disabled(len(a.bots) == 0).Chosen() {
 			action = a.newGroup
@@ -228,7 +228,6 @@ func (a *app) previewLine(ch store.Chat) string {
 
 func (a *app) togglePin(ch store.Chat) {
 	a.do(a.st.SetPinned(ch.ID, ch.Pinned == 0))
-	a.reload()
 }
 
 // chatList lists the chats. It takes the focus as a whole, its rows do

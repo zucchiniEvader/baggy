@@ -264,6 +264,35 @@ func TestCreateBotAndHandOff(t *testing.T) {
 	}
 }
 
+func TestCreateBotFromTemplate(t *testing.T) {
+	f := setup(t, script(func(bot string, msgs []agent.Message) agent.Message {
+		if msgs[len(msgs)-1].Role == agent.RoleTool {
+			return say("done")
+		}
+		switch lastUser(msgs) {
+		case "a writer":
+			return call("create_bot", map[string]any{"name": "Quill", "template": "writer"})
+		case "nothing":
+			return call("create_bot", map[string]any{"name": "Blank"})
+		}
+		return say("ok")
+	}))
+	a := f.bot(t, "A")
+	dm, _ := f.st.DMOf(a.ID)
+	f.team.Send(dm.ID, "a writer", nil, nil)
+	f.team.Wait()
+	f.team.Send(dm.ID, "nothing", nil, nil)
+	f.team.Wait()
+	bots, _ := f.st.Bots()
+	if len(bots) != 2 {
+		t.Fatalf("%d bots", len(bots))
+	}
+	w, _ := store.TemplateOf("writer")
+	if q := bots[1]; q.Name != "Quill" || q.Template != "writer" || q.Description != w.Description || q.Icon != w.Icon || q.Color != w.Color {
+		t.Fatalf("bot %+v", q)
+	}
+}
+
 func TestStopCancels(t *testing.T) {
 	f := setup(t, nil)
 	f.team.Model = func(store.Bot) (agent.Model, error) {

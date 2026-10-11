@@ -83,7 +83,7 @@ With `Plugins` (an `mcp.Manager`) or `Codemode` set, every turn has the `codemod
 ## Team tools
 
 - `message_bot(bot, text)`: by id or a name only one bot has; delivers into that bot's DM, where it answers. It refuses the bot itself and a member of the current group (talk there). Each delivery carries `Hops`, one more than the message that started the sender's turn (a user message resets it); past `MaxHops` (eight) it refuses, so two bots cannot loop.
-- `create_bot(name, description, workdir?, join)`: a new bot on the creator's provider and model, its tools running in `workdir` when given (a full path to an existing folder); `join` also seats it in the current group.
+- `create_bot(name, description?, template?, workdir?, join)`: a new bot on the creator's provider and model, its tools running in `workdir` when given (a full path to an existing folder); `template` (one of `store.Templates`, listed with their summaries in the tool's description) fills in the description, look and folder left out, and without one a description is required; `join` also seats it in the current group.
 - `hand_off(bot)` (groups): the owner makes another member the owner.
 - `list_teammates`: every bot with its id, the model and thinking it runs with, whether it is working, and its description.
 - `edit_bot(bot, name?, description?, model?, thinking?, workdir?)`: changes a teammate's profile or the bot's own, only the fields given, from that bot's next turn.
@@ -92,4 +92,4 @@ With `Plugins` (an `mcp.Manager`) or `Codemode` set, every turn has the `codemod
 
 `team.Review(ctx, model, bot, request, action, workspace)` asks a model (the desktop gives the bot's own) whether an action may run without the user: the user's last request (`LastRequest`), the bot's workspace, and the action. It answers JSON `{decision: allow | ask, reason}`: allow reading, listing, searching, building, testing, and changes in the workspace that follow from the request; ask before deleting or overwriting outside it, `sudo`, installs, messages and posts, `git push`, publishing, payments, uploads, anything the request does not call for, or when unsure. An answer that does not read is an ask. Against DeepSeek it allowed `ls -la` and `go test ./...` and asked for `rm -rf ~/Documents`, a force push, and an email the request did not call for.
 
-Tests drive all of it with scripted models (`team/team_test.go`): DM steering and restore, a three-bot room with mentions and passes, the round limit, the hop limit, `create_bot` with `hand_off`, and Stop.
+Tests drive all of it with scripted models (`team/team_test.go`): DM steering and restore, a three-bot room with mentions and passes, the round limit, the hop limit, `create_bot` with `hand_off` and from a template, and Stop.

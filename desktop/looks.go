@@ -60,6 +60,9 @@ func (a *app) markRead() {
 	if a.unread[a.sel] > 0 {
 		a.unread[a.sel] = 0
 		a.showBadge()
+		if a.changed != nil {
+			a.changed(a.sel) // the phone's count goes too
+		}
 	}
 }
 

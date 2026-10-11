@@ -3,8 +3,10 @@ module github.com/zucchiniEvader/baggy
 go 1.27
 
 require (
+	github.com/coder/websocket v1.8.14
 	github.com/creack/pty v1.1.24
 	github.com/dop251/goja v0.0.0-20260923012348-67663e7a3b97
+	golang.org/x/image v0.46.0
 	modernc.org/sqlite v1.60.1
 )
 
@@ -17,7 +19,6 @@ require (
 	github.com/mattn/go-isatty v0.0.24 // indirect
 	github.com/ncruces/go-strftime v1.0.0 // indirect
 	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
-	golang.org/x/image v0.46.0 // indirect
 	golang.org/x/sys v0.48.0 // indirect
 	golang.org/x/text v0.42.0 // indirect
 	modernc.org/libc v1.77.1 // indirect

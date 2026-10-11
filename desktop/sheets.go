@@ -1,8 +1,10 @@
 package main
 
 import (
+	"cmp"
 	"fmt"
 	"os"
+	"slices"
 	"strings"
 	"time"
 
@@ -27,6 +29,7 @@ type botForm struct {
 	avatar              string // its picture (store.Bot.Avatar); "" for the icon
 	stored              string // the picture it had, kept until it saves
 	workdir             string // where its tools run; "" is its workspace
+	template            string // the store.Template it starts from
 	err                 string
 }
 
@@ -83,19 +86,19 @@ func (a *app) saveBot(f *botForm) bool {
 		th = ""
 	}
 	b := store.Bot{ID: f.id, Name: f.name, Description: f.description, Provider: a.providerID(f.providerName), Model: strings.TrimSpace(f.model), Thinking: th,
-		Icon: f.icon, Color: f.color, Avatar: f.avatar, Workdir: strings.TrimSpace(f.workdir)}
+		Icon: f.icon, Color: f.color, Avatar: f.avatar, Workdir: strings.TrimSpace(f.workdir), Template: f.template}
 	var err error
 	if f.id == "" {
 		b, err = a.st.CreateBot(b)
 		if err == nil {
-			a.reload()
+			a.edited("")
 			if dm, derr := a.st.DMOf(b.ID); derr == nil {
 				a.selectChat(dm.ID)
 			}
 		}
 	} else {
 		err = a.st.UpdateBot(b)
-		a.reload()
+		a.edited("")
 	}
 	if err != nil {
 		f.err = err.Error()
@@ -132,6 +135,7 @@ func (a *app) botSheetView(c *ui.Context) {
 				ui.Field(c, L("Thinking"), func() { popup(c, &f.thinking, thinkingLevels) })
 				ui.Field(c, L("Folder"), func() { a.folderField(c, f) })
 			})
+			a.templateNotes(c, f)
 			if f.err != "" {
 				ui.Text(c, f.err).FontSize(12).TextColor(pal(c).red)
 			}
@@ -254,7 +258,15 @@ type groupForm struct {
 	id          string
 	title, desc string
 	picked      map[string]bool
+	slots       []groupSlot // a template's members, before the other bots
 	err         string
+}
+
+// groupSlot is a member a group template asks for: a bot made from tmpl, or
+// one made with the group when bot is "".
+type groupSlot struct {
+	tmpl, bot string
+	on        bool
 }
 
 func (a *app) newGroup() {
@@ -271,12 +283,30 @@ func (a *app) saveGroup(f *groupForm) bool {
 			f.err = err.Error()
 			return false
 		}
-		a.reload()
+		a.edited(f.id)
 		return true
 	}
 	var members []string
+	for i, s := range f.slots {
+		if !s.on {
+			continue
+		}
+		if s.bot == "" {
+			tp, _ := store.TemplateOf(s.tmpl)
+			b := tp.Bot()
+			b.Name = L(b.Name)
+			nb, err := a.st.CreateBot(b)
+			if err != nil {
+				f.err = err.Error()
+				a.edited("")
+				return false
+			}
+			f.slots[i].bot = nb.ID // made once, should the group fail
+		}
+		members = append(members, f.slots[i].bot)
+	}
 	for _, b := range a.bots {
-		if f.picked[b.ID] {
+		if f.picked[b.ID] && !slices.Contains(members, b.ID) {
 			members = append(members, b.ID)
 		}
 	}
@@ -285,7 +315,7 @@ func (a *app) saveGroup(f *groupForm) bool {
 		f.err = err.Error()
 		return false
 	}
-	a.reload()
+	a.edited(g.ID)
 	a.selectChat(g.ID)
 	return true
 }
@@ -307,7 +337,11 @@ func (a *app) groupSheetView(c *ui.Context) {
 			if f.id == "" {
 				ui.Column(c).Gap(1).FocusGroup(ui.Vertical).Children(func() {
 					ui.Text(c, L("Members (the first one owns the work)")).FontSize(13).FontWeight(600).Padding(0, 0, 5)
+					a.slotRows(c, f)
 					for _, b := range a.bots {
+						if f.slotted(b.ID) {
+							continue
+						}
 						on := f.picked[b.ID]
 						row := listRow(c.Key("pick-"+b.ID), rowPlain).Label(b.Name).Role(ui.RoleCheckBox).Checked(on)
 						if row.Clicked() {
@@ -316,7 +350,7 @@ func (a *app) groupSheetView(c *ui.Context) {
 						row.Children(func() {
 							a.avatar(c, b.ID, 20)
 							ui.Text(c, b.Name).FontSize(13).Shrink(0)
-							ui.Text(c, firstLine(b.Description)).FontSize(12).TextColor(t.TextMuted).SingleLine().Shrink(1).MinWidth(0)
+							ui.Text(c, cmp.Or(templateSummary(b), firstLine(b.Description))).FontSize(12).TextColor(t.TextMuted).SingleLine().Shrink(1).MinWidth(0)
 							ui.Spacer(c)
 							if on {
 								ui.Icon(c, iconCheck).FontSize(iconSize).Shrink(0)
@@ -419,6 +453,12 @@ func (a *app) sheets(c *ui.Context) {
 			a.botSheet = nil
 		}
 	}
+	if a.gallery != nil {
+		a.galleryView(c)
+		if !a.gallery.open {
+			a.gallery = nil
+		}
+	}
 	if a.groupSheet != nil {
 		a.groupSheetView(c)
 		if !a.groupSheet.open {
@@ -449,5 +489,5 @@ func (a *app) sheets(c *ui.Context) {
 }
 
 func (a *app) hasSheet() bool {
-	return a.botSheet != nil || a.groupSheet != nil || a.confirm != nil || a.palette != nil || a.memSheet != nil || a.routine != nil
+	return a.botSheet != nil || a.gallery != nil || a.groupSheet != nil || a.confirm != nil || a.palette != nil || a.memSheet != nil || a.routine != nil
 }

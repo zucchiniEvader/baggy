@@ -1,6 +1,7 @@
 package main
 
 import (
+	"cmp"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -154,7 +155,7 @@ func (a *app) noChat(c *ui.Context) {
 		iconTile(c, iconBot, 40)
 		ui.Text(c, L("No chat yet.")).FontSize(13).TextColor(c.Theme().TextMuted)
 		if primaryButton(c.Key("first-bot"), L("New Bot…"), false).Clicked() {
-			a.newBot()
+			a.newFromTemplate()
 		}
 	})
 }
@@ -168,8 +169,8 @@ func (a *app) welcome(c *ui.Context, ch store.Chat, v *chatView) {
 	suggestions := []string{L("Introduce yourselves in one line each."), L("Plan a weekend trip together.")}
 	if ch.Kind == store.DM {
 		b := a.byID[ch.Owner]
-		title, sub = L("Hi, I'm %s", b.Name), firstLine(b.Description)
-		suggestions = []string{L("What can you do?"), L("Look at what is in your workspace."), L("Every weekday at 8, give me a short brief.")}
+		title, sub = L("Hi, I'm %s", b.Name), cmp.Or(templateSummary(b), firstLine(b.Description))
+		suggestions = suggestionsFor(b)
 	}
 	ui.Scroll(c).Grow(1).MinHeight(0).Children(func() {
 		ui.Column(c).Grow(1).Center().Padding(48, 28).Children(func() {

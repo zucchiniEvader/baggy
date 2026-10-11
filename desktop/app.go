@@ -15,8 +15,9 @@ import (
 // app is the window's state. It belongs to the main thread: team events
 // reach it through post.
 type app struct {
-	st   *store.Store
-	team *team.Team
+	st    *store.Store
+	team  *team.Team
+	phone *phone // the phone app's server
 	// post runs fn on the main thread and draws a frame; a window's Update.
 	post func(fn func())
 
@@ -50,6 +51,10 @@ type app struct {
 	sideWidth    float32
 
 	botSheet   *botForm
+	// changed tells the phone (remote.Server) that bots, chats or a read
+	// mark changed here; nil without one.
+	changed func(chatID string)
+	gallery    *gallery
 	groupSheet *groupForm
 	settings   bool // the Settings window is wanted (tests, which have no windows)
 	set        settingsState
@@ -115,6 +120,7 @@ type confirmation struct {
 func newApp(st *store.Store, tm *team.Team, post func(func())) *app {
 	a := &app{st: st, team: tm, post: post, views: map[string]*chatView{}, busy: map[string]bool{}, runFrom: map[string]int64{}, unread: map[string]int{}, focused: true}
 	a.approvals = newApprovals(a)
+	a.phone = newPhone(st)
 	a.prefs = loadPrefs(st)
 	a.sideWidth, a.inspector, a.sidebarShown = a.prefs.sideWidth, a.prefs.inspector, true
 	a.dragWidth = a.sideWidth
@@ -438,7 +444,16 @@ func (a *app) do(err error) {
 			v.notice(err.Error())
 		}
 	}
+	a.edited("")
+}
+
+// edited reloads after the user changed bots or chats here, and tells the
+// phone, which hears of the team's own changes through its events.
+func (a *app) edited(chatID string) {
 	a.reload()
+	if a.changed != nil {
+		a.changed(chatID)
+	}
 }
 
 // toolResult is how a tool row's result reads.

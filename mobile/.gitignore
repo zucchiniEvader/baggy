@@ -1,0 +1,11 @@
+node_modules/
+.expo/
+dist/
+expo-env.d.ts
+ios/
+android/
+.metro-health-check*
+*.p8
+*.p12
+*.mobileprovision
+.DS_Store

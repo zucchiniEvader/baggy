@@ -40,7 +40,9 @@ mcp/        MCP client (stdio, Streamable HTTP) and the mcp.json manager (docs/p
 codemode/   scripts in a goja sandbox that call tools (docs/plugins.md)
 terminal/   commands in pseudo-terminals: questions, input, background (docs/terminal.md)
 shellenv/   the login shell's environment
+remote/     the phone's API: HTTP and a WebSocket of team events behind a token (docs/mobile.md)
 desktop/    the MyGo app, its own module (docs/desktop.md)
+mobile/     the phone app, Expo, iOS first (docs/mobile.md)
 docs/       one doc per subject, written as the system is
 site/       the website on GitHub Pages (docs/release.md)
 .github/    CI, the release workflow, the Pages deploy
@@ -52,7 +54,7 @@ site/       the website on GitHub Pages (docs/release.md)
 - The agent package imports no vendor code and no UI. Providers convert to and from `agent.Message`; the UI observes `agent.Event`s.
 - The transcript keeps thinking signatures and vendor server blocks verbatim (`Part.Signature`, `PartServer`) so a turn can continue after a tool call.
 - Tool arguments are checked against the tool's JSON Schema before a call runs; a failure is an error result the model reads.
-- `go vet ./... && go test ./...` pass before a change is done, in the root and in `desktop/`.
+- `go vet ./... && go test ./...` pass before a change is done, in the root and in `desktop/`; in `mobile/`, `bun run typecheck && bun test src`.
 
 ## Desktop design: native, restrained, quiet
 
@@ -102,7 +104,7 @@ After `../tsubomi` (whose `AGENTS.md`, `theme.go` and `controls.go` set it out, 
 
 ## Roadmap
 
-One machine, one user; no Runners, relay, phone app or marketplace. Milestones run in order; each ends with tests and its docs.
+One machine, one user; no Runners, relay or marketplace. The phone is a companion that reaches the desktop on the local network. Milestones run in order; each ends with tests and its docs.
 
 1. ~~Persistence and bots~~: `store`, Chef, the desktop's sidebar, sheets and restored transcripts.
 2. ~~Group chat~~: `team`'s room engine, projection, `message_bot`, `create_bot`, `hand_off`; group views, `@` menu, replies, inspector.
@@ -114,6 +116,7 @@ One machine, one user; no Runners, relay, phone app or marketplace. Milestones r
 8. ~~Plugins.~~ The user's MCP servers in `mcp.json` (Claude Desktop's format: stdio and HTTP), their tools reached from **codemode** scripts in a goja sandbox (`tools.<server>__<tool>`, only the output reaching the model), the desktop's MCP section.
 9. ~~Terminal sessions.~~ A command in a pseudo-terminal of its own on macOS and Linux: `bash_input`, `bash_output`, background commands, the login shell's environment, the command's card and Running tasks.
 10. ~~Review and reach.~~ Auto-review of commands and plugin calls by a small model with Always allow; system notifications and unread counts; `list_teammates` and `edit_bot`; `ls`, several edits per `edit_file`, `.gitignore` in `find`/`grep`, `recall` by time; bot looks; context size per chat.
-11. **Ship.** Done: the icon, the release workflow for macOS, Windows and Linux with signed updates and Developer ID signing, the update window, the website (docs/release.md). Still open: a shell for Windows (Git Bash, else PowerShell), Windows code signing, onboarding, Windows testing, and a look at the window by hand.
+11. **Ship.** Done: the icon, bot and group templates in New Bot (docs/store.md), the release workflow for macOS, Windows and Linux with signed updates and Developer ID signing, the update window, the website (docs/release.md). Still open: a shell for Windows (Git Bash, else PowerShell), Windows code signing, onboarding, Windows testing, and a look at the window by hand.
+12. **Phone.** Done: `remote` on the desktop with Settings › Phone (QR pairing, reset), the Expo iOS app: pairing, the chats, streaming replies, send and stop (docs/mobile.md). Still open: approvals from the phone, attachments, markdown, mentions and replies, notifications, Android, a run on a device.
 
 Decisions made: codemode on goja (pure Go); no ChatGPT or Grok subscription sign-in for now; SQLite through `modernc.org/sqlite`; markdown through goldmark folded into `ui.RichText` as `../lorca/desktop/markdown_view.go` does; API keys in the app's config file until a keychain is worth it.
