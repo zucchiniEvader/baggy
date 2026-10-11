@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.2.0
+## 0.1.1
 
 - New Bot starts from templates: Chef, Scout (research with sources), Writer, Coder, Secretary, Organizer and Critic, each with its own first messages to try. Two group templates set a team up at once: Writing Room and Research Team.
 - Chef can create teammates from the same templates.
