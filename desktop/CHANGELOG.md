@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.2
+
+- Bots can hand coding tasks to your own Claude Code, signed in to your plan: turn on "Hand coding tasks to Claude Code" in a bot's sheet, under its folder. Claude Code works in the bot's folder in the background, its commands go through your Commands approvals, and the bot checks its report when it is done. The Engineer template has it on.
+- Running tasks shows each Claude Code run: the task, its latest steps, what it said last, and Stop.
+
 ## 0.1.1
 
 - New Bot starts from templates: Chef, Scout (research with sources), Writer, Coder, Secretary, Organizer and Critic, each with its own first messages to try. Two group templates set a team up at once: Writing Room and Research Team.
