@@ -30,6 +30,7 @@ type botForm struct {
 	stored              string // the picture it had, kept until it saves
 	workdir             string // where its tools run; "" is its workspace
 	template            string // the store.Template it starts from
+	claudeCode          bool   // it hands coding tasks to Claude Code
 	err                 string
 }
 
@@ -77,7 +78,7 @@ func (a *app) editBot(id string) {
 		}
 	}
 	a.botSheet = &botForm{open: true, id: b.ID, name: b.Name, description: b.Description, providerName: a.providerName(b.Provider), model: b.Model, thinking: th,
-		icon: b.Icon, color: colorName(b), avatar: b.Avatar, stored: b.Avatar, workdir: b.Workdir}
+		icon: b.Icon, color: colorName(b), avatar: b.Avatar, stored: b.Avatar, workdir: b.Workdir, claudeCode: b.ClaudeCode}
 }
 
 func (a *app) saveBot(f *botForm) bool {
@@ -86,7 +87,7 @@ func (a *app) saveBot(f *botForm) bool {
 		th = ""
 	}
 	b := store.Bot{ID: f.id, Name: f.name, Description: f.description, Provider: a.providerID(f.providerName), Model: strings.TrimSpace(f.model), Thinking: th,
-		Icon: f.icon, Color: f.color, Avatar: f.avatar, Workdir: strings.TrimSpace(f.workdir), Template: f.template}
+		Icon: f.icon, Color: f.color, Avatar: f.avatar, Workdir: strings.TrimSpace(f.workdir), Template: f.template, ClaudeCode: f.claudeCode}
 	var err error
 	if f.id == "" {
 		b, err = a.st.CreateBot(b)
@@ -134,6 +135,7 @@ func (a *app) botSheetView(c *ui.Context) {
 				ui.Field(c, L("Model"), func() { textField(c, &f.model, a.modelHint(f.providerName)) })
 				ui.Field(c, L("Thinking"), func() { popup(c, &f.thinking, thinkingLevels) })
 				ui.Field(c, L("Folder"), func() { a.folderField(c, f) })
+				ui.Field(c, L("Claude Code"), func() { a.claudeCodeField(c, f) })
 			})
 			a.templateNotes(c, f)
 			if f.err != "" {
@@ -198,6 +200,23 @@ func (a *app) folderField(c *ui.Context, f *botForm) {
 			}
 		})
 		ui.Text(c, L("Where its tools run, as a project folder. Its memory stays in its own workspace.")).FontSize(11).TextColor(c.Theme().TextMuted)
+	})
+}
+
+// claudeCodeField turns on handing coding tasks to the user's Claude Code,
+// and says when it cannot be found.
+func (a *app) claudeCodeField(c *ui.Context, f *botForm) {
+	why, _ := a.claudeCode.Load().(string)
+	ui.Row(c).Gap(16).AlignItems(ui.Center).Children(func() {
+		ui.Column(c).Grow(1).MinWidth(0).Gap(2).Children(func() {
+			ui.Text(c, L("Hand coding tasks to Claude Code")).FontSize(13)
+			note := L("It gives coding tasks to Claude Code on this computer, signed in to your own account, which works in its folder; it checks the work and reports.")
+			if why != "" && f.claudeCode {
+				note = L(why)
+			}
+			ui.Text(c, note).FontSize(11).LineHeight(1.4).TextColor(c.Theme().TextMuted)
+		})
+		ui.Switch(c.Key("claude-code"), &f.claudeCode).Label(L("Hand coding tasks to Claude Code")).Shrink(0)
 	})
 }
 

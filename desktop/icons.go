@@ -100,7 +100,7 @@ func toolIcon(name string) *ui.SVG {
 		return iconFolder
 	case "grep":
 		return iconSearch
-	case "codemode":
+	case "codemode", "claude_code", "claude_code_status", "claude_code_stop":
 		return iconCode
 	case "message_bot", "create_bot", "edit_bot", "list_teammates", "hand_off":
 		return iconUsers
@@ -133,6 +133,12 @@ func toolLabel(name string) string {
 		return L("Search files")
 	case "codemode":
 		return L("Run script")
+	case "claude_code":
+		return L("Hand to Claude Code")
+	case "claude_code_status":
+		return L("Check on Claude Code")
+	case "claude_code_stop":
+		return L("Stop Claude Code")
 	case "message_bot":
 		return L("Message a teammate")
 	case "create_bot":

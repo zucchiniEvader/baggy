@@ -105,6 +105,13 @@ type Client struct {
 	tokens   atomic.Int64
 }
 
+// ClientName and ClientVersion are who the client says it is to a server
+// (initialize's clientInfo); an app built on this one sets its own.
+var (
+	ClientName    = "Baggy"
+	ClientVersion = "0.1"
+)
+
 // Connect starts or reaches a server and initializes it.
 func Connect(ctx context.Context, s Server) (*Client, error) {
 	c := &Client{}
@@ -123,7 +130,7 @@ func Connect(ctx context.Context, s Server) (*Client, error) {
 	raw, err := t.call(ctx, "initialize", map[string]any{
 		"protocolVersion": ProtocolVersion,
 		"capabilities":    map[string]any{},
-		"clientInfo":      map[string]string{"name": "Baggy", "version": "0.1"},
+		"clientInfo":      map[string]string{"name": ClientName, "version": ClientVersion},
 	})
 	if err != nil {
 		t.close()

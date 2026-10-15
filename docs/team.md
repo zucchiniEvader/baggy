@@ -53,6 +53,12 @@ After `../lorca/docs/architecture/bots.md`. A user message offers every member a
 
 `SystemPrompt` is the bot's description, then who and where it is (its id and working folder, and its own folder with its memory when that is another), the chat (a DM, or the group's members in turn order with "you" and "owner", its description, and how the room works), the user's other bots with their first description line, and when to use `create_bot`. It changes only when those do, so the provider's prompt cache holds.
 
+An app built on the team frames its bots its own way with `Team.Prompt`, which stands in for `SystemPrompt` (commands, routines, plugins and memory follow it as before), and gives a bot a narrow set of tools with `Team.Allow`, which keeps a tool in a turn only when it says yes, the team's own tools and codemode included; the routines prompt goes with the `routines` tool.
+
+## Notes from outside
+
+`Notify(chat, text)` hands a chat an event of the app's (a message from someone who is not the user, a change elsewhere): a user message from `store.System`, which the bot reads as it is and which starts the chat's work as a user message does; a DM at work takes it at its next model call, a group at work starts over after the turn. `Notice(chat, text)` stores a note for the user that no bot reads and that starts nothing, as the routines' notices.
+
 ## Compaction
 
 With `Team.Compaction` set, every model call of a turn goes through `agent.Options.Compact`. It estimates the request (system prompt, tool schemas, `agent.EstimateTokens` of the messages) against the model's window (`Compaction.Window`, else the catalog's, else 128k). The share it may fill depends on the provider's prompt cache: while the bot's last call in the chat is within `CacheTTL` (five minutes by default), the cache is likely warm and a long context costs little, so the limit is `Threshold` (0.8); past it, the next request pays for its whole context anyway, so the limit is `Cold` when set (the desktop's default 0.4), which is when a long chat is cheapest to summarize. The calls of one turn follow each other within seconds, so a turn is never cut short by the lower limit; the first request after a pause is. `Policy`, when set, gives the three at each call (the desktop's preferences). Under the limit nothing happens. Over it:
@@ -67,6 +73,10 @@ With `Team.Compaction` set, every model call of a turn goes through `agent.Optio
 ## Memory in turns
 
 With `Memory` on, a turn gets `MemoryTools` (`memory_update`, `memory_log`, `recall`) and the bot's `memory.Prompt()` after its system prompt; after the transcript, the **recent-work brief**: the newest thing the bot said in each of its other chats over two days, newest first, at most ten lines and about 350 tokens (`- today 09:05 · your chat with the user · you said: "…"`), kept out of the system prompt so the cache holds. Each finished turn adds a diary line (`in group "Trip" · said "…" · used shell, read_file`); a pass with no tools adds none. `recall(query, days)` searches the memory files, the diary, and every chat the bot is in for messages holding every word, newest first, at most 20, naming the chat and the speaker.
+
+## Claude Code
+
+With `ClaudeCode` set (a `claudecode.Manager`), a bot with `Bot.ClaudeCode` on gets `claude_code`, `claude_code_status` and `claude_code_stop` and a Claude Code section in its system prompt; a run's end wakes the bot with its report, and Claude Code's requests to use a tool go through `Approve` as calls named `claude_code:<tool>`: see `claude-code.md`.
 
 ## Routines
 

@@ -460,3 +460,74 @@ func TestContinueRetriesAFailedReply(t *testing.T) {
 		t.Fatalf("transcript %q, the model saw %d messages", got, len(saw))
 	}
 }
+
+func TestPromptAllowAndNotify(t *testing.T) {
+	var mu sync.Mutex
+	var system string
+	var names []string
+	var heard []string
+	model := modelFunc(func(sys string, msgs []agent.Message, tools []tool.Tool) agent.Message {
+		mu.Lock()
+		defer mu.Unlock()
+		system, names = sys, nil
+		for _, tl := range tools {
+			names = append(names, tl.Name())
+		}
+		var all []string
+		for i := range msgs {
+			all = append(all, last(msgs[i:i+1]))
+		}
+		heard = append(heard, strings.Join(all, "\n"))
+		return say("noted")
+	})
+	f := setup(t, model)
+	f.team.Tools = func(store.Bot, string) []tool.Tool {
+		return []tool.Tool{Func{N: "lookup", D: "looks up", S: `{"type":"object"}`, F: func(context.Context, json.RawMessage) tool.Result { return tool.Result{} }}}
+	}
+	f.team.Prompt = func(b store.Bot, _ store.Chat, _ []store.Bot, _, _ string) string { return "You are " + b.Name + ", the clinic's assistant." }
+	f.team.Allow = func(_ store.Bot, _ store.Chat, name string) bool { return name == "lookup" }
+	b := f.bot(t, "Intake")
+	g, err := f.st.CreateGroup("Case 12", "", []string{b.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := f.team.Notify(g.ID, "[A patient wrote: my pressure is 125/80]"); err != nil {
+		t.Fatal(err)
+	}
+	f.team.Wait()
+	mu.Lock()
+	if !strings.HasPrefix(system, "You are Intake, the clinic's assistant.") {
+		t.Errorf("system prompt = %q", system)
+	}
+	if strings.Contains(system, "Routines") || strings.Contains(system, "Baggy") {
+		t.Errorf("the routines prompt and Baggy's framing should be gone: %q", system)
+	}
+	if len(names) != 1 || names[0] != "lookup" {
+		t.Errorf("tools = %v, want only lookup", names)
+	}
+	if len(heard) != 1 || !strings.Contains(heard[0], "125/80") {
+		t.Errorf("the bot should read the note: %q", heard)
+	}
+	mu.Unlock()
+	es, _ := f.st.Messages(g.ID, 0)
+	if len(es) < 2 || es[0].Author != store.System {
+		t.Fatalf("the note should be stored from the system: %+v", es)
+	}
+	f.team.Notice(g.ID, "The doctor took over.")
+	f.team.Wait()
+	if n := len(heard); n != 1 {
+		t.Errorf("a notice starts nothing, the bot ran %d times", n)
+	}
+	if err := f.team.Notify(g.ID, "  "); err == nil {
+		t.Error("an empty note should be refused")
+	}
+}
+
+// modelFunc is a model from a function of the request.
+type modelFunc func(system string, msgs []agent.Message, tools []tool.Tool) agent.Message
+
+func (m modelFunc) Call(ctx context.Context, system string, msgs []agent.Message, tools []tool.Tool, emit func(agent.Event)) agent.Message {
+	out := m(system, msgs, tools)
+	out.Role, out.StopReason = agent.RoleAssistant, agent.StopEnd
+	return out
+}

@@ -12,6 +12,7 @@ import (
 
 	"github.com/egoist/mygo/ui"
 	"github.com/zucchiniEvader/baggy/agent"
+	"github.com/zucchiniEvader/baggy/claudecode"
 	"github.com/zucchiniEvader/baggy/store"
 	"github.com/zucchiniEvader/baggy/team"
 	"github.com/zucchiniEvader/baggy/tool"
@@ -57,7 +58,7 @@ func (p *approvals) setMode(m string) { p.mode.Store(m) }
 // gated reports whether an action goes through approval: a shell command,
 // or a plugin tool its server does not mark read-only.
 func (p *approvals) gated(call agent.Part) bool {
-	if call.Name == "shell" {
+	if call.Name == "shell" || strings.HasPrefix(call.Name, team.ClaudeCodeCall) {
 		return true
 	}
 	if !strings.Contains(call.Name, "__") || p.a.team.Plugins == nil {
@@ -67,11 +68,14 @@ func (p *approvals) gated(call agent.Part) bool {
 	return !ok || !t.Annotations.ReadOnlyHint
 }
 
-// rule is what Always Allow saves for an action: the exact command, or the
-// plugin tool.
+// rule is what Always Allow saves for an action: the exact command (of
+// the bot or of Claude Code), or the tool.
 func rule(call agent.Part) string {
 	if call.Name == "shell" {
 		return "shell:" + commandOf(call)
+	}
+	if call.Name == team.ClaudeCodeCall+"Bash" {
+		return team.ClaudeCodeCall + "Bash:" + commandOf(call)
 	}
 	return "tool:" + call.Name
 }
@@ -116,6 +120,9 @@ func (p *approvals) alwaysAllow(call agent.Part) {
 func describe(call agent.Part) string {
 	if call.Name == "shell" {
 		return "the shell command: " + commandOf(call)
+	}
+	if tool, ok := strings.CutPrefix(call.Name, team.ClaudeCodeCall); ok {
+		return "in Claude Code, " + claudecode.Describe(claudecode.Request{Tool: tool, Input: call.Args})
 	}
 	return fmt.Sprintf("the plugin tool %s with %s", call.Name, oneLine(string(call.Args), 600))
 }

@@ -20,6 +20,7 @@ type Template struct {
 	Web         bool     // it searches the web: best on a provider with web search
 	Folder      bool     // it works in a project folder the user chooses
 	Commands    bool     // it runs commands that change the user's files
+	ClaudeCode  bool     // it hands coding tasks to the user's Claude Code
 }
 
 // GroupTemplate is a group of templates' bots with a way of working.
@@ -55,6 +56,11 @@ var Templates = []Template{{
 	Icon: "code", Color: "indigo", Folder: true, Commands: true,
 	Description: `You are a software engineer working in the project folder your tools run in. Read the code before changing it, follow its style, and keep changes small and focused. After a change, run the build and the tests, and report what passed and what failed with the output. Explain what you changed and why in a few lines. Ask before deleting files, rewriting history or anything else hard to undo.`,
 	Suggestions: []string{"Look at this project and tell me how it is organized.", "Run the tests and tell me what fails.", "List the TODO comments by file."},
+}, {
+	ID: "engineer", Name: "Engineer", Summary: "Hands coding tasks to Claude Code and checks its work.",
+	Icon: "terminal", Color: "blue", Folder: true, Commands: true, ClaudeCode: true,
+	Description: `You are an engineering lead working in the project folder your tools run in. Hand coding tasks to Claude Code with claude_code: write each task in full, with the goal, the files or area, the constraints and how to check it. While it works, stay available. When it reports, check the work yourself: read the diff (git diff), run the build and the tests, and send it back with what to fix when something is wrong. Tell the user what changed and what passed, in a few lines. Ask the user before anything hard to undo.`,
+	Suggestions: []string{"Look at this project and tell me how it is organized.", "Find and fix the failing tests.", "Add a --version flag to the command."},
 }, {
 	ID: "secretary", Name: "Secretary", Summary: "Reminders, daily briefs and recurring checks.",
 	Icon: "clock", Color: "green",
@@ -104,7 +110,7 @@ func TemplateOf(id string) (Template, bool) {
 
 // Bot is a new bot made from t, its folder left out when it is not there.
 func (t Template) Bot() Bot {
-	b := Bot{Name: t.Name, Description: t.Description, Icon: t.Icon, Color: t.Color, Template: t.ID}
+	b := Bot{Name: t.Name, Description: t.Description, Icon: t.Icon, Color: t.Color, Template: t.ID, ClaudeCode: t.ClaudeCode}
 	if rest, ok := strings.CutPrefix(t.Workdir, "~/"); ok {
 		if home, err := os.UserHomeDir(); err == nil {
 			if info, err := os.Stat(filepath.Join(home, rest)); err == nil && info.IsDir() {

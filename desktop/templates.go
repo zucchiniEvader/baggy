@@ -24,7 +24,7 @@ func (a *app) fromTemplate(tp store.Template) {
 		icon = "bot"
 	}
 	a.botSheet = &botForm{open: true, name: L(b.Name), description: b.Description, providerName: L("Default"), thinking: "Default",
-		icon: icon, color: b.Color, workdir: b.Workdir, template: tp.ID}
+		icon: icon, color: b.Color, workdir: b.Workdir, template: tp.ID, claudeCode: b.ClaudeCode}
 }
 
 // groupFromTemplate opens New Group filled in from gt: its members are the

@@ -23,7 +23,7 @@ At most `MaxSessions` (eight) run at once: a ninth stops the oldest that is not 
 
 ## In a turn and on the desktop
 
-With `Team.Terminals` set, a turn's `shell` from `Team.Tools` is replaced by `shell`, `shell_input` and `shell_output` for that chat and bot; approval of shell commands and codemode's `tools.shell` go through them too. A running shell card shows the command's last lines as they come (the window redraws every second while any command runs). While a chat has commands that have run two seconds or more, the header has Tasks (n), a popover with each command's description, who runs it in a group, how long it has run, its command, its last ten lines, Run in Background (for one a call still waits on) and Stop.
+With `Team.Terminals` set, a turn's `shell` from `Team.Tools` is replaced by `shell`, `shell_input` and `shell_output` for that chat and bot; approval of shell commands and codemode's `tools.shell` go through them too. A running shell card shows the command's last lines as they come (the window redraws every second while any command runs). While a chat has commands that have run two seconds or more, the header has Tasks (n) (which also lists Claude Code's runs: docs/claude-code.md), a popover with each command's description, who runs it in a group, how long it has run, its command, its last ten lines, Run in Background (for one a call still waits on) and Stop.
 
 Checked against DeepSeek: asked to run a deploy script that asks `Continue? [y/N]`, the bot's `shell` call returned at the question and its `shell_input` `y` finished the deploy.
 

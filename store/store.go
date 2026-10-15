@@ -208,6 +208,14 @@ ALTER TABLE bots ADD COLUMN workdir TEXT NOT NULL DEFAULT '';
 `, `
 ALTER TABLE bots ADD COLUMN template TEXT NOT NULL DEFAULT '';
 UPDATE bots SET template = 'chef' WHERE name = 'Chef';
+`, `
+ALTER TABLE bots ADD COLUMN claude_code INTEGER NOT NULL DEFAULT 0;
+CREATE TABLE claude_sessions (
+	chat_id TEXT NOT NULL REFERENCES chats(id) ON DELETE CASCADE,
+	bot_id TEXT NOT NULL REFERENCES bots(id) ON DELETE CASCADE,
+	dir TEXT NOT NULL, session TEXT NOT NULL, updated INTEGER NOT NULL,
+	PRIMARY KEY (chat_id, bot_id, dir)
+);
 `}
 
 func (s *Store) migrate() error {
@@ -340,22 +348,23 @@ type Bot struct {
 	ID          string `json:"id"`
 	Name        string `json:"name"`
 	Description string `json:"description"`
-	Provider    string `json:"provider"` // a Provider id; "" is the default provider
-	Model       string `json:"model"`    // "" is the provider's first model
-	Thinking    string `json:"thinking"` // a provider.ThinkingLevel
-	Icon        string `json:"icon"`     // its look: an icon's name (the desktop's set); "" is the default
-	Color       string `json:"color"`    // its avatar's color, a name of the desktop's set; "" is one picked by its id
-	Avatar      string `json:"avatar"`   // its own picture, a file in avatars/ (SaveAvatar); "" is its icon
-	Workdir     string `json:"workdir"`  // where its tools run (~ is the home folder); "" is its workspace
-	Template    string `json:"template"` // the Template it was made from; "" for none
+	Provider    string `json:"provider"`    // a Provider id; "" is the default provider
+	Model       string `json:"model"`       // "" is the provider's first model
+	Thinking    string `json:"thinking"`    // a provider.ThinkingLevel
+	Icon        string `json:"icon"`        // its look: an icon's name (the desktop's set); "" is the default
+	Color       string `json:"color"`       // its avatar's color, a name of the desktop's set; "" is one picked by its id
+	Avatar      string `json:"avatar"`      // its own picture, a file in avatars/ (SaveAvatar); "" is its icon
+	Workdir     string `json:"workdir"`     // where its tools run (~ is the home folder); "" is its workspace
+	Template    string `json:"template"`    // the Template it was made from; "" for none
+	ClaudeCode  bool   `json:"claude_code"` // it hands coding tasks to the user's Claude Code (docs/claude-code.md)
 	Created     int64  `json:"created"`
 }
 
-const botCols = `id, name, description, provider, model, thinking, emoji, color, avatar, workdir, template, created` // emoji holds the icon
+const botCols = `id, name, description, provider, model, thinking, emoji, color, avatar, workdir, template, claude_code, created` // emoji holds the icon
 
 func scanBot(sc interface{ Scan(...any) error }) (Bot, error) {
 	var b Bot
-	err := sc.Scan(&b.ID, &b.Name, &b.Description, &b.Provider, &b.Model, &b.Thinking, &b.Icon, &b.Color, &b.Avatar, &b.Workdir, &b.Template, &b.Created)
+	err := sc.Scan(&b.ID, &b.Name, &b.Description, &b.Provider, &b.Model, &b.Thinking, &b.Icon, &b.Color, &b.Avatar, &b.Workdir, &b.Template, &b.ClaudeCode, &b.Created)
 	if errors.Is(err, sql.ErrNoRows) {
 		err = ErrNotFound
 	}
@@ -383,8 +392,8 @@ func (s *Store) CreateBot(b Bot) (Bot, error) {
 		return Bot{}, err
 	}
 	defer tx.Rollback()
-	if _, err := tx.Exec(`INSERT INTO bots(`+botCols+`) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)`,
-		b.ID, b.Name, b.Description, b.Provider, b.Model, b.Thinking, b.Icon, b.Color, b.Avatar, strings.TrimSpace(b.Workdir), b.Template, b.Created); err != nil {
+	if _, err := tx.Exec(`INSERT INTO bots(`+botCols+`) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		b.ID, b.Name, b.Description, b.Provider, b.Model, b.Thinking, b.Icon, b.Color, b.Avatar, strings.TrimSpace(b.Workdir), b.Template, b.ClaudeCode, b.Created); err != nil {
 		return Bot{}, err
 	}
 	chat := NewID("chat")
@@ -409,8 +418,8 @@ func (s *Store) UpdateBot(b Bot) error {
 	if err != nil {
 		return err
 	}
-	res, err := s.db.Exec(`UPDATE bots SET name=?, description=?, provider=?, model=?, thinking=?, emoji=?, color=?, avatar=?, workdir=? WHERE id=?`,
-		strings.TrimSpace(b.Name), b.Description, b.Provider, b.Model, b.Thinking, b.Icon, b.Color, b.Avatar, strings.TrimSpace(b.Workdir), b.ID)
+	res, err := s.db.Exec(`UPDATE bots SET name=?, description=?, provider=?, model=?, thinking=?, emoji=?, color=?, avatar=?, workdir=?, claude_code=? WHERE id=?`,
+		strings.TrimSpace(b.Name), b.Description, b.Provider, b.Model, b.Thinking, b.Icon, b.Color, b.Avatar, strings.TrimSpace(b.Workdir), b.ClaudeCode, b.ID)
 	if err := notFound(res, err); err != nil {
 		return err
 	}

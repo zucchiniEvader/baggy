@@ -7,6 +7,7 @@ import (
 
 	"github.com/egoist/mygo/ui"
 	"github.com/zucchiniEvader/baggy/agent"
+	"github.com/zucchiniEvader/baggy/claudecode"
 	"github.com/zucchiniEvader/baggy/store"
 	"github.com/zucchiniEvader/baggy/terminal"
 )
@@ -30,6 +31,14 @@ func (a *app) sessionOf(chatID string, call agent.Part) *terminal.Session {
 		}
 	}
 	return nil
+}
+
+// claudeRuns are a chat's Claude Code tasks at work.
+func (a *app) claudeRuns(chatID string) []*claudecode.Run {
+	if a.team.ClaudeCode == nil {
+		return nil
+	}
+	return a.team.ClaudeCode.Running(chatID)
 }
 
 // tasks are a chat's commands that have run a while.
@@ -59,15 +68,17 @@ func elapsed(d time.Duration) string {
 // tasksButton opens the chat's running tasks while it has any.
 func (a *app) tasksButton(c *ui.Context, ch store.Chat) {
 	ts := a.tasks(ch.ID)
-	if len(ts) == 0 {
+	runs := a.claudeRuns(ch.ID)
+	n := len(ts) + len(runs)
+	if n == 0 {
 		a.tasksOpen = false
 		return
 	}
-	btn := ui.ButtonBase(c.Key("tasks")).Height(compactHeight).Padding(0, 8).Gap(5).Radius(rowRadius).AlignItems(ui.Center).Label(L("Tasks (%d)", len(ts))).Tooltip(L("Commands running in this chat")).Shrink(0)
+	btn := ui.ButtonBase(c.Key("tasks")).Height(compactHeight).Padding(0, 8).Gap(5).Radius(rowRadius).AlignItems(ui.Center).Label(L("Tasks (%d)", n)).Tooltip(L("Commands and Claude Code tasks running in this chat")).Shrink(0)
 	styleButton(btn, c.Theme(), ghost, false)
 	btn.Children(func() {
 		ui.Icon(c, iconTerminal).FontSize(iconSize)
-		ui.Text(c, fmt.Sprint(len(ts))).Font(monoFont).FontSize(11).Bold()
+		ui.Text(c, fmt.Sprint(n)).Font(monoFont).FontSize(11).Bold()
 	})
 	if btn.Clicked() {
 		a.tasksOpen = !a.tasksOpen
@@ -77,6 +88,9 @@ func (a *app) tasksButton(c *ui.Context, ch store.Chat) {
 	ui.PopoverBase(c, btn, &a.tasksOpen, func(panel ui.Element) {
 		panel.Margin(6, 0, 0, 0).Padding(12).Radius(cardRadius).Background(p.surface).Border(1, p.border)
 		ui.Column(c).Width(420).Gap(14).Children(func() {
+			for _, r := range runs {
+				a.claudeTask(c, ch, r)
+			}
 			for _, s := range ts {
 				s := s
 				ui.Column(c.Key("task-" + s.ID)).Gap(4).Children(func() {
@@ -108,6 +122,35 @@ func (a *app) tasksButton(c *ui.Context, ch store.Chat) {
 						}
 					})
 				})
+			}
+		})
+	})
+}
+
+// claudeTask is a Claude Code task in Running tasks: what it was given, its
+// recent steps, what it said last, and Stop.
+func (a *app) claudeTask(c *ui.Context, ch store.Chat, r *claudecode.Run) {
+	t := c.Theme()
+	ui.Column(c.Key("cc-" + r.ID)).Gap(4).Children(func() {
+		ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
+			ui.Icon(c, iconCode).FontSize(iconSize).TextColor(t.TextMuted).Shrink(0)
+			ui.Text(c, L("Claude Code")).FontSize(13).FontWeight(600).Shrink(0)
+			ui.Text(c, oneLine(r.Task, 80)).FontSize(13).TextColor(t.TextMuted).Grow(1).SingleLine().MinWidth(0)
+			who := ""
+			if ch.Kind == store.Group {
+				who = a.name(r.Bot) + " · "
+			}
+			ui.Text(c, who+elapsed(r.Took())).FontSize(11).TextColor(t.TextMuted).Shrink(0)
+		})
+		if p := r.Progress(8); p != "" {
+			codeBlock(c, p)
+		}
+		if s := r.Text(); s != "" {
+			ui.Text(c, oneLine(s, 200)).FontSize(12).TextColor(t.TextMuted).MaxLines(2)
+		}
+		ui.Row(c).Gap(8).Justify(ui.End).Children(func() {
+			if smallButton(c.Key("cc-stop-"+r.ID), L("Stop"), danger).Clicked() {
+				go r.Stop("stopped from Running tasks")
 			}
 		})
 	})

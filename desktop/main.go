@@ -21,6 +21,7 @@ import (
 	"github.com/egoist/mygo/plugins/updater/native"
 	"github.com/egoist/mygo/ui"
 	"github.com/zucchiniEvader/baggy/agent"
+	"github.com/zucchiniEvader/baggy/claudecode"
 	"github.com/zucchiniEvader/baggy/mcp"
 	"github.com/zucchiniEvader/baggy/provider/connect"
 	"github.com/zucchiniEvader/baggy/shellenv"
@@ -120,6 +121,9 @@ func main() {
 	tm.Terminals.Env = shellenv.Env
 	defer tm.Terminals.StopAll()
 	tm.WakeOnExit()
+	tm.ClaudeCode = claudecode.NewManager()
+	tm.ClaudeCode.Env = shellenv.Env
+	defer tm.ClaudeCode.StopAll()
 	pending := make(chan func(), 1024) // events before the window is up
 	a = newApp(st, tm, func(fn func()) { pending <- fn })
 	a.fallback = fallback
@@ -130,6 +134,15 @@ func main() {
 	a.readImage = func() []byte { return mygo.Clipboard.ReadImage() }
 	a.copyText = func(s string) { mygo.Clipboard.WriteText(s) }
 	tm.Approve = a.approvals.approve
+	a.claudeCode.Store("Looking for Claude Code…")
+	go func() { // the login shell's PATH takes a moment to read
+		why := ""
+		if _, err := tm.ClaudeCode.Available(); err != nil {
+			why = "Claude Code is not installed here: the claude command is not on the PATH." // translated where it shows
+		}
+		a.claudeCode.Store(why)
+		a.post(func() {})
+	}()
 	if tm.Compaction != nil {
 		tm.Compaction.Policy = a.compactionPolicy
 	}
@@ -251,7 +264,7 @@ func main() {
 		mygo.App.OnSecondInstance(func([]string, string) { win.Update(func() { win.Show(); win.Focus() }) })
 		go func() { // running commands' cards and tasks show their output as it comes
 			for range time.Tick(time.Second) {
-				if len(tm.Terminals.Running("")) > 0 {
+				if len(tm.Terminals.Running("")) > 0 || len(tm.ClaudeCode.Running("")) > 0 {
 					win.Update(func() {})
 				}
 			}

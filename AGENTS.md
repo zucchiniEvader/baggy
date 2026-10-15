@@ -39,6 +39,7 @@ schedule/   routine schedules: intervals, cron in a timezone, words (docs/routin
 mcp/        MCP client (stdio, Streamable HTTP) and the mcp.json manager (docs/plugins.md)
 codemode/   scripts in a goja sandbox that call tools (docs/plugins.md)
 terminal/   commands in pseudo-terminals: questions, input, background (docs/terminal.md)
+claudecode/ coding tasks handed to the user's own Claude Code over stream-json (docs/claude-code.md)
 shellenv/   the login shell's environment
 remote/     the phone's API: HTTP and a WebSocket of team events behind a token (docs/mobile.md)
 desktop/    the MyGo app, its own module (docs/desktop.md)
@@ -118,5 +119,6 @@ One machine, one user; no Runners, relay or marketplace. The phone is a companio
 10. ~~Review and reach.~~ Auto-review of commands and plugin calls by a small model with Always allow; system notifications and unread counts; `list_teammates` and `edit_bot`; `ls`, several edits per `edit_file`, `.gitignore` in `find`/`grep`, `recall` by time; bot looks; context size per chat.
 11. **Ship.** Done: the icon, bot and group templates in New Bot (docs/store.md), the release workflow for macOS, Windows and Linux with signed updates and Developer ID signing, the update window, the website (docs/release.md). Still open: a shell for Windows (Git Bash, else PowerShell), Windows code signing, onboarding, Windows testing, and a look at the window by hand.
 12. **Phone.** Done: `remote` on the desktop with Settings › Phone (QR pairing, reset), the Expo iOS app: pairing, the chats, streaming replies, send and stop (docs/mobile.md). Still open: approvals from the phone, attachments, markdown, mentions and replies, notifications, Android, a run on a device.
+13. ~~Claude Code.~~ A bot hands coding tasks to the user's `claude`, signed in to their own plan: `claude_code` in the background with a report that wakes the bot, the session resumed per chat, its tool requests through the Commands approvals, the bot sheet's switch, the Engineer template, Running tasks (docs/claude-code.md).
 
 Decisions made: codemode on goja (pure Go); no ChatGPT or Grok subscription sign-in for now; SQLite through `modernc.org/sqlite`; markdown through goldmark folded into `ui.RichText` as `../lorca/desktop/markdown_view.go` does; API keys in the app's config file until a keychain is worth it.

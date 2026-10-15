@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/zucchiniEvader/baggy/agent"
+	"github.com/zucchiniEvader/baggy/claudecode"
 	"github.com/zucchiniEvader/baggy/images"
 	"github.com/zucchiniEvader/baggy/mcp"
 	"github.com/zucchiniEvader/baggy/provider/connect"
@@ -83,6 +84,9 @@ type Team struct {
 	Plugins *mcp.Manager
 	// Codemode gives every turn the codemode tool, with or without plugins.
 	Codemode bool
+	// ClaudeCode, when set, gives a bot with Bot.ClaudeCode the claude_code
+	// tools, which hand coding tasks to the user's Claude Code in its folder.
+	ClaudeCode *claudecode.Manager
 	// Checks, when set, runs a routine's check (a script) and returns what
 	// it found; "" means nothing new, so no turn runs. Codemode sets it.
 	Checks func(ctx context.Context, r store.Routine) (string, error)
@@ -99,6 +103,15 @@ type Team struct {
 	Brief func(b store.Bot, chat store.Chat) string
 	// AfterTurn, when set, is told each finished turn (the memory log).
 	AfterTurn func(b store.Bot, chat store.Chat, out []agent.Message)
+	// Prompt, when set, is a bot's system prompt in a chat in place of
+	// SystemPrompt: an app framing its bots its own way. What follows it
+	// (commands, routines, plugins, memory) is added as before.
+	Prompt func(b store.Bot, chat store.Chat, bots []store.Bot, workdir, workspace string) string
+	// Allow, when set, keeps a tool in a turn only when it says yes: an app
+	// that gives a bot a narrow set leaves out the team's own tools
+	// (message_bot, create_bot, routines, …). Routines' prompt goes with
+	// the routines tool.
+	Allow func(b store.Bot, chat store.Chat, name string) bool
 
 	mu     sync.Mutex
 	runs   map[string]*run
@@ -417,22 +430,32 @@ func (t *Team) turn(ctx context.Context, chat store.Chat, botID string, r *run, 
 		tools = append(kept, t.Terminals.Tools(chat.ID, b.ID, ws)...)
 	}
 	tools = append(tools, t.teamTools(b, chat, r)...)
+	tools = append(tools, t.claudeCodeTools(b, chat, ws)...)
 	tools = append(tools, t.routinesTool(b))
 	if t.Memory {
 		tools = append(tools, t.MemoryTools(b, chat)...)
 	}
+	tools = t.allowed(b, chat, tools)
 	hooks := t.hooks(ctx, b, chat)
 	var plugins []mcp.Status
 	if t.Codemode || t.Plugins != nil {
 		plugins = t.plugins(ctx)
-		tools = append(tools, t.resourceTools(plugins)...)
-		tools = append(tools, t.codemodeTool(b, chat, tools, hooks, plugins))
+		tools = append(tools, t.allowed(b, chat, t.resourceTools(plugins))...)
+		tools = append(tools, t.allowed(b, chat, []tool.Tool{t.codemodeTool(b, chat, tools, hooks, plugins)})...)
 	}
-	system := SystemPrompt(b, chat, bots, ws, t.Store.Workspace(b.ID))
+	var system string
+	if t.Prompt != nil {
+		system = t.Prompt(b, chat, bots, ws, t.Store.Workspace(b.ID))
+	} else {
+		system = SystemPrompt(b, chat, bots, ws, t.Store.Workspace(b.ID))
+	}
 	if terminals {
 		system += "\n\n" + terminalsPrompt
 	}
-	if rs, err := t.Store.Routines(b.ID); err == nil {
+	if has(tools, "claude_code") {
+		system += "\n\n" + claudeCodePrompt
+	}
+	if rs, err := t.Store.Routines(b.ID); err == nil && has(tools, "routines") {
 		system += "\n\n" + RoutinesPrompt(rs, t.now())
 	}
 	if p := PluginsPrompt(plugins); p != "" {
@@ -499,6 +522,29 @@ func (t *Team) turn(ctx context.Context, chat store.Chat, botID string, r *run, 
 	return stored
 }
 
+// allowed are the tools Allow keeps, all of them without it.
+func (t *Team) allowed(b store.Bot, chat store.Chat, tools []tool.Tool) []tool.Tool {
+	if t.Allow == nil {
+		return tools
+	}
+	var out []tool.Tool
+	for _, tl := range tools {
+		if t.Allow(b, chat, tl.Name()) {
+			out = append(out, tl)
+		}
+	}
+	return out
+}
+
+func has(tools []tool.Tool, name string) bool {
+	for _, tl := range tools {
+		if tl.Name() == name {
+			return true
+		}
+	}
+	return false
+}
+
 func (t *Team) hooks(ctx context.Context, b store.Bot, chat store.Chat) agent.Hooks {
 	if t.Approve == nil {
 		return agent.Hooks{}
@@ -515,6 +561,22 @@ func modelID(m agent.Model, b store.Bot) string {
 }
 
 const terminalsPrompt = "## Commands\n\nshell runs each command in a terminal of its own on this computer. A command that asks (a password, [Y/n]) returns with a session id: answer with shell_input. Start what should keep running (a dev server, a watcher, a long build) with background: true, never with & or nohup; you hear when it ends by itself."
+
+// Notify delivers a note for the bot into a chat from outside it, as an
+// event of the app's: stored from store.System, read by the bot as it is,
+// it starts the chat's work as a user message does (a DM at work takes it
+// at its next model call, a group at work starts over after the turn).
+func (t *Team) Notify(chatID, text string) error {
+	if strings.TrimSpace(text) == "" {
+		return errors.New("empty note")
+	}
+	msg := agent.Message{ID: store.NewID("msg"), Role: agent.RoleUser, Parts: []agent.Part{{Kind: agent.PartText, Text: text}}}
+	return t.deliver(chatID, store.System, store.Meta{}, msg)
+}
+
+// Notice stores a note for the user in a chat, which no bot reads and
+// which starts nothing.
+func (t *Team) Notice(chatID, text string) { t.notice(chatID, text) }
 
 // WakeOnExit tells a bot when a command it left in the background ends by
 // itself, in the chat it started it in.

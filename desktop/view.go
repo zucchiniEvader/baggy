@@ -616,7 +616,7 @@ func toolSummary(call agent.Part) string {
 	if json.Unmarshal(call.Args, &a) != nil {
 		return ""
 	}
-	for _, k := range []string{"command", "path", "pattern", "query", "bot", "text", "action", "name"} {
+	for _, k := range []string{"command", "path", "pattern", "query", "bot", "text", "task", "run_id", "action", "name"} {
 		if s, ok := a[k].(string); ok && s != "" {
 			return oneLine(s, 120)
 		}

@@ -50,10 +50,10 @@ type app struct {
 	badge        int
 	sideWidth    float32
 
-	botSheet   *botForm
+	botSheet *botForm
 	// changed tells the phone (remote.Server) that bots, chats or a read
 	// mark changed here; nil without one.
-	changed func(chatID string)
+	changed    func(chatID string)
 	gallery    *gallery
 	groupSheet *groupForm
 	settings   bool // the Settings window is wanted (tests, which have no windows)
@@ -68,6 +68,7 @@ type app struct {
 	prefs      *prefs
 
 	fallback       connect.Config                  // the provider when none is stored
+	claudeCode     atomic.Value                    // string: "" when the claude command is found, else why not (English)
 	locale         string                          // the system's language
 	readImage      func() []byte                   // the clipboard's image as PNG, or nil
 	pickFiles      func(done func(paths []string)) // asks for files to attach; done runs on the main thread with the ones chosen
