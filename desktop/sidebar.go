@@ -266,7 +266,7 @@ func (a *app) chatList(c *ui.Context) {
 			}
 			if g != group {
 				group = g
-				ui.Text(c, g).Key("g:"+g).FontSize(11).FontWeight(600).TextColor(t.TextMuted).Padding(10, 8, 4)
+				ui.Text(c.Key("g:"+g), g).FontSize(11).FontWeight(600).TextColor(t.TextMuted).Padding(10, 8, 4)
 			}
 			ch := ch
 			st := a.side.state(ch.ID == a.sel, focused)
