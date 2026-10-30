@@ -2,11 +2,11 @@ package main
 
 import (
 	"net/url"
-	"strconv"
 	"strings"
 
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
+	mdview "github.com/egoist/mygo/ui/markdown"
 	"github.com/yuin/goldmark"
 	gast "github.com/yuin/goldmark/ast"
 	"github.com/yuin/goldmark/extension"
@@ -14,8 +14,9 @@ import (
 	"github.com/yuin/goldmark/text"
 )
 
-// A reply's markdown is parsed into blocks of spans, which draw as RichText
-// paragraphs, code boxes, lists, quotes, and tables as lines of cells.
+// A reply shows through MyGo's markdown view (ui/markdown); its markdown is
+// also parsed here into blocks of spans, which plainText writes out as the
+// text Copy Text and the sidebar's previews read.
 
 type blockKind int
 
@@ -233,102 +234,38 @@ func openLink(href string) {
 	go mygo.Shell.OpenExternal(u.String())
 }
 
-// markdown draws a reply.
-func markdown(c *ui.Context, src string) {
-	blocks := parseMarkdown(src)
-	ui.Column(c).MinWidth(0).Gap(10).LineHeight(1.38).Children(func() { drawBlocks(c, blocks, false) })
-}
+// replyOptions are how replies show, one for each appearance: MyGo's
+// markdown view in the conversation's sizes and the palette's code color.
+var replyOptions = [2]*mdview.Options{replyTheme(&lightPalette), replyTheme(&darkPalette)}
 
-func drawBlocks(c *ui.Context, blocks []mdBlock, nested bool) {
-	for _, b := range blocks {
-		drawBlock(c, b, nested)
+func replyTheme(p *palette) *mdview.Options {
+	th := &mdview.Theme{
+		FontSize:            13,
+		LineHeight:          1.38,
+		CodeFont:            monoFont,
+		CodeBlockBackground: p.codeBg,
+		CodeBlockBorder:     p.codeBg, // areas part by their background
+		CodeBlockRadius:     7,
+		BlockSpacing:        0.75,
 	}
-}
-
-func drawSpans(c *ui.Context, spans []mdSpan, bold bool) ui.Element {
-	t := c.Theme()
-	return ui.RichText(c).MinWidth(0).Children(func() {
-		for _, s := range spans {
-			el := ui.Text(c, s.text)
-			if s.bold || bold {
-				el.FontWeight(600)
-			}
-			if s.italic {
-				el.Italic()
-			}
-			if s.strike {
-				el.Strikethrough()
-			}
-			if s.code {
-				el.Font(monoFont).TextBackground(t.Surface)
-			}
-			if s.link != "" {
-				href := s.link
-				el.Underline().TextColor(t.Accent).Cursor(ui.CursorPointer).Tooltip(href)
-				if el.Clicked() {
-					openLink(href)
-				}
-			}
-		}
-	})
-}
-
-func drawBlock(c *ui.Context, b mdBlock, nested bool) {
-	t := c.Theme()
-	switch b.kind {
-	case blockParagraph:
-		drawSpans(c, b.spans, false)
-	case blockHeading:
-		h := drawSpans(c, b.spans, true).FontWeight(700)
-		if b.level <= 2 {
-			h.FontSize(16)
-		}
-	case blockCode:
-		ui.Column(c).Padding(8, 10).Radius(7).Background(t.Surface).MinWidth(0).Children(func() {
-			s := b.text
-			if s == "" {
-				s = " "
-			}
-			ui.Text(c, s).Font(monoFont).FontSize(12)
-		})
-	case blockList:
-		ui.Column(c).Gap(2).MinWidth(0).Children(func() {
-			for i, item := range b.items {
-				marker := "•"
-				if b.ordered {
-					marker = strconv.Itoa(b.start+i) + "."
-				}
-				if box := b.checked[i]; box != nil {
-					marker = "☐"
-					if *box {
-						marker = "☑"
-					}
-				}
-				ui.Row(c).AlignItems(ui.Start).MinWidth(0).Children(func() {
-					ui.Text(c, marker).MinWidth(18).Padding(0, 4, 0, 0).NoWrap().Unselectable()
-					ui.Column(c).Grow(1).Shrink(1).MinWidth(0).Gap(4).Children(func() { drawBlocks(c, item, true) })
-				})
-			}
-		})
-	case blockQuote:
-		ui.Row(c).Gap(8).MinWidth(0).Children(func() {
-			ui.Column(c).Width(2).Radius(1).Background(t.Border).Height(16)
-			ui.Column(c).Grow(1).Shrink(1).MinWidth(0).Gap(6).TextColor(t.TextMuted).Children(func() { drawBlocks(c, b.blocks, true) })
-		})
-	case blockTable:
-		ui.Column(c).Gap(2).MinWidth(0).Children(func() {
-			for i, cells := range b.rows {
-				var line []mdSpan
-				for j, cell := range cells {
-					if j > 0 {
-						line = append(line, mdSpan{text: "   "})
-					}
-					line = append(line, cell...)
-				}
-				drawSpans(c, line, i == 0)
-			}
-		})
-	case blockRule:
-		ui.Divider(c)
+	for i := range th.Headings {
+		th.Headings[i] = mdview.HeadingStyle{Size: 1, Weight: 700, Top: 1, Bottom: 0.4}
 	}
+	th.Headings[0].Size, th.Headings[1].Size = 16.0/13, 16.0/13
+	return &mdview.Options{Theme: th, OnLink: openLink, ShareSelection: true}
+}
+
+// markdown draws a reply: as MyGo's markdown view once it is finished,
+// and while it streams, as the stream view, which parses only what came
+// and reveals it a word at a time.
+func markdown(c *ui.Context, src string, streaming bool) {
+	o := replyOptions[0]
+	if c.Theme().Dark {
+		o = replyOptions[1]
+	}
+	if streaming {
+		mdview.Stream(c, src, o).MinWidth(0)
+		return
+	}
+	mdview.View(c, src, o).MinWidth(0)
 }

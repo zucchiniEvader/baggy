@@ -92,6 +92,9 @@ func (h *harness) pump(what string, cond func() bool) {
 	h.t.Helper()
 	deadline := time.After(5 * time.Second)
 	for {
+		// The Tester's clock stands still unless moved: animations and the
+		// markdown's reveal go on only as it does.
+		h.tt.Advance(50 * time.Millisecond)
 		h.tt.Frame()
 		if cond() {
 			return
@@ -347,6 +350,7 @@ func TestRender(t *testing.T) {
 	for name, dark := range map[string]bool{"light": false, "dark": true} {
 		h.tt.SetDark(dark)
 		h.tt.Frame()
+		h.tt.Advance(250 * time.Millisecond) // the inspector slides open
 		f, err := os.Create(filepath.Join(dir, "group-"+name+".png"))
 		if err != nil {
 			t.Fatal(err)
@@ -471,6 +475,7 @@ func TestMemoryEditorConflict(t *testing.T) {
 	m.Update("append", "likes tea", "", "x")
 	h.a.inspector = true
 	h.tt.Frame()
+	h.tt.Advance(250 * time.Millisecond)        // it slides open
 	if err := h.tt.Click("Edit…"); err != nil { // the bot's; memory's is the second
 		t.Fatal(err)
 	}
@@ -525,7 +530,7 @@ func TestRoutineInspectorAndSheet(t *testing.T) {
 	r, _ := h.st.SaveRoutine(store.Routine{BotID: chef.ID, Name: "Brief", Prompt: "Summarize", Schedule: "0 8 * * 1-5", Timezone: "UTC", Enabled: true})
 	h.a.inspector = true
 	h.tt.Frame()
-	time.Sleep(250 * time.Millisecond) // it slides open
+	h.tt.Advance(250 * time.Millisecond) // it slides open
 	h.tt.Frame()
 	if !h.tt.HasText("Brief") || !h.tt.HasText("Weekdays at 8:00 · next ") {
 		t.Fatalf("inspector: %q", h.tt.Texts())
@@ -1346,7 +1351,7 @@ func TestInspectorSlides(t *testing.T) {
 	h.tt.Frame()
 	h.tt.Frame()
 	mid := width()
-	time.Sleep(250 * time.Millisecond)
+	h.tt.Advance(250 * time.Millisecond)
 	h.tt.Frame()
 	open := width()
 	if !(mid < open) || open < 200 {
@@ -1354,11 +1359,11 @@ func TestInspectorSlides(t *testing.T) {
 	}
 	h.a.inspector = false
 	h.tt.Frame()
-	h.tt.Frame()
+	h.tt.Advance(60 * time.Millisecond)
 	if h.tt.HasText("Spent in this chat") && width() >= open {
 		t.Fatal("closed at once or not at all")
 	}
-	time.Sleep(250 * time.Millisecond)
+	h.tt.Advance(250 * time.Millisecond)
 	h.tt.Frame()
 	if h.tt.HasText("Spent in this chat") {
 		t.Fatal("still open")

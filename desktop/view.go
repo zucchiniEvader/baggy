@@ -255,6 +255,11 @@ func (a *app) transcript(c *ui.Context, ch store.Chat, v *chatView) {
 	its := items(rows)
 	v.list.Key = func(i int) any {
 		r := rows[its[i].rows[0]]
+		if r.turn != "" && (r.kind == rowAssistant || r.kind == rowTool) {
+			// A turn keeps its key as its streamed rows give way to the
+			// stored ones, so the reply's view carries on.
+			return "turn-" + r.turn
+		}
 		if r.seq != 0 {
 			return fmt.Sprintf("%d-%d", r.seq, its[i].rows[0])
 		}
@@ -442,7 +447,7 @@ func (a *app) steps(c *ui.Context, ch store.Chat, v *chatView, idx []int, reply 
 						a.reasoning(c, v, r)
 					}
 					if idx[k] != reply && strings.TrimSpace(r.text) != "" {
-						markdown(c, r.text)
+						markdown(c, r.text, false)
 					}
 				})
 				k++
@@ -526,7 +531,7 @@ func (a *app) replyBody(c *ui.Context, ch store.Chat, v *chatView, r row) {
 		case r.failed:
 			a.failedReply(c, ch, v, r)
 		case strings.TrimSpace(r.text) != "":
-			markdown(c, r.text)
+			markdown(c, r.text, r.seq == 0)
 		}
 		if r.stopped {
 			ui.Text(c, L("Stopped")).FontSize(12).TextColor(c.Theme().TextMuted)

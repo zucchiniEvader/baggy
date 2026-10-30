@@ -6,8 +6,8 @@
 
 | Row | Runner | Targets | Files |
 | --- | --- | --- | --- |
-| macOS | macos-latest | `darwin/universal` (Apple silicon and Intel in one app) | `Baggy <version>.dmg`, the update archive and manifest |
-| Windows | ubuntu-latest, with NSIS | `windows/amd64` (Arm runs it emulated; two Windows targets would give installers of the same name) | `Baggy Setup <version>.exe`, the update |
+| macOS | macos-latest | `darwin/universal` (Apple silicon and Intel in one app) | `baggy-<version>.dmg`, the update archive and manifest |
+| Windows | ubuntu-latest, with NSIS | `windows/amd64` (Arm runs it emulated; two Windows targets would give installers of the same name) | `baggy-setup-<version>-amd64.exe`, the update |
 | Linux | ubuntu-latest | `linux/amd64`, `linux/arm64` | the archives, `install.sh`, the Debian packages, the updates |
 
 The draft is published by hand after a look; publishing makes it the latest release, which apps update to.

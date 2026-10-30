@@ -50,7 +50,7 @@ func TestSiteScreenshots(t *testing.T) {
 	for name, dark := range map[string]bool{"light": false, "dark": true} {
 		h.tt.SetDark(dark)
 		h.tt.Frame()
-		time.Sleep(250 * time.Millisecond)
+		h.tt.Advance(250 * time.Millisecond)
 		h.tt.Frame()
 		f, err := os.Create(filepath.Join(dir, "screenshot-"+name+".png"))
 		if err != nil {
