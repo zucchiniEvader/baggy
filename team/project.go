@@ -51,7 +51,11 @@ func Project(entries []store.Entry, botID string, bots []store.Bot) []agent.Mess
 		case e.Author == store.User && m.Role == agent.RoleUser:
 			out = append(out, userView(m, e.Meta, botID, byID))
 		case m.Role == agent.RoleUser && e.Meta.From != "": // message_bot into this chat
-			text := fmt.Sprintf("[Message from %s (id %s) via message_bot]\n%s", nameOf(byID, e.Meta.From), e.Meta.From, textOf(m))
+			how := "via message_bot"
+			if e.Meta.ReplyIn != "" {
+				how += "; your reply goes back to it by itself"
+			}
+			text := fmt.Sprintf("[Message from %s (id %s) %s]\n%s", nameOf(byID, e.Meta.From), e.Meta.From, how, textOf(m))
 			out = append(out, withID(textMessage(text), e))
 		case m.Role == agent.RoleAssistant && m.StopReason != agent.StopError && m.StopReason != agent.StopAborted:
 			if t := strings.TrimSpace(textOf(m)); t != "" {

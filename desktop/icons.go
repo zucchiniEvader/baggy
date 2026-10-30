@@ -102,6 +102,8 @@ func toolIcon(name string) *ui.SVG {
 		return iconSearch
 	case "codemode", "claude_code", "claude_code_status", "claude_code_stop":
 		return iconCode
+	case "delegate", "delegate_status", "delegate_stop":
+		return iconUsers
 	case "message_bot", "create_bot", "edit_bot", "list_teammates", "hand_off":
 		return iconUsers
 	case "memory_update", "memory_log", "recall":
@@ -139,6 +141,12 @@ func toolLabel(name string) string {
 		return L("Check on Claude Code")
 	case "claude_code_stop":
 		return L("Stop Claude Code")
+	case "delegate":
+		return L("Delegate")
+	case "delegate_status":
+		return L("Check on delegated tasks")
+	case "delegate_stop":
+		return L("Stop delegated tasks")
 	case "message_bot":
 		return L("Message a teammate")
 	case "create_bot":

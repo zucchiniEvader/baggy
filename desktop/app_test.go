@@ -1237,11 +1237,71 @@ func TestRunningToolShowsWhatItHasSoFar(t *testing.T) {
 	slow := slowTool{release: make(chan struct{})}
 	h.a.team.Tools = func(store.Bot, string) []tool.Tool { return []tool.Tool{slow} }
 	h.send("look")
+	// Folded, the turn says only what it is doing; opened, the tool's card
+	// shows what it has so far.
+	h.pump("the status", func() bool { return h.tt.HasText("Find files") })
+	if h.tt.HasText("scanning src/\nfound 3 so far") {
+		t.Fatal("the partial output shows while the steps are folded")
+	}
+	if err := h.tt.Click("Find files"); err != nil {
+		t.Fatal(err)
+	}
 	h.pump("the partial output", func() bool { return h.tt.HasText("scanning src/\nfound 3 so far") })
 	close(slow.release)
 	h.pump("the end", func() bool { return h.tt.HasText("all done") && h.idle() })
 	if h.tt.HasText("scanning src/\nfound 3 so far") {
 		t.Fatal("the partial output stays after the end")
+	}
+}
+
+func TestDelegationInRunningTasks(t *testing.T) {
+	release := make(chan struct{})
+	h := newHarness(t, script(func(bot string, msgs []agent.Message) agent.Message {
+		l := messageText(msgs[len(msgs)-1])
+		switch {
+		case len(msgs) == 1 && l == "dig in": // the worker, on its brief alone
+			<-release
+			return say("found it")
+		case msgs[len(msgs)-1].Role == agent.RoleTool:
+			return say("on it")
+		case strings.HasPrefix(l, "[Delegation"):
+			return say("all reported")
+		}
+		return agent.Message{StopReason: agent.StopToolUse, Parts: []agent.Part{{Kind: agent.PartToolCall, CallID: "d1", Name: "delegate",
+			Args: json.RawMessage(`{"tasks":[{"title":"Dig","brief":"dig in"}]}`)}}}
+	}))
+	h.send("look into it")
+	h.pump("the task", func() bool { return h.tt.HasText("on it") && len(h.a.team.Delegations("")) == 1 })
+	if err := h.tt.Click("Tasks (1)"); err != nil {
+		t.Fatal(err)
+	}
+	h.pump("the delegation", func() bool { return h.tt.HasText("Dig") })
+	close(release)
+	h.pump("the report", func() bool { return h.tt.HasText("all reported") && h.idle() })
+}
+
+func TestTurnFoldsItsSteps(t *testing.T) {
+	h := newHarness(t, script(func(string, []agent.Message) agent.Message { return say("ok") }))
+	chef := h.a.bots[0]
+	dm, _ := h.st.DMOf(chef.ID)
+	add := func(author string, m agent.Message) { h.st.Append(dm.ID, author, "t1", store.Meta{}, m) }
+	h.st.Append(dm.ID, store.User, "", store.Meta{}, agent.Message{Role: agent.RoleUser, Parts: []agent.Part{{Kind: agent.PartText, Text: "bugs?"}}})
+	add(chef.ID, agent.Message{Role: agent.RoleAssistant, StopReason: agent.StopToolUse, Parts: []agent.Part{{Kind: agent.PartText, Text: "Looking."}, {Kind: agent.PartToolCall, CallID: "c", Name: "shell", Args: json.RawMessage(`{"command":"gh issue list"}`)}}})
+	add(chef.ID, agent.Message{Role: agent.RoleTool, Parts: []agent.Part{{Kind: agent.PartToolResult, CallID: "c", Text: "#12 crash"}}})
+	add(chef.ID, agent.Message{Role: agent.RoleAssistant, StopReason: agent.StopEnd, Parts: []agent.Part{{Kind: agent.PartText, Text: "One bug: #12."}}})
+	delete(h.a.views, dm.ID)
+	h.a.reload()
+	h.a.selectChat(dm.ID)
+	h.tt.Frame()
+	if !h.tt.HasText("One bug: #12.") || !h.tt.HasText("1 tool call") || h.tt.HasText("Looking.") || h.tt.HasText("gh issue list") {
+		t.Fatalf("folded: %q", h.tt.Texts())
+	}
+	if err := h.tt.Click("1 tool call"); err != nil {
+		t.Fatal(err)
+	}
+	h.tt.Frame()
+	if !h.tt.HasText("Looking.") || !h.tt.HasText("gh issue list") || !h.tt.HasText("One bug: #12.") {
+		t.Fatalf("opened: %q", h.tt.Texts())
 	}
 }
 

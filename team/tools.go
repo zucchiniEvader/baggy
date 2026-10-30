@@ -49,7 +49,7 @@ func (t *Team) findBot(ref string) (store.Bot, error) {
 
 func (t *Team) teamTools(b store.Bot, chat store.Chat, r *run) []tool.Tool {
 	tools := []tool.Tool{
-		Func{N: "message_bot", D: "Send a message to another of the user's bots. It lands in that bot's direct chat with the user, where it answers (and can message you back). Use it to hand a task to the teammate suited to it.",
+		Func{N: "message_bot", D: "Send a message to another of the user's bots. It lands in that bot's direct chat with the user, where it answers; its answer comes back to you here by itself when it is done, so do not ask it to write back or poll. Use it to hand a task to the teammate suited to it.",
 			S: `{"type":"object","properties":{"bot":{"type":"string","description":"the bot's id or name"},"text":{"type":"string"}},"required":["bot","text"],"additionalProperties":false}`,
 			F: func(ctx context.Context, raw json.RawMessage) tool.Result {
 				var a struct{ Bot, Text string }
@@ -75,10 +75,13 @@ func (t *Team) teamTools(b store.Bot, chat store.Chat, r *run) []tool.Tool {
 					return errResult("%v", err)
 				}
 				msg := agent.Message{ID: store.NewID("msg"), Role: agent.RoleUser, Parts: []agent.Part{{Kind: agent.PartText, Text: a.Text}}}
-				if err := t.deliver(dm.ID, b.ID, store.Meta{From: b.ID, Hops: hops}, msg); err != nil {
+				if err := t.deliver(dm.ID, b.ID, store.Meta{From: b.ID, Hops: hops, ReplyIn: chat.ID}, msg); err != nil {
 					return errResult("%v", err)
 				}
-				return tool.Result{Text: fmt.Sprintf("Delivered to %s, who answers in its direct chat with the user.", to.Name)}
+				t.mu.Lock()
+				r.messaged[to.ID] = true
+				t.mu.Unlock()
+				return tool.Result{Text: fmt.Sprintf("Delivered to %s, who answers in its direct chat with the user. Its answer comes back to you here when it is done: go on, or end your turn.", to.Name)}
 			}},
 		Func{N: "create_bot", D: "Create a new bot, a teammate with its own name, description (its system prompt: what it does and how) and workspace. Only when the user agreed to it. A template fills in what is left out: " + templateList() + ".",
 			S: `{"type":"object","properties":{"name":{"type":"string"},"description":{"type":"string"},"template":{"type":"string","enum":` + templateIDs() + `,"description":"start from this template: its description, look and suggestions"},"workdir":{"type":"string","description":"a full path to an existing folder its tools run in, as a project the user named; its own workspace when left out"},"join":{"type":"boolean","description":"also add it to this group"}},"required":["name"],"additionalProperties":false}`,

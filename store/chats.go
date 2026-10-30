@@ -281,6 +281,9 @@ type Meta struct {
 	// counts bot-to-bot hops since a user message.
 	From string `json:"from,omitempty"`
 	Hops int    `json:"hops,omitempty"`
+	// ReplyIn, on a message_bot message, is the chat its sender waits in:
+	// the answer goes back there.
+	ReplyIn string `json:"reply_in,omitempty"`
 	// KeepID, on a compaction summary, is the id of the first message kept
 	// after it (team.Project).
 	KeepID string `json:"keep_id,omitempty"`

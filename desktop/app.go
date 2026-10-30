@@ -107,6 +107,7 @@ type chatView struct {
 	focus    bool
 	open     map[string]bool // disclosures opened: thinking, tool calls
 	working  string          // the bot whose turn runs
+	turn     string          // the turn that runs
 	retrying string          // why the reply under way is being asked again
 }
 
@@ -218,12 +219,14 @@ func (a *app) apply(e team.Event) {
 		a.markRead()
 		a.notifyEnd(e.ChatID)
 		if v := a.views[e.ChatID]; v != nil {
-			v.working, v.retrying = "", ""
+			v.working, v.turn, v.retrying = "", "", ""
 			v.stream = map[string]int{}
 		}
 		return
 	case team.EventChanged:
 		a.reload()
+		return
+	case team.EventDelegation: // Running tasks draws it as it stands
 		return
 	}
 	v := a.views[e.ChatID]
@@ -239,7 +242,7 @@ func (a *app) apply(e team.Event) {
 	}
 	switch e.Kind {
 	case team.EventTurn:
-		v.working = e.BotID
+		v.working, v.turn = e.BotID, e.Turn
 	case team.EventAgent:
 		v.applyAgent(e)
 	case team.EventEntry:

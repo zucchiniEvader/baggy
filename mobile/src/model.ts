@@ -89,7 +89,7 @@ export interface AgentEvent {
 }
 
 export interface Event {
-  kind: "run_start" | "run_end" | "turn" | "agent" | "entry" | "removed" | "pass" | "changed" | "error";
+  kind: "run_start" | "run_end" | "turn" | "agent" | "entry" | "removed" | "pass" | "changed" | "delegation" | "error";
   chat_id: string;
   bot_id?: string;
   turn?: string;

@@ -124,6 +124,7 @@ func main() {
 	tm.ClaudeCode = claudecode.NewManager()
 	tm.ClaudeCode.Env = shellenv.Env
 	defer tm.ClaudeCode.StopAll()
+	defer tm.StopDelegations()
 	pending := make(chan func(), 1024) // events before the window is up
 	a = newApp(st, tm, func(fn func()) { pending <- fn })
 	a.fallback = fallback
@@ -264,7 +265,7 @@ func main() {
 		mygo.App.OnSecondInstance(func([]string, string) { win.Update(func() { win.Show(); win.Focus() }) })
 		go func() { // running commands' cards and tasks show their output as it comes
 			for range time.Tick(time.Second) {
-				if len(tm.Terminals.Running("")) > 0 || len(tm.ClaudeCode.Running("")) > 0 {
+				if len(tm.Terminals.Running("")) > 0 || len(tm.ClaudeCode.Running("")) > 0 || len(tm.Delegations("")) > 0 {
 					win.Update(func() {})
 				}
 			}
@@ -307,6 +308,7 @@ func newTeam(st *store.Store, fallback connect.Config, emit func(team.Event)) *t
 			return []tool.Tool{tool.Shell{Dir: ws}, tool.ReadFile{Dir: ws}, tool.WriteFile{Dir: ws}, tool.EditFile{Dir: ws}, tool.Find{Dir: ws}, tool.Grep{Dir: ws}}
 		},
 		Emit:       emit,
+		Routing:    true,
 		Retry:      agent.DefaultRetry,
 		Memory:     os.Getenv("GOBOT_MEMORY") != "0",
 		Compaction: &team.Compaction{NoFlush: os.Getenv("GOBOT_MEMORY_FLUSH") == "0"},

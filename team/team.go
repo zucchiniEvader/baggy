@@ -4,6 +4,7 @@
 package team
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -37,6 +38,9 @@ const (
 	EventRemoved  EventKind = "removed"   // Entry (Seq) was taken out: a PASS
 	EventPass     EventKind = "pass"      // BotID passed its turn
 	EventChanged  EventKind = "changed"   // bots or chats changed (create_bot, hand_off)
+	// EventDelegation: a delegation of BotID's in the chat started, moved
+	// on or ended (Team.Delegations).
+	EventDelegation EventKind = "delegation"
 	EventError    EventKind = "error"     // Err is set
 )
 
@@ -112,10 +116,15 @@ type Team struct {
 	// (message_bot, create_bot, routines, …). Routines' prompt goes with
 	// the routines tool.
 	Allow func(b store.Bot, chat store.Chat, name string) bool
+	// Routing has a group's owner pick, in one short model call, which
+	// members a message calls for (Route), rather than offering every
+	// member a turn; those it mentions are offered one regardless.
+	Routing bool
 
-	mu     sync.Mutex
-	runs   map[string]*run
-	active sync.WaitGroup
+	mu          sync.Mutex
+	runs        map[string]*run
+	active      sync.WaitGroup
+	delegations []*Delegation
 }
 
 // run is one chat at work.
@@ -129,6 +138,16 @@ type run struct {
 	restart   bool                     // group: a new user message arrived
 	routine   string                   // DM: the routine whose run started this turn
 	mentions  []string                 // group: its mentions
+	hops      int
+	waiting   map[string]back // DM: queued message_bot messages whose sender waits for the answer
+	answer    []back          // DM: the senders the turn under way answers
+	messaged  map[string]bool // bots the turn under way wrote to with message_bot
+}
+
+// back is a message_bot sender waiting for the answer, in the chat it sent
+// from.
+type back struct {
+	chat, bot string
 	hops      int
 }
 
@@ -175,7 +194,7 @@ func (t *Team) Continue(chatID string) error {
 		return nil
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	r := &run{cancel: cancel, steering: agent.NewQueue(agent.QueueAll), interrupt: agent.NewInterrupt(), pending: map[string]store.Meta{}, authors: map[string]string{}, plain: map[string]agent.Message{}}
+	r := newRun(cancel)
 	t.runs[chatID] = r
 	t.emit(Event{Kind: EventRunStart, ChatID: chatID, Since: t.Store.LastSeq(chatID)})
 	t.active.Add(1)
@@ -290,7 +309,11 @@ func (t *Team) deliver(chatID, author string, meta store.Meta, msg agent.Message
 		t.runs = map[string]*run{}
 	}
 	r := t.runs[chatID]
+	bk := back{chat: meta.ReplyIn, bot: meta.From, hops: meta.Hops}
 	if r != nil && chat.Kind == store.DM {
+		if bk.chat != "" {
+			r.waiting[msg.ID] = bk
+		}
 		r.pending[msg.ID] = meta
 		r.authors[msg.ID] = author
 		if len(meta.Files) > 0 {
@@ -315,12 +338,20 @@ func (t *Team) deliver(chatID, author string, meta store.Meta, msg agent.Message
 		return nil
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	r = &run{cancel: cancel, steering: agent.NewQueue(agent.QueueAll), interrupt: agent.NewInterrupt(), pending: map[string]store.Meta{}, authors: map[string]string{}, plain: map[string]agent.Message{}, mentions: meta.Mentions, hops: meta.Hops, routine: meta.Routine}
+	r = newRun(cancel)
+	r.mentions, r.hops, r.routine = meta.Mentions, meta.Hops, meta.Routine
+	if bk.chat != "" && chat.Kind == store.DM {
+		r.answer = []back{bk}
+	}
 	t.runs[chatID] = r
 	t.emit(Event{Kind: EventRunStart, ChatID: chatID, Since: e.Seq - 1})
 	t.active.Add(1)
 	go t.work(ctx, chatID, r, replyAuthor(meta))
 	return nil
+}
+
+func newRun(cancel context.CancelFunc) *run {
+	return &run{cancel: cancel, steering: agent.NewQueue(agent.QueueAll), interrupt: agent.NewInterrupt(), pending: map[string]store.Meta{}, authors: map[string]string{}, plain: map[string]agent.Message{}, waiting: map[string]back{}, messaged: map[string]bool{}}
 }
 
 func replyAuthor(m store.Meta) string {
@@ -342,6 +373,7 @@ func (t *Team) work(ctx context.Context, chatID string, r *run, replyTo string) 
 			t.emit(Event{Kind: EventError, ChatID: chatID, Err: err})
 		} else if chat.Kind == store.DM {
 			stored := t.turn(ctx, chat, chat.Owner, r, "")
+			t.answerBack(chat, r, stored)
 			if r.routine != "" {
 				t.finishRoutine(chat.ID, chat.Owner, r.routine, stored)
 				r.routine = ""
@@ -430,6 +462,7 @@ func (t *Team) turn(ctx context.Context, chat store.Chat, botID string, r *run, 
 		tools = append(kept, t.Terminals.Tools(chat.ID, b.ID, ws)...)
 	}
 	tools = append(tools, t.teamTools(b, chat, r)...)
+	tools = append(tools, t.delegateTools(b, chat, r)...)
 	tools = append(tools, t.claudeCodeTools(b, chat, ws)...)
 	tools = append(tools, t.routinesTool(b))
 	if t.Memory {
@@ -451,6 +484,9 @@ func (t *Team) turn(ctx context.Context, chat store.Chat, botID string, r *run, 
 	}
 	if terminals {
 		system += "\n\n" + terminalsPrompt
+	}
+	if has(tools, "delegate") {
+		system += "\n\n" + delegatePrompt
 	}
 	if has(tools, "claude_code") {
 		system += "\n\n" + claudeCodePrompt
@@ -491,6 +527,10 @@ func (t *Team) turn(ctx context.Context, chat store.Chat, botID string, r *run, 
 					e.Message = &m
 					delete(r.plain, m.ID)
 				}
+				if bk, ok := r.waiting[e.Message.ID]; ok {
+					r.answer = append(r.answer, bk)
+					delete(r.waiting, e.Message.ID)
+				}
 				delete(r.pending, e.Message.ID)
 				delete(r.authors, e.Message.ID)
 				if author == "" {
@@ -520,6 +560,51 @@ func (t *Team) turn(ctx context.Context, chat store.Chat, botID string, r *run, 
 		t.logTurn(b, chat, out)
 	}
 	return stored
+}
+
+// answerBack sends a DM turn's reply to the message_bot senders it
+// answered, in the chats they sent from, as a note that wakes them (in a
+// group, the sender first).
+func (t *Team) answerBack(chat store.Chat, r *run, stored []store.Entry) {
+	t.mu.Lock()
+	bks := r.answer
+	wrote := r.messaged
+	r.answer, r.messaged = nil, map[string]bool{}
+	t.mu.Unlock()
+	if len(bks) == 0 {
+		return
+	}
+	b, _ := t.Store.Bot(chat.Owner)
+	reply := ""
+	failed := false
+	for i := len(stored) - 1; i >= 0 && reply == ""; i-- {
+		if m := stored[i].Msg; m.Role == agent.RoleAssistant {
+			if m.StopReason == agent.StopError {
+				reply, failed = errorOf(m), true
+			} else {
+				reply = strings.TrimSpace(textOf(m))
+			}
+		}
+	}
+	text := fmt.Sprintf("[Reply from %s (id %s) to your message_bot]\n%s", b.Name, b.ID, cmp.Or(reply, "(no reply)"))
+	if failed {
+		text = fmt.Sprintf("[%s (id %s) could not answer your message_bot: %s]", b.Name, b.ID, reply)
+	}
+	for _, bk := range bks {
+		if wrote[bk.bot] {
+			continue // it answered with a message of its own
+		}
+		// The answer is a hop too, so two bots cannot loop through answers.
+		if bk.hops+1 > MaxHops {
+			continue
+		}
+		meta := store.Meta{Hops: bk.hops + 1}
+		if c, err := t.Store.Chat(bk.chat); err == nil && c.Kind == store.Group {
+			meta.Mentions = []string{bk.bot}
+		}
+		msg := agent.Message{ID: store.NewID("msg"), Role: agent.RoleUser, Parts: []agent.Part{{Kind: agent.PartText, Text: text}}}
+		t.deliver(bk.chat, store.System, meta, msg)
+	}
 }
 
 // allowed are the tools Allow keeps, all of them without it.

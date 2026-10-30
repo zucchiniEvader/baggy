@@ -2,6 +2,7 @@ package team
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -64,25 +65,40 @@ func (t *Team) room(ctx context.Context, chat store.Chat, r *run, replyTo string
 		seen[e.Author] = e.Seq
 	}
 	order := TurnOrder(chat.Members, mentions, replyTo)
+	// forced: the head of order the message names (mentions, the author it
+	// replies to), offered a turn before the rest are routed.
+	forced := 0
+	for _, id := range order {
+		if id != replyTo && !contains(mentions, id) {
+			break
+		}
+		forced++
+	}
 	for round := 1; round <= MaxRounds; round++ {
 		spoke := false
-		for _, id := range order {
+		for i := 0; i < len(order); i++ {
+			if t.Routing && i == forced {
+				var rest []string
+				for _, id := range order[i:] {
+					if round == 1 || t.fresh(chat.ID, id, seen[id]) > 0 {
+						rest = append(rest, id)
+					}
+				}
+				order = append(order[:i:i], t.Route(ctx, chat, rest)...)
+				if i >= len(order) {
+					break
+				}
+			}
+			id := order[i]
 			t.mu.Lock()
 			yield := r.restart
 			t.mu.Unlock()
 			if yield || ctx.Err() != nil {
 				return
 			}
-			entries, err := t.Store.Messages(chat.ID, seen[id])
-			if err != nil {
-				t.emit(Event{Kind: EventError, ChatID: chat.ID, Err: err})
+			fresh := t.fresh(chat.ID, id, seen[id])
+			if fresh < 0 {
 				return
-			}
-			fresh := 0
-			for _, e := range entries {
-				if e.Author != id && (e.Msg.Role == agent.RoleUser || textOf(e.Msg) != "") {
-					fresh++
-				}
 			}
 			if fresh == 0 && round > 1 {
 				continue
@@ -110,9 +126,120 @@ func (t *Team) room(ctx context.Context, chat store.Chat, r *run, replyTo string
 		}
 		if c, err := t.Store.Chat(chat.ID); err == nil {
 			chat = c
-			order = TurnOrder(chat.Members, nil, "")
+			order, forced = TurnOrder(chat.Members, nil, ""), 0
 		}
 	}
+}
+
+// fresh is how many messages a member has not had a turn after: from the
+// user, or words from the others; -1 when the chat cannot be read.
+func (t *Team) fresh(chatID, id string, since int64) int {
+	entries, err := t.Store.Messages(chatID, since)
+	if err != nil {
+		t.emit(Event{Kind: EventError, ChatID: chatID, Err: err})
+		return -1
+	}
+	n := 0
+	for _, e := range entries {
+		if e.Author != id && (e.Msg.Role == agent.RoleUser || textOf(e.Msg) != "") {
+			n++
+		}
+	}
+	return n
+}
+
+func contains(ss []string, s string) bool {
+	for _, x := range ss {
+		if x == s {
+			return true
+		}
+	}
+	return false
+}
+
+const routeSystem = `You pick who in a group chat speaks next. The members are bots, each with a role. Answer with JSON only: {"bots": ["<id>", ...]}, in the order they should speak.
+
+Pick a member when the newest messages ask it something, call for its role, or need something only it can add. Leave out a member with nothing new to add: a reply that repeats others, agrees, or thanks is noise. Pick none when the conversation is settled or waits for the user. One member is usually enough; several only when the message needs several roles.`
+
+// routeLines is how many of the newest messages Route reads.
+const routeLines = 16
+
+// Route picks which of the candidates a group's newest messages call for,
+// in one short call to the owner's model with no tools; on any failure it
+// offers them all, as without routing.
+func (t *Team) Route(ctx context.Context, chat store.Chat, candidates []string) []string {
+	if len(candidates) <= 1 {
+		return candidates
+	}
+	ownerID := chat.Owner
+	if ownerID == "" && len(chat.Members) > 0 {
+		ownerID = chat.Members[0]
+	}
+	owner, err := t.Store.Bot(ownerID)
+	if err != nil {
+		return candidates
+	}
+	model, err := t.Model(owner)
+	if err != nil {
+		return candidates
+	}
+	entries, err := t.Store.Messages(chat.ID, 0)
+	if err != nil {
+		return candidates
+	}
+	bots, _ := t.Store.Bots()
+	byID := map[string]store.Bot{}
+	for _, b := range bots {
+		byID[b.ID] = b
+	}
+	var p strings.Builder
+	p.WriteString("Members who may speak:\n")
+	for _, id := range candidates {
+		b := byID[id]
+		fmt.Fprintf(&p, "- %s (id %s): %s\n", b.Name, b.ID, oneLine(firstLine(b.Description), 200))
+	}
+	if d := strings.TrimSpace(chat.Description); d != "" {
+		fmt.Fprintf(&p, "\nThe group is for: %s\n", oneLine(d, 300))
+	}
+	var lines []string
+	for i := len(entries) - 1; i >= 0 && len(lines) < routeLines; i-- {
+		e := entries[i]
+		text := strings.TrimSpace(textOf(e.Msg))
+		if text == "" || e.Msg.Role == agent.RoleTool || e.Msg.StopReason == agent.StopError {
+			continue
+		}
+		who := "User"
+		switch {
+		case e.Author == store.System:
+			who = "Note"
+		case e.Author != store.User:
+			who = byID[e.Author].Name
+		}
+		lines = append(lines, fmt.Sprintf("[%s]: %s", who, oneLine(text, 600)))
+	}
+	p.WriteString("\nThe conversation, newest last:\n")
+	for i := len(lines) - 1; i >= 0; i-- {
+		p.WriteString(lines[i] + "\n")
+	}
+	reply := model.Call(ctx, routeSystem, []agent.Message{textMessage(p.String())}, nil, func(agent.Event) {})
+	text := strings.TrimSpace(textOf(reply))
+	if i, j := strings.IndexByte(text, '{'), strings.LastIndexByte(text, '}'); i >= 0 && j > i {
+		text = text[i : j+1]
+	}
+	var v struct{ Bots []string }
+	if reply.StopReason == agent.StopError || json.Unmarshal([]byte(text), &v) != nil {
+		return candidates
+	}
+	var out []string
+	for _, ref := range v.Bots {
+		ref = strings.TrimPrefix(strings.TrimSpace(ref), "@")
+		for _, id := range candidates {
+			if (id == ref || strings.EqualFold(byID[id].Name, ref)) && !contains(out, id) {
+				out = append(out, id)
+			}
+		}
+	}
+	return out
 }
 
 func member(c store.Chat, id string) bool {

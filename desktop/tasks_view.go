@@ -3,12 +3,14 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/egoist/mygo/ui"
 	"github.com/zucchiniEvader/baggy/agent"
 	"github.com/zucchiniEvader/baggy/claudecode"
 	"github.com/zucchiniEvader/baggy/store"
+	"github.com/zucchiniEvader/baggy/team"
 	"github.com/zucchiniEvader/baggy/terminal"
 )
 
@@ -69,12 +71,16 @@ func elapsed(d time.Duration) string {
 func (a *app) tasksButton(c *ui.Context, ch store.Chat) {
 	ts := a.tasks(ch.ID)
 	runs := a.claudeRuns(ch.ID)
+	ds := a.team.Delegations(ch.ID)
 	n := len(ts) + len(runs)
+	for _, d := range ds {
+		n += len(d.Tasks)
+	}
 	if n == 0 {
 		a.tasksOpen = false
 		return
 	}
-	btn := ui.ButtonBase(c.Key("tasks")).Height(compactHeight).Padding(0, 8).Gap(5).Radius(rowRadius).AlignItems(ui.Center).Label(L("Tasks (%d)", n)).Tooltip(L("Commands and Claude Code tasks running in this chat")).Shrink(0)
+	btn := ui.ButtonBase(c.Key("tasks")).Height(compactHeight).Padding(0, 8).Gap(5).Radius(rowRadius).AlignItems(ui.Center).Label(L("Tasks (%d)", n)).Tooltip(L("Commands, delegated tasks and Claude Code running in this chat")).Shrink(0)
 	styleButton(btn, c.Theme(), ghost, false)
 	btn.Children(func() {
 		ui.Icon(c, iconTerminal).FontSize(iconSize)
@@ -88,6 +94,9 @@ func (a *app) tasksButton(c *ui.Context, ch store.Chat) {
 	ui.PopoverBase(c, btn, &a.tasksOpen, func(panel ui.Element) {
 		panel.Margin(6, 0, 0, 0).Padding(12).Radius(cardRadius).Background(p.surface).Border(1, p.border)
 		ui.Column(c).Width(420).Gap(14).Children(func() {
+			for _, d := range ds {
+				a.delegationTask(c, ch, d)
+			}
 			for _, r := range runs {
 				a.claudeTask(c, ch, r)
 			}
@@ -122,6 +131,49 @@ func (a *app) tasksButton(c *ui.Context, ch store.Chat) {
 						}
 					})
 				})
+			}
+		})
+	})
+}
+
+// delegationTask is a delegation in Running tasks: who handed it out, each
+// task with its state and last steps, and Stop.
+func (a *app) delegationTask(c *ui.Context, ch store.Chat, d *team.Delegation) {
+	t := c.Theme()
+	p := pal(c)
+	ui.Column(c.Key("dlg-" + d.ID)).Gap(6).Children(func() {
+		ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
+			ui.Icon(c, iconUsers).FontSize(iconSize).TextColor(t.TextMuted).Shrink(0)
+			ui.Text(c, L("Delegated by %s", a.name(d.Bot))).FontSize(13).FontWeight(600).Grow(1).SingleLine().MinWidth(0)
+			ui.Text(c, elapsed(time.Since(d.Started))).FontSize(11).TextColor(t.TextMuted).Shrink(0)
+		})
+		for i, k := range d.Tasks {
+			state, _ := k.Status()
+			ui.Column(c.Key(i)).Gap(4).Padding(0, 0, 0, 22).Children(func() {
+				ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
+					switch state {
+					case "working":
+						ui.Spinner(c).Size(12, 12).Shrink(0)
+					case "done":
+						ui.Icon(c, iconCheck).FontSize(12).TextColor(p.greenBar).Shrink(0)
+					default:
+						ui.Icon(c, iconXCircle).FontSize(12).TextColor(p.redBar).Shrink(0)
+					}
+					ui.Text(c, k.Title).FontSize(13).SingleLine().Shrink(1).MinWidth(0)
+					if k.Bot != d.Bot {
+						ui.Text(c, L("as %s", a.name(k.Bot))).FontSize(11).TextColor(t.TextMuted).SingleLine().Shrink(1000).MinWidth(0)
+					}
+				})
+				if state == "working" {
+					if steps := k.Steps(4); len(steps) > 0 {
+						codeBlock(c, strings.Join(steps, "\n"))
+					}
+				}
+			})
+		}
+		ui.Row(c).Gap(8).Justify(ui.End).Children(func() {
+			if smallButton(c.Key("dlg-stop-"+d.ID), L("Stop"), danger).Clicked() {
+				go d.Stop()
 			}
 		})
 	})

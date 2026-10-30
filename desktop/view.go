@@ -212,42 +212,40 @@ func firstLine(s string) string {
 // a passing note is not worth a line of its own.
 const shortThought = 160
 
-// item is what one entry of the transcript list draws: a row, or a run of
-// tool rows drawn as one card.
+// item is what one entry of the transcript list draws: a row, or a bot's
+// turn, its steps folded over its reply.
 type item struct {
 	rows  []int // indexes into the view's rows
-	first bool  // a bot's row that starts its turn: beside its avatar, under its name
+	first bool  // a bot's turn that starts after someone else: under its name
 }
 
 func items(rows []row) []item {
 	var out []item
+	bot := func(r row) bool { return r.kind == rowAssistant || r.kind == rowTool }
 	for i := 0; i < len(rows); {
-		first := false
-		if rows[i].kind == rowAssistant || rows[i].kind == rowTool {
-			first = true
-			for k := i - 1; k >= 0; k-- {
-				if rows[k].kind == rowNotice {
-					continue
-				}
-				first = rows[k].kind == rowUser || rows[k].author != rows[i].author
-				break
-			}
-		}
-		if rows[i].kind == rowTool {
-			j := i
-			for j < len(rows) && rows[j].kind == rowTool && rows[j].author == rows[i].author {
-				j++
-			}
-			idx := make([]int, 0, j-i)
-			for k := i; k < j; k++ {
-				idx = append(idx, k)
-			}
-			out = append(out, item{rows: idx, first: first})
-			i = j
+		if !bot(rows[i]) {
+			out = append(out, item{rows: []int{i}})
+			i++
 			continue
 		}
-		out = append(out, item{rows: []int{i}, first: first})
-		i++
+		first := true
+		for k := i - 1; k >= 0; k-- {
+			if rows[k].kind == rowNotice {
+				continue
+			}
+			first = rows[k].kind == rowUser || rows[k].author != rows[i].author
+			break
+		}
+		j := i
+		for j < len(rows) && bot(rows[j]) && rows[j].author == rows[i].author && rows[j].turn == rows[i].turn {
+			j++
+		}
+		idx := make([]int, 0, j-i)
+		for k := i; k < j; k++ {
+			idx = append(idx, k)
+		}
+		out = append(out, item{rows: idx, first: first})
+		i = j
 	}
 	return out
 }
@@ -267,11 +265,12 @@ func (a *app) transcript(c *ui.Context, ch store.Chat, v *chatView) {
 			it := its[i]
 			r := rows[it.rows[0]]
 			if r.kind != rowAssistant && r.kind != rowTool {
-				a.drawRow(c, ch, v, r, false)
+				a.drawRow(c, r)
 				return
 			}
-			// A bot's rows: its name starts each of its turns, and a reply's
-			// time shows on the right while the pointer is over it.
+			// A bot's turn: its name starts it, and its reply's time shows on
+			// the right while the pointer is over it.
+			reply := replyOf(rows, it.rows)
 			col := ui.Column(c).Gap(8)
 			hovered := col.Hovered()
 			col.Children(func() {
@@ -279,25 +278,26 @@ func (a *app) transcript(c *ui.Context, ch store.Chat, v *chatView) {
 					ui.Row(c).Height(20).Gap(6).AlignItems(ui.Center).Children(func() {
 						ui.Text(c, a.name(r.author)).FontSize(12).FontWeight(600).TextColor(c.Theme().TextMuted).SingleLine().Shrink(1).MinWidth(0)
 						ui.Spacer(c)
-						if r.kind == rowAssistant && hovered {
-							a.replyActions(c, r)
+						if reply >= 0 && hovered {
+							a.replyActions(c, rows[reply])
 						}
 					})
 				}
-				if r.kind == rowTool {
-					a.toolGroup(c, ch, v, it.rows)
-					return
-				}
 				ui.Box(c).Children(func() {
-					a.drawRow(c, ch, v, r, it.first)
-					if !it.first && hovered && (r.at != 0 || r.text != "") {
-						ui.Row(c).Absolute().Top(0).Right(0).Gap(6).AlignItems(ui.Center).Padding(0, 0, 0, 8).Background(pal(c).appBg).Children(func() { a.replyActions(c, r) })
+					ui.Column(c).Gap(8).Children(func() {
+						a.steps(c, ch, v, it.rows, reply)
+						if reply >= 0 {
+							a.replyBody(c, ch, v, rows[reply])
+						}
+					})
+					if rr := rows[max(reply, 0)]; !it.first && hovered && reply >= 0 && (rr.at != 0 || rr.text != "") {
+						ui.Row(c).Absolute().Top(0).Right(0).Gap(6).AlignItems(ui.Center).Padding(0, 0, 0, 8).Background(pal(c).appBg).Children(func() { a.replyActions(c, rr) })
 					}
 				})
 			})
 		})
 	}).Grow(1).MinHeight(0).Padding(12, 0, 28).Gap(16).Children(func() {
-		if a.busy[ch.ID] && v.working != "" && !a.streaming(v) {
+		if a.busy[ch.ID] && v.working != "" && !v.shown(v.turn) {
 			ui.Column(c).MaxWidth(contentWidth).FillWidth().Margin(0, ui.Auto).Padding(0, 28).Children(func() {
 				thinking(c, L("%s is thinking…", a.name(v.working)))
 			})
@@ -305,17 +305,180 @@ func (a *app) transcript(c *ui.Context, ch store.Chat, v *chatView) {
 	})
 }
 
-// streaming reports whether a reply is streaming into a row.
-func (a *app) streaming(v *chatView) bool {
-	for _, i := range v.stream {
-		if i < len(v.rows) && (v.rows[i].text != "" || v.rows[i].thinking != "" || len(v.rows[i].searches) > 0) {
+// shown reports whether a turn has a row yet, which says what it is doing.
+func (v *chatView) shown(turn string) bool {
+	for i := len(v.rows) - 1; i >= 0; i-- {
+		if v.rows[i].turn == turn && turn != "" {
 			return true
 		}
 	}
 	return false
 }
 
-func (a *app) drawRow(c *ui.Context, ch store.Chat, v *chatView, r row, first bool) {
+// replyOf is the row of a turn that is its reply: its last, when that is
+// words, a failure or Stop; -1 while the turn has none (it is still at work,
+// or ended on a tool).
+func replyOf(rows []row, idx []int) int {
+	last := idx[len(idx)-1]
+	r := rows[last]
+	if r.kind == rowAssistant && (strings.TrimSpace(r.text) != "" || r.failed || r.stopped) {
+		return last
+	}
+	return -1
+}
+
+// thoughtShown reports whether a row's thinking is worth showing.
+func (a *app) thoughtShown(r row) bool {
+	return a.prefs.showThinking && len([]rune(strings.TrimSpace(r.thinking))) >= shortThought
+}
+
+// steps is how a turn came to its reply, closed under one line: while the
+// turn runs, what it is doing now (thinking, a tool, a search); after, what
+// it did. Opened, it holds the thinking, searches, words between tool calls
+// and the tool cards. A call waiting for approval shows its card either way.
+func (a *app) steps(c *ui.Context, ch store.Chat, v *chatView, idx []int, reply int) {
+	t := c.Theme()
+	p := pal(c)
+	rows := v.rows
+	first := rows[idx[0]]
+	live := a.busy[ch.ID] && first.turn != "" && first.turn == v.turn
+	var thought, words bool
+	var tools, searches, failed int
+	var pending []int
+	for _, i := range idx {
+		r := rows[i]
+		switch r.kind {
+		case rowAssistant:
+			thought = thought || a.thoughtShown(r)
+			searches += len(r.searches)
+			if i != reply && strings.TrimSpace(r.text) != "" {
+				words = true
+			}
+		case rowTool:
+			tools++
+			if r.failed {
+				failed++
+			}
+			if r.pending {
+				pending = append(pending, i)
+			}
+		}
+	}
+	// Working while there is no reply yet; once the reply streams, its
+	// steps are done.
+	working := live && reply < 0
+	if !working && !thought && !words && tools == 0 && searches == 0 {
+		return
+	}
+	key := "steps-" + first.turn
+	if first.turn == "" {
+		key = fmt.Sprintf("steps-%d", first.seq)
+	}
+	open := v.open[key]
+	label, detail := L("Thinking…"), ""
+	if working {
+		label, detail = nowDoing(rows[idx[len(idx)-1]])
+	} else {
+		var parts []string
+		if thought || tools == 0 && searches == 0 {
+			parts = append(parts, L("Thought"))
+		}
+		if tools > 0 {
+			parts = append(parts, plural(tools, L("1 tool call"), L("%d tool calls", tools)))
+		}
+		if searches > 0 {
+			parts = append(parts, plural(searches, L("1 search"), L("%d searches", searches)))
+		}
+		label = strings.Join(parts, " · ")
+	}
+	ui.Column(c).Gap(6).Children(func() {
+		head := ui.ButtonBase(c.Key(key)).Height(22).Gap(6).AlignItems(ui.Center).AlignSelf(ui.Start).MinWidth(0).Label(label).TextColor(t.TextMuted).FocusRing(false)
+		if head.Clicked() {
+			v.open[key] = !open
+		}
+		head.Children(func() {
+			disclosure(c, open)
+			switch {
+			case working:
+				ui.Spinner(c).Size(12, 12).Shrink(0)
+			case tools > 0:
+				ui.Icon(c, iconWrench).FontSize(12).Shrink(0)
+			case searches > 0:
+				ui.Icon(c, iconGlobe).FontSize(12).Shrink(0)
+			default:
+				ui.Icon(c, iconBrain).FontSize(12).Shrink(0)
+			}
+			ui.Text(c, label).FontSize(12).FontWeight(600).SingleLine().Shrink(0)
+			if detail != "" {
+				ui.Text(c, detail).Font(monoFont).FontSize(11).SingleLine().Shrink(1).MinWidth(0)
+			}
+			if failed > 0 && !working {
+				ui.Icon(c, iconXCircle).FontSize(12).TextColor(p.redBar).Shrink(0)
+			}
+		})
+		if !open {
+			if len(pending) > 0 {
+				a.toolGroup(c, ch, v, pending)
+			}
+			return
+		}
+		ui.Column(c).Margin(0, 0, 0, 5).Padding(0, 0, 0, 12).BorderWidth(0, 0, 0, 1).BorderColor(p.border).Gap(8).Children(func() {
+			for k := 0; k < len(idx); {
+				r := rows[idx[k]]
+				if r.kind == rowTool {
+					j := k
+					for j < len(idx) && rows[idx[j]].kind == rowTool {
+						j++
+					}
+					ui.Box(c.Key(idx[k])).Children(func() { a.toolGroup(c, ch, v, idx[k:j]) })
+					k = j
+					continue
+				}
+				ui.Column(c.Key(idx[k])).Gap(8).Children(func() {
+					for _, s := range r.searches {
+						a.searchLine(c, s)
+					}
+					if a.thoughtShown(r) {
+						a.reasoning(c, v, r)
+					}
+					if idx[k] != reply && strings.TrimSpace(r.text) != "" {
+						markdown(c, r.text)
+					}
+				})
+				k++
+			}
+		})
+	})
+}
+
+func plural(n int, one, many string) string {
+	if n == 1 {
+		return one
+	}
+	return many
+}
+
+// nowDoing is what a turn under way is doing, read from its last row: the
+// tool running or waiting, the search, else thinking.
+func nowDoing(r row) (label, detail string) {
+	if r.kind == rowTool {
+		switch {
+		case r.pending:
+			return L("Waiting for approval: %s", toolLabel(r.call.Name)), toolSummary(r.call)
+		case r.result == nil:
+			return toolLabel(r.call.Name), toolSummary(r.call)
+		}
+		return L("Thinking…"), ""
+	}
+	for i := len(r.searches) - 1; i >= 0; i-- {
+		if !r.searches[i].done {
+			return searchText(r.searches[i]), ""
+		}
+	}
+	return L("Thinking…"), ""
+}
+
+func (a *app) drawRow(c *ui.Context, r row) {
 	t := c.Theme()
 	switch r.kind {
 	case rowUser:
@@ -348,31 +511,27 @@ func (a *app) drawRow(c *ui.Context, ch store.Chat, v *chatView, r row, first bo
 				})
 			}
 		})
-	case rowAssistant:
-		col := ui.Column(c).Gap(8)
-		a.rowMenu(col, r)
-		col.Children(func() {
-			for _, s := range r.searches {
-				a.searchLine(c, s)
-			}
-			if len([]rune(strings.TrimSpace(r.thinking))) >= shortThought && a.prefs.showThinking {
-				a.reasoning(c, v, r)
-			}
-			switch {
-			case r.failed:
-				a.failedReply(c, ch, v, r)
-			case r.text != "":
-				markdown(c, r.text)
-			case !r.stopped && r.seq == 0 && len(r.searches) == 0 && r.thinking == "":
-				thinking(c, L("%s is thinking…", a.name(r.author)))
-			}
-			if r.stopped {
-				ui.Text(c, L("Stopped")).FontSize(12).TextColor(t.TextMuted)
-			}
-		})
 	case rowNotice:
 		ui.Text(c, r.text).Selectable().FontSize(11).TextColor(t.TextMuted).TextAlign(ui.Center).FillWidth()
 	}
+}
+
+// replyBody is a turn's reply as it ends: its words, or what went wrong,
+// and Stopped when Stop cut it off.
+func (a *app) replyBody(c *ui.Context, ch store.Chat, v *chatView, r row) {
+	col := ui.Column(c).Gap(8)
+	a.rowMenu(col, r)
+	col.Children(func() {
+		switch {
+		case r.failed:
+			a.failedReply(c, ch, v, r)
+		case strings.TrimSpace(r.text) != "":
+			markdown(c, r.text)
+		}
+		if r.stopped {
+			ui.Text(c, L("Stopped")).FontSize(12).TextColor(c.Theme().TextMuted)
+		}
+	})
 }
 
 // userBubble is the words of a user's message on a neutral bubble.
