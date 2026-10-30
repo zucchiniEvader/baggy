@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.4
+
+- Replies render with MyGo's own Markdown view: code blocks with syntax colors and a Copy button, proper tables, quotes and task lists.
+- A reply streams in smoothly, a word at a time, and half-written formatting already shows as it will end up.
+- Built on MyGo 0.7.3.
+
 ## 0.1.3
 
 - A bot's reply now shows on its own, its thinking, searches and tool calls folded under one line above it. While the bot works, the line says what it is doing now; once done, what it did. Click it to see every step.
