@@ -27,6 +27,7 @@ export default (): ExpoConfig => ({
     "expo-image",
     "expo-localization",
     ["expo-camera", { cameraPermission: "Baggy scans the pairing code your computer shows." }],
+    "./plugins/with-scene-delegate",
   ],
   experiments: { typedRoutes: true },
 });
