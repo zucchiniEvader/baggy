@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.5
+
+- The bots can run on another computer, a server that is always on: install baggyd there (one line: `curl -fsSL https://github.com/zucchiniEvader/baggy/releases/latest/download/baggyd-install.sh | sh`), then paste the link it prints in Settings › General › Runtime. Baggy then shows that server's bots, chats and settings, and approvals come to this window. Both computers must be on the same Tailscale network.
+- The sidebar's foot names the server, or says when it cannot be reached; Baggy reconnects by itself.
+
 ## 0.1.4
 
 - Replies render with MyGo's own Markdown view: code blocks with syntax colors and a Copy button, proper tables, quotes and task lists.
