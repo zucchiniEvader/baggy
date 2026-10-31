@@ -12,6 +12,8 @@ export default (): ExpoConfig => ({
   userInterfaceStyle: "automatic",
   ios: {
     bundleIdentifier: "io.github.zucchinievader.baggy.mobile",
+    // Raised for every TestFlight upload of the same version.
+    buildNumber: "1",
     supportsTablet: true,
     infoPlist: {
       NSCameraUsageDescription: "Baggy scans the pairing code your computer shows.",
