@@ -578,7 +578,7 @@ func (a *app) failedReply(c *ui.Context, ch store.Chat, v *chatView, r row) {
 				}
 			}
 			if smallButton(c.Key("retry"), L("Retry"), secondary).Disabled(!a.hasProvider()).Clicked() {
-				a.do(a.team.Continue(ch.ID))
+				a.do(a.rt.Continue(ch.ID))
 			}
 		})
 	})
@@ -737,7 +737,7 @@ func (a *app) toolGroup(c *ui.Context, ch store.Chat, v *chatView, idx []int) {
 				live := ""
 				if r.result == nil && !r.pending {
 					if sess := a.sessionOf(ch.ID, r.call); sess != nil {
-						live = strings.TrimSpace(sess.Last(8))
+						live = lastLines(strings.TrimSpace(sess.Last), 8)
 					} else if r.partial != "" {
 						live = lastLines(r.partial, 8)
 					}

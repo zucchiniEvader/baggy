@@ -67,9 +67,10 @@ func (a *app) markRead() {
 }
 
 func (a *app) countUnread() {
+	snap, _ := a.rt.Snapshot()
 	a.unread = map[string]int{}
-	for _, ch := range a.chats {
-		a.unread[ch.ID] = a.st.Unread(ch.ID)
+	for id, n := range snap.Unread {
+		a.unread[id] = n
 	}
 	a.showBadge()
 }

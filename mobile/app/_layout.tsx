@@ -1,8 +1,10 @@
 import { DarkTheme, DefaultTheme, Stack, ThemeProvider } from "expo-router";
 import { StatusBar } from "expo-status-bar";
+import * as Linking from "expo-linking";
 import { useEffect, useMemo } from "react";
+import { Alert } from "react-native";
 import { t } from "../src/i18n";
-import { start, useStore } from "../src/store";
+import { pair, start, useStore } from "../src/store";
 import { usePalette } from "../src/theme";
 
 export default function RootLayout() {
@@ -13,6 +15,17 @@ export default function RootLayout() {
   useEffect(() => {
     void start();
   }, []);
+
+  // A pairing code opened while paired (a new token, another computer) replaces the pairing:
+  // the pair screen, which takes it otherwise, is closed to a paired phone.
+  const url = Linking.useLinkingURL();
+  useEffect(() => {
+    if (!ready || !paired || !url?.startsWith("baggy://pair?")) return;
+    const current = useStore.getState().pairing;
+    if (current && url.includes(`token=${current.token}`)) return;
+    pair(url).catch((e) => Alert.alert(t("Pairing failed"), e instanceof Error ? e.message : String(e)));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [url, ready]);
 
   const theme = useMemo(() => {
     const base = p.dark ? DarkTheme : DefaultTheme;

@@ -32,7 +32,7 @@ export function rowsOf(chat: Chat, room: Room, busy: boolean, bots: Record<strin
         continue;
       }
       if (m.stop_reason === "error") {
-        rows.push({ kind: "bot", key, bot: e.author, turn: e.turn, name: group && prev?.bot !== e.author, text: text || t("The reply failed"), tools: [], error: true });
+        rows.push({ kind: "bot", key, bot: e.author, turn: e.turn, name: group && prev?.bot !== e.author, text: failure(text), tools: [], error: true });
         continue;
       }
       // A run of tool calls in one turn reads as one line.
@@ -54,4 +54,10 @@ export function rowsOf(chat: Chat, room: Room, busy: boolean, bots: Record<strin
     rows.push({ kind: "working", key: "working", label });
   }
   return rows;
+}
+
+/** A failed reply's words as a person reads them, as the desktop says them. */
+export function failure(text: string): string {
+  if (text.includes("no model is set up yet")) return t("No model is set up yet. Add a provider in Baggy's Settings on your computer.");
+  return text || t("The reply failed");
 }

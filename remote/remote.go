@@ -1,6 +1,8 @@
-// Package remote serves a store's chats to the phone app over the local
-// network: a JSON API to read and send, and a WebSocket of team events, both
-// behind one token the phone gets by scanning the pairing code (docs/mobile.md).
+// Package remote serves a host over the network, behind one token: to the
+// phone app, a JSON API to read and send chats and a WebSocket of team
+// events (docs/mobile.md); to a desktop on another machine of the tailnet,
+// every method of the host and its store, the events in full and the
+// attached files (docs/remote.md). Client is that desktop's end.
 package remote
 
 import (
@@ -22,6 +24,7 @@ import (
 
 	"github.com/coder/websocket"
 	"github.com/zucchiniEvader/baggy/agent"
+	"github.com/zucchiniEvader/baggy/host"
 	"github.com/zucchiniEvader/baggy/store"
 	"github.com/zucchiniEvader/baggy/team"
 )
@@ -29,10 +32,9 @@ import (
 // DefaultPort is where the server listens unless told otherwise.
 const DefaultPort = 7841
 
-// Server answers the phone. Publish every team.Event to it.
+// Server answers phones and desktops. Publish every team.Event to it.
 type Server struct {
-	Store   *store.Store
-	Team    *team.Team
+	Host    *host.Host
 	Token   string
 	Name    string // the computer's name, shown on the phone
 	Version string
@@ -41,7 +43,7 @@ type Server struct {
 	Changed func(chatID string)
 
 	mu   sync.Mutex
-	subs map[chan []byte]struct{}
+	subs map[chan []byte]bool // true for a desktop's, which takes events in full
 	srv  *http.Server
 }
 
@@ -131,13 +133,63 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /v1/chats/{id}/read", s.read)
 	mux.HandleFunc("GET /v1/avatars/{name}", s.avatar)
 	mux.HandleFunc("GET /v1/events", s.events)
+	mux.HandleFunc("POST /v1/call", s.call)
+	mux.HandleFunc("GET /v1/files/{id}/{name}", s.file)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if !s.authorized(r) {
 			fail(w, http.StatusUnauthorized, errors.New("not paired"))
 			return
 		}
+		if desktopRoute(r) && !Tailnet(r.RemoteAddr) {
+			fail(w, http.StatusForbidden, errors.New("a desktop connects over Tailscale"))
+			return
+		}
 		mux.ServeHTTP(w, r)
 	})
+}
+
+// desktopRoute reports whether r is a desktop's: the host's methods, the
+// events in full, the attached files.
+func desktopRoute(r *http.Request) bool {
+	p := r.URL.Path
+	return p == "/v1/call" || strings.HasPrefix(p, "/v1/files/") || (p == "/v1/events" && r.URL.Query().Get("full") == "1")
+}
+
+var tailnets = []*net.IPNet{
+	{IP: net.IPv4(100, 64, 0, 0), Mask: net.CIDRMask(10, 32)},
+	{IP: net.ParseIP("fd7a:115c:a1e0::"), Mask: net.CIDRMask(48, 128)},
+}
+
+// Tailnet reports whether addr (host:port, or an IP) is on Tailscale's
+// network or this machine.
+func Tailnet(addr string) bool {
+	if h, _, err := net.SplitHostPort(addr); err == nil {
+		addr = h
+	}
+	ip := net.ParseIP(addr)
+	if ip == nil {
+		return false
+	}
+	if ip.IsLoopback() {
+		return true
+	}
+	for _, n := range tailnets {
+		if n.Contains(ip) {
+			return true
+		}
+	}
+	return false
+}
+
+// TailnetAddresses are this machine's Tailscale IPv4 addresses.
+func TailnetAddresses() []string {
+	var out []string
+	for _, a := range Addresses() {
+		if ip := net.ParseIP(a); ip != nil && !ip.IsLoopback() && Tailnet(a) {
+			out = append(out, a)
+		}
+	}
+	return out
 }
 
 // authorized checks the bearer token, or the token query parameter (a
@@ -166,44 +218,19 @@ func (s *Server) hello(w http.ResponseWriter, r *http.Request) {
 }
 
 // Snapshot is everything the chat list needs.
-type Snapshot struct {
-	Bots     []store.Bot              `json:"bots"`
-	Chats    []store.Chat             `json:"chats"`
-	Previews map[string]store.Preview `json:"previews"`
-	Unread   map[string]int           `json:"unread"`
-	Busy     []string                 `json:"busy"`
-}
+type Snapshot = host.Snapshot
 
 func (s *Server) snapshot(w http.ResponseWriter, r *http.Request) {
-	bots, err := s.Store.Bots()
+	snap, err := s.Host.Snapshot()
 	if err != nil {
 		fail(w, http.StatusInternalServerError, err)
 		return
-	}
-	chats, err := s.Store.Chats()
-	if err != nil {
-		fail(w, http.StatusInternalServerError, err)
-		return
-	}
-	pv, err := s.Store.Previews()
-	if err != nil {
-		fail(w, http.StatusInternalServerError, err)
-		return
-	}
-	snap := Snapshot{Bots: bots, Chats: chats, Previews: pv, Unread: map[string]int{}, Busy: []string{}}
-	for _, c := range chats {
-		if n := s.Store.Unread(c.ID); n > 0 {
-			snap.Unread[c.ID] = n
-		}
-		if s.Team.Busy(c.ID) {
-			snap.Busy = append(snap.Busy, c.ID)
-		}
 	}
 	reply(w, snap)
 }
 
 func (s *Server) chat(w http.ResponseWriter, r *http.Request) (store.Chat, bool) {
-	c, err := s.Store.Chat(r.PathValue("id"))
+	c, err := s.Host.Store.Chat(r.PathValue("id"))
 	if err != nil {
 		fail(w, http.StatusNotFound, err)
 		return c, false
@@ -217,7 +244,7 @@ func (s *Server) messages(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	after, _ := strconv.ParseInt(r.URL.Query().Get("after"), 10, 64)
-	es, err := s.Store.Messages(c.ID, after)
+	es, err := s.Host.Store.Messages(c.ID, after)
 	if err != nil {
 		fail(w, http.StatusInternalServerError, err)
 		return
@@ -270,11 +297,11 @@ func (s *Server) send(w http.ResponseWriter, r *http.Request) {
 	}
 	var quote *store.Quote
 	if b.ReplyTo > 0 {
-		if e, err := s.Store.Entry(c.ID, b.ReplyTo); err == nil {
+		if e, err := s.Host.Store.Entry(c.ID, b.ReplyTo); err == nil {
 			quote = team.QuoteOf(e)
 		}
 	}
-	if err := s.Team.Send(c.ID, b.Text, b.Mentions, quote); err != nil {
+	if err := s.Host.Team.Send(c.ID, b.Text, b.Mentions, quote); err != nil {
 		fail(w, http.StatusConflict, err)
 		return
 	}
@@ -286,7 +313,7 @@ func (s *Server) stop(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	s.Team.Stop(c.ID)
+	s.Host.Stop(c.ID)
 	reply(w, map[string]bool{"ok": true})
 }
 
@@ -295,7 +322,7 @@ func (s *Server) read(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if err := s.Store.MarkRead(c.ID); err != nil {
+	if err := s.Host.Store.MarkRead(c.ID); err != nil {
 		fail(w, http.StatusInternalServerError, err)
 		return
 	}
@@ -312,7 +339,7 @@ func (s *Server) avatar(w http.ResponseWriter, r *http.Request) {
 		fail(w, http.StatusBadRequest, errors.New("bad name"))
 		return
 	}
-	p := s.Store.AvatarPath(name)
+	p := s.Host.Store.AvatarPath(name)
 	if _, err := os.Stat(p); err != nil {
 		fail(w, http.StatusNotFound, err)
 		return
@@ -348,6 +375,9 @@ type AgentEvent struct {
 // (a tool's running output).
 func Wire(e team.Event) (Event, bool) {
 	out := Event{Kind: e.Kind, ChatID: e.ChatID, BotID: e.BotID, Turn: e.Turn, Since: e.Since}
+	if e.Kind == team.EventApproval { // approvals are the computer's
+		return out, false
+	}
 	if e.Entry != nil {
 		en := Slim(*e.Entry)
 		out.Entry = &en
@@ -376,8 +406,8 @@ func Wire(e team.Event) (Event, bool) {
 	return out, true
 }
 
-// Publish sends e to every connected phone. A phone too slow to keep up is
-// dropped; it reconnects and reloads.
+// Publish sends e to every connected phone and desktop. One too slow to
+// keep up is dropped; it reconnects and reloads.
 func (s *Server) Publish(e team.Event) {
 	s.mu.Lock()
 	n := len(s.subs)
@@ -385,17 +415,21 @@ func (s *Server) Publish(e team.Event) {
 	if n == 0 {
 		return
 	}
-	ev, ok := Wire(e)
-	if !ok {
-		return
+	var slim, full []byte
+	if ev, ok := Wire(e); ok {
+		slim, _ = json.Marshal(ev)
 	}
-	b, err := json.Marshal(ev)
-	if err != nil {
-		return
-	}
+	full, _ = json.Marshal(Full(e))
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	for ch := range s.subs {
+	for ch, desktop := range s.subs {
+		b := slim
+		if desktop {
+			b = full
+		}
+		if b == nil {
+			continue
+		}
 		select {
 		case ch <- b:
 		default:
@@ -405,13 +439,13 @@ func (s *Server) Publish(e team.Event) {
 	}
 }
 
-func (s *Server) subscribe() chan []byte {
-	ch := make(chan []byte, 512)
+func (s *Server) subscribe(desktop bool) chan []byte {
+	ch := make(chan []byte, map[bool]int{false: 512, true: 4096}[desktop])
 	s.mu.Lock()
 	if s.subs == nil {
-		s.subs = map[chan []byte]struct{}{}
+		s.subs = map[chan []byte]bool{}
 	}
-	s.subs[ch] = struct{}{}
+	s.subs[ch] = desktop
 	s.mu.Unlock()
 	return ch
 }
@@ -425,15 +459,15 @@ func (s *Server) unsubscribe(ch chan []byte) {
 	s.mu.Unlock()
 }
 
-// events is the WebSocket: one JSON event per text message, and a ping
-// every 20 seconds so a dead phone is noticed.
+// events is the WebSocket: one JSON event per text message (Wire, or Full
+// with full=1), and a ping every 20 seconds so a dead phone is noticed.
 func (s *Server) events(w http.ResponseWriter, r *http.Request) {
 	conn, err := websocket.Accept(w, r, &websocket.AcceptOptions{InsecureSkipVerify: true}) // a phone app sends no browser Origin
 	if err != nil {
 		return
 	}
 	defer conn.CloseNow()
-	ch := s.subscribe()
+	ch := s.subscribe(r.URL.Query().Get("full") == "1")
 	defer s.unsubscribe(ch)
 	ctx := conn.CloseRead(r.Context())
 	ping := time.NewTicker(20 * time.Second)

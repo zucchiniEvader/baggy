@@ -41,7 +41,10 @@ const (
 	// EventDelegation: a delegation of BotID's in the chat started, moved
 	// on or ended (Team.Delegations).
 	EventDelegation EventKind = "delegation"
-	EventError    EventKind = "error"     // Err is set
+	// EventApproval: an action of BotID's waits for the user (Waiting), or
+	// no longer does; Agent.Call is the action.
+	EventApproval EventKind = "approval"
+	EventError    EventKind = "error" // Err is set
 )
 
 type Event struct {
@@ -55,6 +58,8 @@ type Event struct {
 	Agent  agent.Event
 	Entry  *store.Entry
 	Err    error
+	// Waiting, on approval, is whether the action now waits.
+	Waiting bool
 }
 
 // Team runs every chat of a store.

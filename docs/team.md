@@ -12,7 +12,7 @@ tm := &team.Team{
 tm.Send(chatID, "plan the launch", mentions, replyTo)
 ```
 
-`Model` resolves a bot through `team.Config`: its provider, else the `default_provider` setting, else the first stored one, else the fallback config when it has a key; its model, else the provider's first. Optional fields: `Routing` has a group's owner pick who answers (below), `Memory` turns on every bot's memory (`memory.md`), `Compaction` summarizes a chat's older part before a request outgrows the model's window (below), `Retry` is each turn's `agent.Retry`, `Now` is the clock, and `Approve` runs before each tool call with the bot and chat and may block it (the desktop's shell approval).
+`Model` resolves a bot through `team.Config`: its provider, else the `default_provider` setting, else the first stored one, else the fallback config when it has a key; its model, else the provider's first. Optional fields: `Routing` has a group's owner pick who answers (below), `Memory` turns on every bot's memory (`memory.md`), `Compaction` summarizes a chat's older part before a request outgrows the model's window (below), `Retry` is each turn's `agent.Retry`, `Now` is the clock, and `Approve` runs before each tool call with the bot and chat and may block it (the host's approvals, docs/remote.md).
 
 ## Runs and events
 

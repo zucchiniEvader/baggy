@@ -10,6 +10,8 @@
 | Windows | ubuntu-latest, with NSIS | `windows/amd64` (Arm runs it emulated; two Windows targets would give installers of the same name) | `baggy-setup-<version>-amd64.exe`, the update |
 | Linux | ubuntu-latest | `linux/amd64`, `linux/arm64` | the archives, `install.sh`, the Debian packages, the updates |
 
+A fourth job builds `baggyd` (docs/remote.md) with Go alone, cgo off, for `darwin/arm64`, `darwin/amd64`, `linux/amd64` and `linux/arm64`, the version from the tag, and uploads `baggyd-<os>-<arch>.tar.gz`, `baggyd-checksums.txt` (SHA-256) and `baggyd-install.sh` (`scripts/install-baggyd.sh`). The names carry no version, so `releases/latest/download/…` reaches the latest's.
+
 The draft is published by hand after a look; publishing makes it the latest release, which apps update to.
 
 To release: bump `version` in `desktop/mygo.json`, add its `## <version>` section to `desktop/CHANGELOG.md` (the update window shows it; the build fails without it), commit, and push the tag:

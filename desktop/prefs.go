@@ -3,13 +3,11 @@ package main
 import (
 	"strconv"
 	"time"
-
-	"github.com/zucchiniEvader/baggy/store"
 )
 
 // prefs are the app's preferences, kept in the store's settings.
 type prefs struct {
-	st           *store.Store
+	st           Store
 	showThinking bool
 	commands     string // ModeRun, ModeAsk, ModeReview
 	keepRunning  bool   // closing the window hides it; the tray brings it back
@@ -36,7 +34,7 @@ func languageLabel(l string) string {
 	return L("Follow System")
 }
 
-func loadPrefs(st *store.Store) *prefs {
+func loadPrefs(st Store) *prefs {
 	p := &prefs{st: st, showThinking: true, keepRunning: true, language: "Auto", sideWidth: 240}
 	get := func(key string, def bool) bool {
 		switch st.Setting(key) {
@@ -94,10 +92,12 @@ func (p *prefs) save() {
 	p.st.SetSetting("pref.side_width", strconv.FormatFloat(float64(p.sideWidth), 'f', 0, 32))
 }
 
-// apply puts the preferences into effect.
+// apply puts the preferences into effect. The host reads the Commands
+// mode and compaction's from the settings before each action and turn.
 func (a *app) applyPrefs() {
-	a.approvals.setMode(a.prefs.commands)
-	a.policy.Store(compactPolicy{a.prefs.compactWarm, a.prefs.compactCold, a.prefs.cacheTTL})
+	if a.st.Setting("pref.commands") != a.prefs.commands {
+		a.st.SetSetting("pref.commands", a.prefs.commands)
+	}
 	setLanguage(a.prefs.language, a.locale)
 }
 
@@ -136,17 +136,4 @@ func modeOf(label string) string {
 		}
 	}
 	return ModeRun
-}
-
-// compactPolicy is the compaction preferences as the turns read them, from
-// their goroutines (app.policy holds one).
-type compactPolicy struct {
-	warm, cold float64
-	ttl        time.Duration
-}
-
-// compactionPolicy is team.Compaction's Policy over the preferences.
-func (a *app) compactionPolicy() (float64, float64, time.Duration) {
-	p, _ := a.policy.Load().(compactPolicy)
-	return p.warm, p.cold, p.ttl
 }

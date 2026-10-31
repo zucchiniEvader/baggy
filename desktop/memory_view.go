@@ -9,10 +9,9 @@ import (
 	"github.com/zucchiniEvader/baggy/memory"
 	"github.com/zucchiniEvader/baggy/provider/connect"
 	"github.com/zucchiniEvader/baggy/store"
-	"github.com/zucchiniEvader/baggy/team"
 )
 
-func teamConfig(a *app, b store.Bot) (connect.Config, error) { return team.Config(a.st, b, a.fallback) }
+func teamConfig(a *app, b store.Bot) (connect.Config, error) { return a.rt.Config(b) }
 
 // memoryForm edits a bot's MEMORY.md.
 type memoryForm struct {
@@ -23,18 +22,16 @@ type memoryForm struct {
 	changed   bool // the file changed under the editor
 }
 
-func (a *app) memoryOf(b store.Bot) *memory.Memory { return memory.New(a.st.Workspace(b.ID)) }
-
 // memoryDetails is the memory rows of a bot's inspector: how much of
 // MEMORY.md loads, and Edit… and Show Folder.
 func (a *app) memoryDetails(c *ui.Context, b store.Bot) {
 	t := c.Theme()
-	m := a.memoryOf(b)
-	lines, bytes, cut := m.Loaded()
+	m := a.rt.Memory(b.ID)
+	lines, bytes, cut := m.Lines, m.Bytes, m.Cut
 	inspectorSection(c, L("Memory"), func() {
 		row := listRow(c.Key("edit-memory"), rowPlain).Label(L("Edit…")).Tooltip(L("Edit…"))
 		if row.Clicked() {
-			text := m.Read()
+			text := m.Text
 			a.memSheet = &memoryForm{open: true, bot: b, was: text, text: text}
 		}
 		row.Children(func() {
@@ -66,7 +63,6 @@ func (a *app) memoryDetails(c *ui.Context, b store.Bot) {
 
 func (a *app) memorySheetView(c *ui.Context) {
 	f := a.memSheet
-	m := a.memoryOf(f.bot)
 	ui.Modal(c, &f.open, func() {
 		dialogBody(c, 580, 14).Children(func() {
 			dialogTitle(c, L("%s's memory", f.bot.Name), L("MEMORY.md opens every turn of this bot. Credentials are redacted when saved."))
@@ -82,16 +78,17 @@ func (a *app) memorySheetView(c *ui.Context) {
 				}
 				if f.changed {
 					if button(c, L("Reload")).Clicked() {
-						f.was, f.text = m.Read(), m.Read()
+						text := a.rt.Memory(f.bot.ID).Text
+						f.was, f.text = text, text
 						f.changed, f.err = false, ""
 					}
 					if button(c, L("Overwrite")).Clicked() {
-						f.was = m.Read()
+						f.was = a.rt.Memory(f.bot.ID).Text
 						f.changed = false
 					}
 				}
 				if primaryButton(c, L("Save"), false).Clicked() {
-					err := m.Save(f.was, f.text)
+					err := a.rt.SaveMemory(f.bot.ID, f.was, f.text)
 					switch {
 					case errors.Is(err, memory.ErrChanged):
 						f.changed, f.err = true, L("The bot changed its memory while you edited. Reload to see it, or Overwrite.")

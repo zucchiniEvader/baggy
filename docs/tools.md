@@ -24,7 +24,7 @@ Each takes a `Dir`; relative paths resolve against it.
 
 `find` and `grep` skip what `.gitignore` files ignore (the root's and every folder's on the way, with `#` comments, `!` exceptions, `/` anchors, trailing `/` for folders, `*`, `?`, `**`, the last matching rule deciding), and `.git`, `node_modules`, `.hg`, `.svn`, `__pycache__`, `.venv`, `target` and `.cache`; `grep` skips binary files.
 
-`go run ./cmd/smoke [model]` gives a model these tools in a scratch directory and asks for a multi-step task; `GOBOT_TASK=edit` asks for one with `find`, `grep` and `edit_file` and no shell, which DeepSeek (`deepseek-chat`) did in five calls. Asking permission before a shell command is the desktop's (`desktop.md`, through `team.Team.Approve`).
+`go run ./cmd/smoke [model]` gives a model these tools in a scratch directory and asks for a multi-step task; `GOBOT_TASK=edit` asks for one with `find`, `grep` and `edit_file` and no shell, which DeepSeek (`deepseek-chat`) did in five calls. Asking permission before a shell command is the host's (`remote.md`, through `team.Team.Approve`).
 
 ## Partial results
 

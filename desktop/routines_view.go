@@ -159,7 +159,7 @@ func (a *app) routineSheetView(c *ui.Context) {
 				}
 				if primaryButton(c, L("Run Now"), false).Clicked() {
 					f.open = false
-					if err := a.team.RunRoutine(r); err != nil {
+					if err := a.rt.RunRoutine(r); err != nil {
 						a.do(err)
 					}
 				}

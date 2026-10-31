@@ -11,6 +11,7 @@ import (
 
 	"github.com/zucchiniEvader/baggy/agent"
 	"github.com/zucchiniEvader/baggy/claudecode"
+	"github.com/zucchiniEvader/baggy/host"
 	"github.com/zucchiniEvader/baggy/team"
 )
 
@@ -37,9 +38,9 @@ func TestClaudeCodeApproval(t *testing.T) {
 	dir := t.TempDir()
 	bin := filepath.Join(dir, "claude")
 	os.WriteFile(bin, []byte(fakeClaude), 0o755)
-	h.a.team.ClaudeCode = claudecode.NewManager()
-	h.a.team.ClaudeCode.Command = bin
-	defer h.a.team.ClaudeCode.StopAll()
+	h.tm.ClaudeCode = claudecode.NewManager()
+	h.tm.ClaudeCode.Command = bin
+	defer h.tm.ClaudeCode.StopAll()
 	old := team.ClaudeCodeSettle
 	team.ClaudeCodeSettle = 10 * time.Second
 	defer func() { team.ClaudeCodeSettle = old }()
@@ -69,8 +70,8 @@ func TestClaudeCodeApproval(t *testing.T) {
 func TestApprovalRulesForClaudeCode(t *testing.T) {
 	bash := agent.Part{Name: team.ClaudeCodeCall + "Bash", Args: []byte(`{"command":"go test ./..."}`)}
 	fetch := agent.Part{Name: team.ClaudeCodeCall + "WebFetch", Args: []byte(`{"url":"https://example.com"}`)}
-	if rule(bash) != "claude_code:Bash:go test ./..." || rule(fetch) != "tool:claude_code:WebFetch" {
-		t.Errorf("rules %q %q", rule(bash), rule(fetch))
+	if host.Rule(bash) != "claude_code:Bash:go test ./..." || host.Rule(fetch) != "tool:claude_code:WebFetch" {
+		t.Errorf("rules %q %q", host.Rule(bash), host.Rule(fetch))
 	}
 	if describe(bash) != "in Claude Code, Bash: go test ./..." {
 		t.Errorf("describe %q", describe(bash))

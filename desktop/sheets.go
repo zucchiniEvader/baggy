@@ -264,7 +264,7 @@ func (a *app) iconPicker(c *ui.Context, name *string) {
 // modelHint is the model a bot runs on with no model set.
 func (a *app) modelHint(providerName string) string {
 	b := store.Bot{Provider: a.providerID(providerName)}
-	if cfg, err := team.Config(a.st, b, a.fallback); err == nil {
+	if cfg, err := a.rt.Config(b); err == nil {
 		return cfg.Model
 	}
 	return L("model id")

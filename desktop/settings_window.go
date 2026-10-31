@@ -62,6 +62,7 @@ type settingsState struct {
 	srv     *serverForm // its form
 	srvNav  listNav
 	confirm *confirmation
+	runtime *runtimeForm
 }
 
 // openSettings shows the Settings window, on a pane ("" keeps the one shown).
@@ -273,6 +274,7 @@ func (a *app) generalPane(c *ui.Context) {
 	card(c, func() {
 		changed = switchRow(c, L("Keep running when closed"), L("Bots keep working; the tray icon opens the window again."), &pr.keepRunning) || changed
 	})
+	a.runtimeSection(c)
 	if changed {
 		pr.save()
 		a.applyPrefs()

@@ -20,6 +20,8 @@ import (
 
 	"github.com/egoist/mygo/ui"
 	"github.com/zucchiniEvader/baggy/agent"
+	"github.com/zucchiniEvader/baggy/host"
+	"github.com/zucchiniEvader/baggy/memory"
 	"github.com/zucchiniEvader/baggy/provider/connect"
 	"github.com/zucchiniEvader/baggy/store"
 	"github.com/zucchiniEvader/baggy/team"
@@ -63,6 +65,8 @@ func (echoTool) Execute(_ context.Context, a json.RawMessage) tool.Result {
 type harness struct {
 	t     *testing.T
 	st    *store.Store
+	tm    *team.Team
+	host  *host.Host
 	a     *app
 	tt    *ui.Tester
 	posts chan func()
@@ -78,10 +82,10 @@ func newHarness(t *testing.T, m agent.Model) *harness {
 	h := &harness{t: t, st: st, posts: make(chan func(), 1024)}
 	tm := &team.Team{Store: st, Model: func(store.Bot) (agent.Model, error) { return m, nil },
 		Tools: func(store.Bot, string) []tool.Tool { return []tool.Tool{echoTool{}} }}
-	h.a = newApp(st, tm, func(fn func()) { h.posts <- fn })
-	h.a.fallback = connect.Config{APIKey: "test"} // a provider, so the chat shows rather than the setup
+	tm.Fallback = connect.Config{APIKey: "test"} // a provider, so the chat shows rather than the setup
+	h.tm, h.host = tm, host.New(st, tm)
+	h.a = newApp(st, h.host, func(fn func()) { h.posts <- fn })
 	tm.Emit = func(e team.Event) { h.a.post(func() { h.a.apply(e) }) }
-	tm.Approve = h.a.approvals.approve
 	h.a.applyPrefs()
 	h.tt = ui.NewTester(h.a.root, 1000, 700)
 	return h
@@ -133,8 +137,7 @@ func TestSendShowsReplyAndRestores(t *testing.T) {
 	}
 
 	// A new app over the same store shows the same transcript.
-	b := newApp(h.st, h.a.team, func(fn func()) { fn() })
-	b.fallback = h.a.fallback
+	b := newApp(h.st, h.host, func(fn func()) { fn() })
 	b.applyPrefs()
 	tt := ui.NewTester(b.root, 1000, 700)
 	if !tt.HasText("hello") || !tt.HasText(" from Chef, re: hello") {
@@ -229,7 +232,7 @@ func TestShellApproval(t *testing.T) {
 	h.send("again")
 	h.pump("the card", func() bool { return h.tt.HasText("Deny") })
 	h.tt.Click("Deny")
-	h.pump("the refusal", func() bool { return h.tt.HasText("result: "+Declined) && h.idle() })
+	h.pump("the refusal", func() bool { return h.tt.HasText("result: "+host.Declined) && h.idle() })
 }
 
 func TestCreateBotSheet(t *testing.T) {
@@ -382,7 +385,7 @@ func TestRender(t *testing.T) {
 	dmScout, _ := h.st.DMOf(scout.ID)
 	h.a.selectChat(dmScout.ID)
 	h.a.inspector = false
-	h.a.fallback = connect.Config{}
+	h.tm.Fallback = connect.Config{}
 	h.tt.SetDark(false)
 	h.tt.Frame()
 	f, _ := os.Create(filepath.Join(dir, "setup-light.png"))
@@ -390,7 +393,7 @@ func TestRender(t *testing.T) {
 	f.Close()
 
 	// New Bot's templates, Scout's sheet, and a Writing Room.
-	h.a.fallback = connect.Config{APIKey: "test"}
+	h.tm.Fallback = connect.Config{APIKey: "test"}
 	shots := []struct {
 		name string
 		open func()
@@ -471,7 +474,7 @@ func TestGroupFromTemplate(t *testing.T) {
 func TestMemoryEditorConflict(t *testing.T) {
 	h := newHarness(t, script(func(string, []agent.Message) agent.Message { return say("ok") }))
 	chef := h.a.bots[0]
-	m := h.a.memoryOf(chef)
+	m := memory.New(h.st.Workspace(chef.ID))
 	m.Update("append", "likes tea", "", "x")
 	h.a.inspector = true
 	h.tt.Frame()
@@ -562,7 +565,7 @@ func TestUnreadAndNotification(t *testing.T) {
 	dmScout, _ := h.st.DMOf(scout.ID)
 	h.a.selectChat(dmScout.ID) // the user looks at Scout while Chef works
 	dmChef, _ := h.st.DMOf(chef.ID)
-	h.a.team.Send(dmChef.ID, "write the report", nil, nil)
+	h.tm.Send(dmChef.ID, "write the report", nil, nil)
 	h.pump("the reply", func() bool { return h.idle() && h.a.unread[dmChef.ID] == 1 })
 	h.tt.Frame()
 	if len(notes) != 1 || notes[0] != "Chef: Report ready." || !h.tt.HasText("1 unread") {
@@ -617,7 +620,7 @@ func TestAutoReviewAndAlwaysAllow(t *testing.T) {
 
 func TestSetupThenRetry(t *testing.T) {
 	h := newHarness(t, script(func(bot string, msgs []agent.Message) agent.Message { return say("ready") }))
-	h.a.fallback = connect.Config{}
+	h.tm.Fallback = connect.Config{}
 	h.tt.Frame()
 	if !h.tt.HasText("Set up a model") {
 		t.Fatalf("no setup: %q", h.tt.Texts())
@@ -638,7 +641,7 @@ func TestSetupThenRetry(t *testing.T) {
 
 	// A reply that failed for want of a model offers Retry, which runs it again.
 	failing := true
-	h.a.team.Model = func(store.Bot) (agent.Model, error) {
+	h.tm.Model = func(store.Bot) (agent.Model, error) {
 		if failing {
 			return nil, team.ErrNoProvider
 		}
@@ -829,14 +832,14 @@ func TestRoutineNotificationsAndBadge(t *testing.T) {
 	h.a.selectChat(dmScout.ID) // looking elsewhere
 	r, _ := h.st.SaveRoutine(store.Routine{BotID: chef.ID, Name: "Brief", Prompt: "Brief me", Schedule: "every 1h", Enabled: true})
 
-	h.a.team.RunRoutine(r)
+	h.tm.RunRoutine(r)
 	h.pump("the run", func() bool { return h.idle() && len(notes) == 1 })
 	if notes[0] != "Chef · Brief: Two meetings today." || badge != 1 {
 		t.Fatalf("notes %q badge %d", notes, badge)
 	}
 
 	reply = "PASS" // nothing to report: no notification, nothing unread
-	h.a.team.RunRoutine(r)
+	h.tm.RunRoutine(r)
 	h.pump("the quiet run", func() bool { return h.idle() })
 	if len(notes) != 1 || badge != 1 {
 		t.Fatalf("a pass notified: %q badge %d", notes, badge)
@@ -851,8 +854,8 @@ func TestRoutineNotificationsAndBadge(t *testing.T) {
 	// Away a week since the user last wrote: the due routine pauses, and says so.
 	h.st.Append(dmScout.ID, store.User, "", store.Meta{}, agent.Message{Role: agent.RoleUser, Parts: []agent.Part{{Kind: agent.PartText, Text: "hi"}}})
 	h.a.selectChat(dmScout.ID)
-	h.a.team.Now = func() time.Time { return time.Now().Add(8 * 24 * time.Hour) }
-	h.a.team.TickRoutines()
+	h.tm.Now = func() time.Time { return time.Now().Add(8 * 24 * time.Hour) }
+	h.tm.TickRoutines()
 	h.pump("the pause notice", func() bool { return len(h.posts) == 0 && len(notes) == 2 })
 	if !strings.HasPrefix(notes[1], `Chef: Paused the routine "Brief"`) {
 		t.Fatalf("notes %q", notes)
@@ -883,7 +886,7 @@ func TestAttachDoesNotBlockTheFrame(t *testing.T) {
 
 func TestContextSettings(t *testing.T) {
 	h := newHarness(t, script(func(string, []agent.Message) agent.Message { return say("ok") }))
-	if w, c, ttl := h.a.compactionPolicy(); w != 0.8 || c != 0.4 || ttl != 5*time.Minute {
+	if w, c, ttl := h.host.Policy(); w != 0.8 || c != 0.4 || ttl != 5*time.Minute {
 		t.Fatalf("defaults %v %v %v", w, c, ttl)
 	}
 	h.a.openSettings(paneModels)
@@ -898,7 +901,7 @@ func TestContextSettings(t *testing.T) {
 		t.Fatal(err)
 	}
 	st.Frame()
-	if _, c, _ := h.a.compactionPolicy(); c != 0.3 || h.st.Setting("pref.compact_cold") != "0.30" {
+	if _, c, _ := h.host.Policy(); c != 0.3 || h.st.Setting("pref.compact_cold") != "0.30" {
 		t.Fatalf("cold %v, stored %q", c, h.st.Setting("pref.compact_cold"))
 	}
 	if p := loadPrefs(h.st); p.compactCold != 0.3 || p.compactWarm != 0.8 || p.cacheTTL != 5*time.Minute {
@@ -1004,7 +1007,7 @@ func TestAttachedPictureShowsAsAThumbnail(t *testing.T) {
 	h := newHarness(t, script(func(string, []agent.Message) agent.Message { return say("nice") }))
 	var buf bytes.Buffer
 	png.Encode(&buf, image.NewRGBA(image.Rect(0, 0, 1200, 600)))
-	if err := h.a.team.SendFiles(h.a.sel, "", []team.Attachment{{Name: "wide.png", Data: buf.Bytes()}}, nil, nil); err != nil {
+	if err := h.tm.SendFiles(h.a.sel, "", []team.Attachment{{Name: "wide.png", Data: buf.Bytes()}}, nil, nil); err != nil {
 		t.Fatal(err)
 	}
 	h.pump("the reply", func() bool { return h.tt.HasText("nice") && h.idle() })
@@ -1148,8 +1151,8 @@ func TestMCPServerEditor(t *testing.T) {
 	h := newHarness(t, script(func(string, []agent.Message) agent.Message { return say("ok") }))
 	path := filepath.Join(t.TempDir(), "mcp.json")
 	os.WriteFile(path, []byte(`{"mcpServers": {"Old": {"command": "nope-not-a-command", "alwaysAllow": ["x"]}}}`), 0o644)
-	h.a.team.Plugins, h.a.mcpPath = mcp.NewManager(path), path
-	defer h.a.team.Plugins.Close()
+	h.tm.Plugins, h.a.mcpPath, h.host.MCPPath = mcp.NewManager(path), path, path
+	defer h.tm.Plugins.Close()
 	h.a.openSettings(paneServers)
 	st := ui.NewTester(h.a.settingsRoot, 800, 900)
 	h.pump("the check", func() bool { return !h.a.checking })
@@ -1240,7 +1243,7 @@ func TestRunningToolShowsWhatItHasSoFar(t *testing.T) {
 		return agent.Message{StopReason: agent.StopToolUse, Parts: []agent.Part{{Kind: agent.PartToolCall, CallID: "c1", Name: "find", Args: json.RawMessage(`{}`)}}}
 	}))
 	slow := slowTool{release: make(chan struct{})}
-	h.a.team.Tools = func(store.Bot, string) []tool.Tool { return []tool.Tool{slow} }
+	h.tm.Tools = func(store.Bot, string) []tool.Tool { return []tool.Tool{slow} }
 	h.send("look")
 	// Folded, the turn says only what it is doing; opened, the tool's card
 	// shows what it has so far.
@@ -1276,7 +1279,7 @@ func TestDelegationInRunningTasks(t *testing.T) {
 			Args: json.RawMessage(`{"tasks":[{"title":"Dig","brief":"dig in"}]}`)}}}
 	}))
 	h.send("look into it")
-	h.pump("the task", func() bool { return h.tt.HasText("on it") && len(h.a.team.Delegations("")) == 1 })
+	h.pump("the task", func() bool { return h.tt.HasText("on it") && len(h.tm.Delegations("")) == 1 })
 	if err := h.tt.Click("Tasks (1)"); err != nil {
 		t.Fatal(err)
 	}

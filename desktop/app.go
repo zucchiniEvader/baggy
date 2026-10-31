@@ -1,13 +1,13 @@
 package main
 
 import (
+	"os"
 	"strings"
 	"sync/atomic"
 
 	"github.com/egoist/mygo/ui"
 	"github.com/zucchiniEvader/baggy/agent"
 	"github.com/zucchiniEvader/baggy/mcp"
-	"github.com/zucchiniEvader/baggy/provider/connect"
 	"github.com/zucchiniEvader/baggy/store"
 	"github.com/zucchiniEvader/baggy/team"
 )
@@ -15,9 +15,17 @@ import (
 // app is the window's state. It belongs to the main thread: team events
 // reach it through post.
 type app struct {
-	st    *store.Store
-	team  *team.Team
-	phone *phone // the phone app's server
+	st Store
+	rt Runtime
+	// remote is the runtime on another machine the window shows; nil when
+	// the bots run in this process.
+	remote     *remoteBackend
+	remoteLink string // its link
+	dataDir    string // where runtime.json is kept; "" in tests
+	relaunch   func() // quits and starts the app again
+	// readFile reads a file the store names (avatars, attachments).
+	readFile func(path string) ([]byte, error)
+	phone    *phone // the phone app's server
 	// post runs fn on the main thread and draws a frame; a window's Update.
 	post func(fn func())
 
@@ -64,10 +72,8 @@ type app struct {
 	routine    *routineSheet
 	setup      *setup
 	approvals  *approvals
-	policy     atomic.Value // compactPolicy
 	prefs      *prefs
 
-	fallback       connect.Config                  // the provider when none is stored
 	claudeCode     atomic.Value                    // string: "" when the claude command is found, else why not (English)
 	locale         string                          // the system's language
 	readImage      func() []byte                   // the clipboard's image as PNG, or nil
@@ -119,9 +125,9 @@ type confirmation struct {
 	run     func()
 }
 
-func newApp(st *store.Store, tm *team.Team, post func(func())) *app {
-	a := &app{st: st, team: tm, post: post, views: map[string]*chatView{}, busy: map[string]bool{}, runFrom: map[string]int64{}, unread: map[string]int{}, focused: true}
-	a.approvals = newApprovals(a)
+func newApp(st Store, rt Runtime, post func(func())) *app {
+	a := &app{st: st, rt: rt, readFile: os.ReadFile, post: post, views: map[string]*chatView{}, busy: map[string]bool{}, runFrom: map[string]int64{}, unread: map[string]int{}, focused: true}
+	a.approvals = &approvals{a: a}
 	a.phone = newPhone(st)
 	a.prefs = loadPrefs(st)
 	a.sideWidth, a.inspector, a.sidebarShown = a.prefs.sideWidth, a.prefs.inspector, true
@@ -135,18 +141,24 @@ func newApp(st *store.Store, tm *team.Team, post func(func())) *app {
 
 // reload reads bots and chats again.
 func (a *app) reload() {
-	a.bots, _ = a.st.Bots()
+	snap, _ := a.rt.Snapshot()
+	a.bots, a.chats, a.previews = snap.Bots, snap.Chats, snap.Previews
 	a.byID = map[string]store.Bot{}
 	for _, b := range a.bots {
 		a.byID[b.ID] = b
 	}
-	a.chats, _ = a.st.Chats()
-	a.previews, _ = a.st.Previews()
+	if a.previews == nil {
+		a.previews = map[string]store.Preview{}
+	}
 	for id, p := range a.previews { // a reply's markdown reads as text
 		p.Text = strings.Join(strings.Fields(plainText(p.Text)), " ")
 		a.previews[id] = p
 	}
-	a.countUnread()
+	a.unread = map[string]int{}
+	for id, n := range snap.Unread {
+		a.unread[id] = n
+	}
+	a.showBadge()
 	if a.sel != "" && a.chat(a.sel) == nil {
 		a.sel = ""
 		if len(a.chats) > 0 {
@@ -227,6 +239,14 @@ func (a *app) apply(e team.Event) {
 		a.reload()
 		return
 	case team.EventDelegation: // Running tasks draws it as it stands
+		return
+	case team.EventApproval:
+		if e.Agent.Call != nil {
+			a.markPending(e.ChatID, e.Agent.Call.CallID, e.Waiting)
+			if e.Waiting && a.notify != nil && !a.watching(e.ChatID) {
+				a.notify(a.name(e.BotID), L("wants to run a command"), oneLine(describe(*e.Agent.Call), 200), e.ChatID)
+			}
+		}
 		return
 	}
 	v := a.views[e.ChatID]
@@ -352,15 +372,14 @@ func (a *app) sendDraft(interrupt bool) {
 		}
 	}
 	mentions = append(mentions, a.typedMentions(text, mentions)...)
-	if err := a.team.SendFiles(a.sel, text, v.files, mentions, v.reply); err != nil {
+	if err := a.rt.SendFiles(a.sel, text, v.files, mentions, v.reply); err != nil {
 		v.notice(err.Error())
 		return
 	}
 	v.draft, v.mentions, v.reply, v.files, v.atOpen = "", nil, nil, nil, false
 	v.focus = true
 	if interrupt {
-		a.approvals.denyAll(a.sel)
-		a.team.Interrupt(a.sel)
+		a.rt.Interrupt(a.sel) // what waits for approval is denied too
 	}
 }
 
@@ -385,10 +404,7 @@ func (a *app) typedMentions(text string, picked []string) []string {
 	return out
 }
 
-func (a *app) stop() {
-	a.team.Stop(a.sel)
-	a.approvals.denyAll(a.sel)
-}
+func (a *app) stop() { a.rt.Stop(a.sel) }
 
 // replyTo starts a reply to the row's entry.
 func (a *app) replyTo(r row) {
@@ -430,13 +446,13 @@ func (a *app) deleteChat(c store.Chat) {
 	if c.Kind == store.DM {
 		name := a.name(c.Owner)
 		a.ask(L("Delete %s?", name), L("This deletes the bot, its direct chat, and its seat in every group. Its workspace folder is kept."), L("Delete Bot"), func() {
-			a.team.Stop(c.ID)
+			a.rt.Stop(c.ID)
 			a.do(a.st.DeleteBot(c.Owner))
 		})
 		return
 	}
 	a.ask(L("Delete %s?", c.Title), L("This deletes the group and its messages. The bots stay."), L("Delete Group"), func() {
-		a.team.Stop(c.ID)
+		a.rt.Stop(c.ID)
 		a.do(a.st.DeleteChat(c.ID))
 	})
 }
@@ -471,4 +487,28 @@ func toolStatus(r row) string {
 		return L("done")
 	}
 	return L("running")
+}
+
+// resync reads everything again after events may have been missed: the
+// chats, which of them work, and the transcripts open.
+func (a *app) resync() {
+	if a.remote != nil { // read before the server answered, perhaps
+		a.prefs = loadPrefs(a.st)
+		a.applyPrefs()
+	}
+	a.reload()
+	snap, _ := a.rt.Snapshot()
+	a.busy = map[string]bool{}
+	for _, id := range snap.Busy {
+		a.busy[id] = true
+	}
+	for id, v := range a.views {
+		if es, err := a.st.Messages(id, 0); err == nil {
+			v.rows, v.stream = buildRows(es), map[string]int{}
+			v.working, v.turn, v.retrying = "", "", ""
+			for _, w := range a.rt.Waiting(id) {
+				a.markPending(id, w.ID, true)
+			}
+		}
+	}
 }

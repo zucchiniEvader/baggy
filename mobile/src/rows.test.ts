@@ -47,3 +47,9 @@ test("the working row names the tool", () => {
   const rows = rowsOf({ ...group, kind: "dm" }, { loaded: true, live: [], entries: [], working: "a", tool: "shell" }, true, bots);
   expect((rows[0] as any).label).toBe("Running shell…");
 });
+
+test("a reply that failed for want of a model reads as the desktop says it", () => {
+  const room = { loaded: true, live: [], entries: [entry("a", "assistant", [{ kind: "text", text: "no model is set up yet: add a provider in Settings", is_error: true }], "t", { stop_reason: "error" })] };
+  const rows = rowsOf({ id: "c", kind: "dm", owner: "a", members: [] } as any, room, false, bots);
+  expect((rows[0] as any).text).toBe("No model is set up yet. Add a provider in Baggy's Settings on your computer.");
+});

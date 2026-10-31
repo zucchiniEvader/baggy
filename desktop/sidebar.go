@@ -140,7 +140,8 @@ func (a *app) sidebar(c *ui.Context) {
 				a.openSettings("")
 			}
 			ui.Spacer(c)
-			if !a.hasProvider() {
+			a.serverStatus(c)
+			if a.remote == nil && !a.hasProvider() {
 				ui.Text(c, L("No model set up")).FontSize(11).TextColor(pal(c).orange).SingleLine().Shrink(1).MinWidth(0)
 			}
 		})
@@ -150,7 +151,7 @@ func (a *app) sidebar(c *ui.Context) {
 
 func (a *app) hasProvider() bool {
 	ps, _ := a.st.Providers()
-	return len(ps) > 0 || a.fallback.APIKey != ""
+	return len(ps) > 0 || a.rt.HasFallback()
 }
 
 // shownChats are the chats the list shows, filtered by the search: the

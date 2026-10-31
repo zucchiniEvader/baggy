@@ -12,14 +12,13 @@ import (
 
 	"github.com/egoist/mygo/ui"
 	"github.com/zucchiniEvader/baggy/remote"
-	"github.com/zucchiniEvader/baggy/store"
 	"rsc.io/qr"
 )
 
 // phone is the phone app's way in: the remote server, listening while the
 // Phone pane's switch is on, behind a token the pairing code carries.
 type phone struct {
-	st   *store.Store
+	st   Store
 	srv  *remote.Server
 	on   bool
 	port int
@@ -30,14 +29,14 @@ type phone struct {
 	qrFor string // the URL qr shows
 }
 
-func newPhone(st *store.Store) *phone {
+func newPhone(st Store) *phone {
 	name, _ := os.Hostname()
 	name = strings.TrimSuffix(name, ".local")
 	ph := &phone{st: st, port: remote.DefaultPort, on: st.Setting("pref.phone") == "1"}
 	if p, err := strconv.Atoi(st.Setting("phone.port")); err == nil && p > 0 {
 		ph.port = p
 	}
-	ph.srv = &remote.Server{Store: st, Token: st.Setting("phone.token"), Name: name}
+	ph.srv = &remote.Server{Token: st.Setting("phone.token"), Name: name}
 	return ph
 }
 
@@ -118,6 +117,10 @@ func qrImage(code *qr.Code, scale int) image.Image {
 func (a *app) phonePane(c *ui.Context) {
 	t := c.Theme()
 	p := pal(c)
+	if a.remote != nil {
+		a.remotePhonePane(c)
+		return
+	}
 	ph := a.phone
 	sectionTitle(c, L("Connection"))
 	card(c, func() {

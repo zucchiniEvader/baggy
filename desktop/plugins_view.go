@@ -1,12 +1,10 @@
 package main
 
 import (
-	"context"
 	"maps"
 	"slices"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/egoist/mygo/ui"
 	"github.com/zucchiniEvader/baggy/mcp"
@@ -21,12 +19,12 @@ const mcpTemplate = `{
 // checkServers connects every server in the background and shows how each
 // stands.
 func (a *app) checkServers() {
-	if a.team.Plugins == nil || a.checking {
+	if a.checking {
 		return
 	}
 	a.checking = true
 	go func() {
-		st := a.team.Plugins.Statuses(context.Background())
+		st := a.rt.CheckPlugins()
 		a.post(func() { a.servers, a.checking = st, false })
 	}()
 }
@@ -135,12 +133,9 @@ func (f *serverForm) dirty() bool {
 // pluginsView is Settings' MCP Servers pane: the servers of mcp.json as a
 // list, or one of them as a page that edits it.
 func (a *app) pluginsView(c *ui.Context) {
-	if a.team.Plugins == nil {
-		return
-	}
 	servers := a.servers
 	if servers == nil {
-		servers = a.team.Plugins.Known()
+		servers = a.rt.Plugins()
 		a.checkServers() // how they stand, in a moment
 	}
 	var chosen *mcp.Status
@@ -196,8 +191,8 @@ func (a *app) serverList(c *ui.Context, servers []mcp.Status) {
 	ui.Scroll(c).Grow(1).MinHeight(0).Children(func() {
 		ui.Column(c).MaxWidth(620).FillWidth().Margin(0, ui.Auto).Padding(4, 28, 28).Gap(6).Children(func() {
 			ui.Text(c, L("MCP servers give every bot their tools, which it calls from codemode scripts. They are kept in mcp.json, the format Claude Desktop and Cursor use.")).FontSize(12).LineHeight(1.5).TextColor(t.TextMuted).Padding(0, 0, 8)
-			if err := a.team.Plugins.FileError(); err != nil {
-				errorRow(c, err.Error())
+			if err := a.rt.PluginsError(); err != "" {
+				errorRow(c, err)
 			}
 			if len(servers) == 0 {
 				ui.Column(c).Radius(cardRadius).Background(p.surface).Border(1, p.border).Padding(32, 16).Gap(12).AlignItems(ui.Center).Children(func() {
@@ -223,7 +218,7 @@ func (a *app) serverList(c *ui.Context, servers []mcp.Status) {
 					label = L("Connecting…")
 				}
 				if smallButton(c.Key("check-mcp"), label, secondary).Clicked() && !a.checking {
-					a.team.Plugins.Close() // read the file again and start fresh
+					a.rt.RestartPlugins() // read the file again and start fresh
 					a.checkServers()
 				}
 				if len(servers) > 0 && smallButton(c.Key("add-server"), L("Add Server…"), secondary).Clicked() {
@@ -468,7 +463,7 @@ func (a *app) serverActions(c *ui.Context, f *serverForm) {
 func (a *app) saveServer(f *serverForm) {
 	s, err := f.server()
 	if err == nil {
-		err = mcp.SaveServer(a.mcpPath, f.old, s)
+		err = a.rt.SaveServer(f.old, s)
 	}
 	if err != nil {
 		f.err = err.Error()
@@ -477,12 +472,12 @@ func (a *app) saveServer(f *serverForm) {
 	f.err = ""
 	a.serversChanged()
 	a.set.srvSel, a.set.srvHi, a.set.srv = s.Name, s.Name, nil
-	a.servers = a.team.Plugins.Known()
+	a.servers = a.rt.Plugins()
 }
 
 // saveServerFile writes one server as it is, as turning it on or off.
 func (a *app) saveServerFile(name string, s mcp.Server) {
-	a.do(mcp.SaveServer(a.mcpPath, name, s))
+	a.do(a.rt.SaveServer(name, s))
 	a.serversChanged()
 }
 
@@ -494,7 +489,7 @@ func (a *app) serversChanged() {
 
 func (a *app) askDeleteServer(name string) {
 	a.set.confirm = &confirmation{open: true, title: L("Delete %s?", name), message: L("Bots can no longer use its tools."), action: L("Delete"), run: func() {
-		a.do(mcp.DeleteServer(a.mcpPath, name))
+		a.do(a.rt.DeleteServer(name))
 		a.serversChanged()
 		a.set.srvSel, a.set.srv = "", nil
 	}}
@@ -512,7 +507,7 @@ func (a *app) testServer(f *serverForm) {
 	f.testing, f.test = true, ""
 	redraw := a.redrawSettings
 	go func() {
-		ok, msg := checkServer(s)
+		ok, msg := checkServer(a.rt, s)
 		a.post(func() {
 			f.testing, f.testOK, f.test = false, ok, msg
 			if redraw != nil {
@@ -522,23 +517,16 @@ func (a *app) testServer(f *serverForm) {
 	}()
 }
 
-// checkServer starts or reaches a server and lists its tools, a minute at
-// most.
-func checkServer(s mcp.Server) (bool, string) {
-	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
-	defer cancel()
-	cl, err := mcp.Connect(ctx, s)
-	if err != nil {
-		return false, oneLine(err.Error(), 200)
+// checkServer starts or reaches a server where the bots run and lists its
+// tools, a minute at most.
+func checkServer(rt Runtime, s mcp.Server) (bool, string) {
+	r := rt.CheckServer(s)
+	if !r.OK {
+		return false, oneLine(r.Error, 200)
 	}
-	defer cl.Close()
-	tools, err := cl.Tools(ctx)
-	if err != nil {
-		return false, oneLine(err.Error(), 200)
-	}
-	msg := L("Connected: %d tools.", len(tools))
-	if cl.HasResources {
-		msg = L("Connected: %d tools and resources.", len(tools))
+	msg := L("Connected: %d tools.", r.Tools)
+	if r.Resources {
+		msg = L("Connected: %d tools and resources.", r.Tools)
 	}
 	return true, msg
 }

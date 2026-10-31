@@ -8,10 +8,8 @@ import (
 
 	"github.com/egoist/mygo/ui"
 	"github.com/zucchiniEvader/baggy/agent"
-	"github.com/zucchiniEvader/baggy/claudecode"
+	"github.com/zucchiniEvader/baggy/host"
 	"github.com/zucchiniEvader/baggy/store"
-	"github.com/zucchiniEvader/baggy/team"
-	"github.com/zucchiniEvader/baggy/terminal"
 )
 
 // taskDelay is how long a command runs before it counts as a task, so a
@@ -20,36 +18,25 @@ const taskDelay = 2 * time.Second
 
 // sessionOf is the running session of a shell card: the chat's newest one
 // running its command.
-func (a *app) sessionOf(chatID string, call agent.Part) *terminal.Session {
-	if a.team.Terminals == nil || call.Name != "shell" {
+func (a *app) sessionOf(chatID string, call agent.Part) *host.Shell {
+	if call.Name != "shell" {
 		return nil
 	}
 	var args struct{ Command string }
 	json.Unmarshal(call.Args, &args)
-	running := a.team.Terminals.Running(chatID)
+	running := a.rt.Tasks(chatID).Shells
 	for i := len(running) - 1; i >= 0; i-- {
 		if running[i].Command == args.Command {
-			return running[i]
+			return &running[i]
 		}
 	}
 	return nil
 }
 
-// claudeRuns are a chat's Claude Code tasks at work.
-func (a *app) claudeRuns(chatID string) []*claudecode.Run {
-	if a.team.ClaudeCode == nil {
-		return nil
-	}
-	return a.team.ClaudeCode.Running(chatID)
-}
-
 // tasks are a chat's commands that have run a while.
-func (a *app) tasks(chatID string) []*terminal.Session {
-	if a.team.Terminals == nil {
-		return nil
-	}
-	var out []*terminal.Session
-	for _, s := range a.team.Terminals.Running(chatID) {
+func (a *app) tasks(all host.Tasks) []host.Shell {
+	var out []host.Shell
+	for _, s := range all.Shells {
 		if time.Since(s.Started) >= taskDelay {
 			out = append(out, s)
 		}
@@ -69,9 +56,10 @@ func elapsed(d time.Duration) string {
 
 // tasksButton opens the chat's running tasks while it has any.
 func (a *app) tasksButton(c *ui.Context, ch store.Chat) {
-	ts := a.tasks(ch.ID)
-	runs := a.claudeRuns(ch.ID)
-	ds := a.team.Delegations(ch.ID)
+	all := a.rt.Tasks(ch.ID)
+	ts := a.tasks(all)
+	runs := all.Claude
+	ds := all.Delegations
 	n := len(ts) + len(runs)
 	for _, d := range ds {
 		n += len(d.Tasks)
@@ -117,17 +105,17 @@ func (a *app) tasksButton(c *ui.Context, ch store.Chat) {
 						ui.Text(c, who+elapsed(time.Since(s.Started))).FontSize(11).TextColor(t.TextMuted)
 					})
 					codeBlock(c, oneLine(s.Command, 120))
-					if last := s.Last(10); last != "" {
-						codeBlock(c, last)
+					if s.Last != "" {
+						codeBlock(c, s.Last)
 					}
 					ui.Row(c).Gap(8).Justify(ui.End).Children(func() {
-						if !s.Background() {
+						if !s.Background {
 							if smallButton(c.Key("bg-"+s.ID), L("Run in Background"), secondary).Clicked() {
-								s.SendToBackground()
+								a.rt.BackgroundShell(s.ID)
 							}
 						}
 						if smallButton(c.Key("stop-"+s.ID), L("Stop"), danger).Clicked() {
-							go s.Stop(L("stopped from Running tasks"))
+							go a.rt.StopShell(s.ID, L("stopped from Running tasks"))
 						}
 					})
 				})
@@ -138,7 +126,7 @@ func (a *app) tasksButton(c *ui.Context, ch store.Chat) {
 
 // delegationTask is a delegation in Running tasks: who handed it out, each
 // task with its state and last steps, and Stop.
-func (a *app) delegationTask(c *ui.Context, ch store.Chat, d *team.Delegation) {
+func (a *app) delegationTask(c *ui.Context, ch store.Chat, d host.Delegation) {
 	t := c.Theme()
 	p := pal(c)
 	ui.Column(c.Key("dlg-" + d.ID)).Gap(6).Children(func() {
@@ -148,7 +136,7 @@ func (a *app) delegationTask(c *ui.Context, ch store.Chat, d *team.Delegation) {
 			ui.Text(c, elapsed(time.Since(d.Started))).FontSize(11).TextColor(t.TextMuted).Shrink(0)
 		})
 		for i, k := range d.Tasks {
-			state, _ := k.Status()
+			state := k.State
 			ui.Column(c.Key(i)).Gap(4).Padding(0, 0, 0, 22).Children(func() {
 				ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
 					switch state {
@@ -165,15 +153,15 @@ func (a *app) delegationTask(c *ui.Context, ch store.Chat, d *team.Delegation) {
 					}
 				})
 				if state == "working" {
-					if steps := k.Steps(4); len(steps) > 0 {
-						codeBlock(c, strings.Join(steps, "\n"))
+					if len(k.Steps) > 0 {
+						codeBlock(c, strings.Join(k.Steps, "\n"))
 					}
 				}
 			})
 		}
 		ui.Row(c).Gap(8).Justify(ui.End).Children(func() {
 			if smallButton(c.Key("dlg-stop-"+d.ID), L("Stop"), danger).Clicked() {
-				go d.Stop()
+				go a.rt.StopDelegation(d.ID)
 			}
 		})
 	})
@@ -181,7 +169,7 @@ func (a *app) delegationTask(c *ui.Context, ch store.Chat, d *team.Delegation) {
 
 // claudeTask is a Claude Code task in Running tasks: what it was given, its
 // recent steps, what it said last, and Stop.
-func (a *app) claudeTask(c *ui.Context, ch store.Chat, r *claudecode.Run) {
+func (a *app) claudeTask(c *ui.Context, ch store.Chat, r host.ClaudeRun) {
 	t := c.Theme()
 	ui.Column(c.Key("cc-" + r.ID)).Gap(4).Children(func() {
 		ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
@@ -192,17 +180,17 @@ func (a *app) claudeTask(c *ui.Context, ch store.Chat, r *claudecode.Run) {
 			if ch.Kind == store.Group {
 				who = a.name(r.Bot) + " · "
 			}
-			ui.Text(c, who+elapsed(r.Took())).FontSize(11).TextColor(t.TextMuted).Shrink(0)
+			ui.Text(c, who+elapsed(r.Took)).FontSize(11).TextColor(t.TextMuted).Shrink(0)
 		})
-		if p := r.Progress(8); p != "" {
-			codeBlock(c, p)
+		if r.Progress != "" {
+			codeBlock(c, r.Progress)
 		}
-		if s := r.Text(); s != "" {
+		if s := r.Text; s != "" {
 			ui.Text(c, oneLine(s, 200)).FontSize(12).TextColor(t.TextMuted).MaxLines(2)
 		}
 		ui.Row(c).Gap(8).Justify(ui.End).Children(func() {
 			if smallButton(c.Key("cc-stop-"+r.ID), L("Stop"), danger).Clicked() {
-				go r.Stop("stopped from Running tasks")
+				go a.rt.StopClaude(r.ID, "stopped from Running tasks")
 			}
 		})
 	})

@@ -12,6 +12,7 @@ import (
 
 	"github.com/coder/websocket"
 	"github.com/zucchiniEvader/baggy/agent"
+	"github.com/zucchiniEvader/baggy/host"
 	"github.com/zucchiniEvader/baggy/store"
 	"github.com/zucchiniEvader/baggy/team"
 	"github.com/zucchiniEvader/baggy/tool"
@@ -36,9 +37,9 @@ func setup(t *testing.T) (*Server, *httptest.Server, store.Chat) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { st.Close() })
-	s := &Server{Store: st, Token: NewToken(), Name: "Mac"}
+	s := &Server{Token: NewToken(), Name: "Mac"}
 	tm := &team.Team{Store: st, Model: func(store.Bot) (agent.Model, error) { return echo{}, nil }, Emit: s.Publish}
-	s.Team = tm
+	s.Host = host.New(st, tm)
 	b, err := st.CreateBot(store.Bot{Name: "Chef"})
 	if err != nil {
 		t.Fatal(err)

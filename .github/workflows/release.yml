@@ -1,6 +1,7 @@
 # Builds Baggy for macOS, Windows and Linux when a version tag is pushed,
 # signs what it can, and uploads the installers and the signed updates to
-# a draft release, which is published by hand (or by the publish job).
+# a draft release, which is published by hand (or by the publish job). It
+# builds baggyd, the runtime with no window, and its install script too.
 #
 #   1. bump "version" in desktop/mygo.json and add its section to desktop/CHANGELOG.md
 #   2. git tag v0.1.1 && git push origin v0.1.1
@@ -113,3 +114,31 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           MYGO_UPDATER_PRIVATE_KEY: ${{ secrets.MYGO_UPDATER_PRIVATE_KEY }}
         run: go tool mygo build -platform "${{ matrix.platform }}" -upload
+
+  baggyd:
+    needs: draft-release
+    name: baggyd
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.TAG }}
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - name: Build, and upload with the install script
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CGO_ENABLED: "0"
+        run: |
+          mkdir -p dist
+          for target in darwin/arm64 darwin/amd64 linux/amd64 linux/arm64; do
+            os="${target%/*}" arch="${target#*/}"
+            mkdir -p "build/$os-$arch"
+            GOOS="$os" GOARCH="$arch" go build -trimpath -ldflags "-s -w -X main.version=${TAG#v}" \
+              -o "build/$os-$arch/baggyd" ./cmd/baggyd
+            tar -czf "dist/baggyd-$os-$arch.tar.gz" -C "build/$os-$arch" baggyd
+          done
+          (cd dist && sha256sum baggyd-*.tar.gz > baggyd-checksums.txt)
+          cp scripts/install-baggyd.sh dist/baggyd-install.sh
+          gh release upload "$TAG" dist/* --repo "$GITHUB_REPOSITORY" --clobber

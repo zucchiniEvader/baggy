@@ -18,6 +18,7 @@ const zh: Record<string, string> = {
   "Connecting…": "正在连接…",
   "Can't connect": "无法连接",
   "Pair again": "需要重新配对",
+  "No model is set up yet. Add a provider in Baggy's Settings on your computer.": "还没有配置模型。请在电脑上 Baggy 的设置里添加一个提供方。",
   "Try Again": "重试",
   "Working…": "工作中…",
   "%s is working…": "%s 工作中…",

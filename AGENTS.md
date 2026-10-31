@@ -33,6 +33,7 @@ provider/   Provider interface, Request, stream Events; one adapter per wire pro
 tool/       Tool interface and Result, argument validation, shell, file, edit, find, grep
 store/      SQLite state: providers, bots, chats, members, messages, settings (docs/store.md)
 team/       runs DMs and group rooms, projection, prompts, team tools, compaction (docs/team.md)
+host/       the runtime a window works with: store, team, managers, approvals, in plain values (docs/remote.md)
 images/     pictures a model takes: upright, at most 2000×2000, HEIC on a Mac
 memory/     a bot's MEMORY.md, notes and diary, scrubbing, search (docs/memory.md)
 schedule/   routine schedules: intervals, cron in a timezone, words (docs/routines.md)
@@ -41,7 +42,8 @@ codemode/   scripts in a goja sandbox that call tools (docs/plugins.md)
 terminal/   commands in pseudo-terminals: questions, input, background (docs/terminal.md)
 claudecode/ coding tasks handed to the user's own Claude Code over stream-json (docs/claude-code.md)
 shellenv/   the login shell's environment
-remote/     the phone's API: HTTP and a WebSocket of team events behind a token (docs/mobile.md)
+remote/     the phone's API and a desktop's on the tailnet: HTTP, calls, a WebSocket of events, behind a token (docs/mobile.md, docs/remote.md)
+cmd/baggyd/ the runtime with no window, for desktops on the tailnet (docs/remote.md)
 desktop/    the MyGo app, its own module (docs/desktop.md)
 mobile/     the phone app, Expo, iOS first (docs/mobile.md)
 docs/       one doc per subject, written as the system is
@@ -105,7 +107,7 @@ After `../tsubomi` (whose `AGENTS.md`, `theme.go` and `controls.go` set it out, 
 
 ## Roadmap
 
-One machine, one user; no Runners, relay or marketplace. The phone is a companion that reaches the desktop on the local network. Milestones run in order; each ends with tests and its docs.
+One user, the bots on one machine (this one, or a server on the user's tailnet); no Runners, relay or marketplace. The phone is a companion that reaches the desktop on the local network. Milestones run in order; each ends with tests and its docs.
 
 1. ~~Persistence and bots~~: `store`, Chef, the desktop's sidebar, sheets and restored transcripts.
 2. ~~Group chat~~: `team`'s room engine, projection, `message_bot`, `create_bot`, `hand_off`; group views, `@` menu, replies, inspector.
@@ -120,5 +122,6 @@ One machine, one user; no Runners, relay or marketplace. The phone is a companio
 11. **Ship.** Done: the icon, bot and group templates in New Bot (docs/store.md), the release workflow for macOS, Windows and Linux with signed updates and Developer ID signing, the update window, the website (docs/release.md). Still open: a shell for Windows (Git Bash, else PowerShell), Windows code signing, onboarding, Windows testing, and a look at the window by hand.
 12. **Phone.** Done: `remote` on the desktop with Settings › Phone (QR pairing, reset), the Expo iOS app: pairing, the chats, streaming replies, send and stop (docs/mobile.md). Still open: approvals from the phone, attachments, markdown, mentions and replies, notifications, Android, a run on a device.
 13. ~~Claude Code.~~ A bot hands coding tasks to the user's `claude`, signed in to their own plan: `claude_code` in the background with a report that wakes the bot, the session resumed per chat, its tool requests through the Commands approvals, the bot sheet's switch, the Engineer template, Running tasks (docs/claude-code.md).
+14. ~~Remote runtime.~~ The bots on a server of the tailnet (`baggyd`), the desktop showing them through `host` over `remote`: calls, full events, files, approvals; Settings › General › Runtime (docs/remote.md).
 
 Decisions made: codemode on goja (pure Go); no ChatGPT or Grok subscription sign-in for now; SQLite through `modernc.org/sqlite`; replies drawn by MyGo's `ui/markdown` (`View`, and `Stream` while they stream), goldmark only for their plain text; API keys in the app's config file until a keychain is worth it.

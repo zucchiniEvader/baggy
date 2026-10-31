@@ -19,8 +19,8 @@ func TestRunningTasks(t *testing.T) {
 		return agent.Message{StopReason: agent.StopToolUse, Parts: []agent.Part{{Kind: agent.PartToolCall, CallID: "c1", Name: "shell",
 			Args: json.RawMessage(`{"command":"echo serving; sleep 60","description":"Dev server","background":true}`)}}}
 	}))
-	h.a.team.Terminals = terminal.NewManager()
-	defer h.a.team.Terminals.StopAll()
+	h.tm.Terminals = terminal.NewManager()
+	defer h.tm.Terminals.StopAll()
 	h.send("start the server")
 	h.pump("the reply", func() bool { return h.tt.HasText("Started.") && h.idle() })
 	time.Sleep(taskDelay)
@@ -33,7 +33,7 @@ func TestRunningTasks(t *testing.T) {
 		t.Fatalf("task: %q", h.tt.Texts())
 	}
 	h.tt.Click("Stop")
-	h.pump("the stop", func() bool { return len(h.a.team.Terminals.Running("")) == 0 })
+	h.pump("the stop", func() bool { return len(h.tm.Terminals.Running("")) == 0 })
 	h.tt.Frame()
 	if h.tt.HasText("Tasks (1)") {
 		t.Fatal("task still listed")

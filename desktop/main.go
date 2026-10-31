@@ -20,15 +20,11 @@ import (
 	"github.com/egoist/mygo/plugins/updater"
 	"github.com/egoist/mygo/plugins/updater/native"
 	"github.com/egoist/mygo/ui"
-	"github.com/zucchiniEvader/baggy/agent"
-	"github.com/zucchiniEvader/baggy/claudecode"
-	"github.com/zucchiniEvader/baggy/mcp"
+	"github.com/zucchiniEvader/baggy/host"
 	"github.com/zucchiniEvader/baggy/provider/connect"
-	"github.com/zucchiniEvader/baggy/shellenv"
+	"github.com/zucchiniEvader/baggy/remote"
 	"github.com/zucchiniEvader/baggy/store"
 	"github.com/zucchiniEvader/baggy/team"
-	"github.com/zucchiniEvader/baggy/terminal"
-	"github.com/zucchiniEvader/baggy/tool"
 )
 
 func dataDir() string {
@@ -90,65 +86,69 @@ func main() {
 		return // the running one shows its window
 	}
 	renameFolders()
-	st, err := store.Open(dataDir())
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer st.Close()
-	if root := workspacesDir(); root != "" {
-		if err := st.UseWorkspaces(root); err != nil {
-			log.Print(err) // the ones not moved stay where they were
-		}
-	}
-	if _, err := st.Seed(); err != nil {
-		log.Fatal(err)
-	}
-	fallback := connect.FromEnv("claude-sonnet-5-5")
 	var a *app
-	ph := newPhone(st)
-	tm := newTeam(st, fallback, func(e team.Event) {
+	var ph *phone
+	var local *host.Host               // the runtime, when it runs here
+	pending := make(chan func(), 1024) // events before the window is up
+	emit := func(e team.Event) {
 		a.post(func() { a.apply(e) })
 		ph.srv.Publish(e)
-	})
-	ph.srv.Team = tm
+	}
+	link := runtimeLink(dataDir())
+	var client *remote.Client
+	if link != "" {
+		var err error
+		if client, err = remote.ParseLink(link); err != nil {
+			log.Printf("runtime link: %v; running here", err)
+		}
+	}
+	if client == nil {
+		h, err := host.Open(host.Options{Data: dataDir(), Workspaces: workspacesDir(), Fallback: connect.FromEnv("claude-sonnet-5-5"), Emit: emit})
+		if err != nil {
+			log.Fatal(err)
+		}
+		defer h.Close()
+		a = newApp(h.Store, h, func(fn func()) { pending <- fn })
+		ph = a.phone
+		ph.srv.Host = h
+		a.mcpPath = h.MCPPath
+		// what the window changes past the team, the phone hears of
+		a.changed = func(chatID string) { ph.srv.Publish(team.Event{Kind: team.EventChanged, ChatID: chatID}) }
+		local = h
+	} else {
+		cache, err := os.UserCacheDir()
+		if err != nil {
+			cache = os.TempDir()
+		}
+		rb := newRemoteBackend(client, filepath.Join(cache, "Baggy", "remote", strings.NewReplacer(":", "_", "/", "_").Replace(strings.TrimPrefix(client.Base, "http://"))))
+		a = newApp(remoteStore{rb}, remoteHost{rb}, func(fn func()) { pending <- fn })
+		a.remote, a.remoteLink, a.readFile = rb, link, rb.readFile
+		ph = a.phone
+		ph.on = false // the server answers phones
+		go rb.follow(context.Background(), func(e team.Event) { a.post(func() { a.apply(e) }) }, func(err error) {
+			a.post(func() {
+				if err == nil {
+					a.resync()
+				}
+			})
+		})
+	}
 	defer ph.stop()
-	tm.Plugins = mcp.NewManager(filepath.Join(dataDir(), "mcp.json"))
-	defer tm.Plugins.Close()
-	tm.Codemode = true
-	tm.Checks = tm.RunCheck
-	mcp.Env = shellenv.Env
-	tm.Terminals = terminal.NewManager()
-	tm.Terminals.Env = shellenv.Env
-	defer tm.Terminals.StopAll()
-	tm.WakeOnExit()
-	tm.ClaudeCode = claudecode.NewManager()
-	tm.ClaudeCode.Env = shellenv.Env
-	defer tm.ClaudeCode.StopAll()
-	defer tm.StopDelegations()
-	pending := make(chan func(), 1024) // events before the window is up
-	a = newApp(st, tm, func(fn func()) { pending <- fn })
-	a.fallback = fallback
-	a.phone, ph.srv.Team = ph, tm
 	ph.srv.Changed = func(string) { a.post(a.countUnread) }
-	a.changed = func(chatID string) { ph.srv.Publish(team.Event{Kind: team.EventChanged, ChatID: chatID}) }
+	a.dataDir = dataDir()
+	a.relaunch = mygo.App.Relaunch
 	a.locale = mygo.App.Locale()
 	a.readImage = func() []byte { return mygo.Clipboard.ReadImage() }
 	a.copyText = func(s string) { mygo.Clipboard.WriteText(s) }
-	tm.Approve = a.approvals.approve
 	a.claudeCode.Store("Looking for Claude Code…")
 	go func() { // the login shell's PATH takes a moment to read
-		why := ""
-		if _, err := tm.ClaudeCode.Available(); err != nil {
-			why = "Claude Code is not installed here: the claude command is not on the PATH." // translated where it shows
-		}
-		a.claudeCode.Store(why)
+		a.claudeCode.Store(a.rt.ClaudeCodeMissing()) // translated where it shows
 		a.post(func() {})
 	}()
-	if tm.Compaction != nil {
-		tm.Compaction.Policy = a.compactionPolicy
-	}
-	tm.StartRoutines(context.Background())
 	a.applyPrefs()
+	if local != nil { // the window takes events now, pending until it is up
+		local.Team.StartRoutines(context.Background())
+	}
 	// Updates: MyGo's update window in native UI, a check a day; the menu's
 	// Check for Updates… and Settings' About check at once.
 	updateLang := map[string]string{"English": "en", "中文": "zh-Hans"}[a.prefs.language]
@@ -210,9 +210,10 @@ func main() {
 		a.vibrancy = runtime.GOOS == "darwin"
 		a.redrawMain = func() { win.Update(func() {}) }
 		a.post = win.Update
-		a.openFolder = func(p string) { go mygo.Shell.OpenPath(p) }
-		a.revealFile = func(p string) { go mygo.Shell.ShowItemInFolder(p) }
-		a.mcpPath = filepath.Join(dataDir(), "mcp.json")
+		if a.remote == nil { // the server's folders are not this machine's
+			a.openFolder = func(p string) { go mygo.Shell.OpenPath(p) }
+			a.revealFile = func(p string) { go mygo.Shell.ShowItemInFolder(p) }
+		}
 		win.OnFocus(func() { win.Update(func() { a.focused = true; a.markRead() }) })
 		win.OnBlur(func() { win.Update(func() { a.focused = false }) })
 		a.notify = func(title, subtitle, body, chatID string) {
@@ -243,6 +244,9 @@ func main() {
 			}()
 		}
 		a.pickFolder = func(done func(path string)) {
+			if a.remote != nil {
+				return
+			}
 			go func() {
 				paths, _ := mygo.Dialog.Open(mygo.OpenDialogOptions{Parent: win, Title: L("Choose a Folder"), Directory: true, CreateDirectories: true})
 				if len(paths) > 0 {
@@ -265,7 +269,7 @@ func main() {
 		mygo.App.OnSecondInstance(func([]string, string) { win.Update(func() { win.Show(); win.Focus() }) })
 		go func() { // running commands' cards and tasks show their output as it comes
 			for range time.Tick(time.Second) {
-				if len(tm.Terminals.Running("")) > 0 || len(tm.ClaudeCode.Running("")) > 0 || len(tm.Delegations("")) > 0 {
+				if ts := a.rt.Tasks(""); len(ts.Shells) > 0 || len(ts.Claude) > 0 || len(ts.Delegations) > 0 {
 					win.Update(func() {})
 				}
 			}
@@ -296,22 +300,6 @@ func main() {
 	})
 	if err := mygo.App.Run(); err != nil {
 		log.Fatal(err)
-	}
-}
-
-// newTeam runs the bots with the shell and file tools in their workspaces.
-func newTeam(st *store.Store, fallback connect.Config, emit func(team.Event)) *team.Team {
-	return &team.Team{
-		Store: st,
-		Model: team.Models(st, fallback),
-		Tools: func(b store.Bot, ws string) []tool.Tool {
-			return []tool.Tool{tool.Shell{Dir: ws}, tool.ReadFile{Dir: ws}, tool.WriteFile{Dir: ws}, tool.EditFile{Dir: ws}, tool.Find{Dir: ws}, tool.Grep{Dir: ws}}
-		},
-		Emit:       emit,
-		Routing:    true,
-		Retry:      agent.DefaultRetry,
-		Memory:     os.Getenv("GOBOT_MEMORY") != "0",
-		Compaction: &team.Compaction{NoFlush: os.Getenv("GOBOT_MEMORY_FLUSH") == "0"},
 	}
 }
 
