@@ -133,7 +133,11 @@ function RowView({ row, bots }: { row: Row; bots: Record<string, Bot> }) {
       return (
         <View style={styles.botWrap}>
           {row.name && <Text style={[styles.botName, { color: p.secondaryLabel }]}>{bots[row.bot]?.name ?? ""}</Text>}
-          {!!row.text && <Body text={row.text} color={row.error ? p.red : undefined} />}
+          {!!row.text && (
+            <View style={[styles.bubble, styles.botBubble, { backgroundColor: p.botBubble }]}>
+              <Body text={row.text} color={row.error ? p.red : undefined} />
+            </View>
+          )}
           {row.tools.length > 0 && (
             <View style={styles.tools}>
               <SymbolView name="wrench.and.screwdriver" size={13} tintColor={p.tertiaryLabel as string} />
@@ -161,9 +165,10 @@ const styles = StyleSheet.create({
   quote: { fontSize: 13, paddingHorizontal: 4 },
   bubble: { borderRadius: 18, paddingHorizontal: 14, paddingVertical: 9, gap: 4 },
   file: { flexDirection: "row", alignItems: "center", gap: 6 },
-  botWrap: { marginVertical: 6, gap: 6 },
-  botName: { fontSize: 13, fontWeight: "600", marginTop: 6 },
-  tools: { flexDirection: "row", alignItems: "center", gap: 6 },
+  botWrap: { alignItems: "flex-start", marginVertical: 6, marginRight: 24, gap: 4 },
+  botBubble: { maxWidth: "100%" },
+  botName: { fontSize: 13, fontWeight: "600", marginTop: 6, paddingHorizontal: 4 },
+  tools: { flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 4 },
   note: { textAlign: "center", fontSize: 13, marginVertical: 10 },
   working: { flexDirection: "row", alignItems: "center", gap: 8, marginVertical: 8 },
   error: { flexDirection: "row", alignItems: "center", gap: 8, marginHorizontal: 16, marginBottom: 6, padding: 10, borderRadius: 10 },

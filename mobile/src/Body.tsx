@@ -107,9 +107,9 @@ const styles = StyleSheet.create({
   marker: { minWidth: 14 },
   quote: { borderLeftWidth: 3, paddingLeft: 10 },
   inlineCode: { fontFamily: "Menlo", fontSize: 15 },
-  code: { borderRadius: 8 },
+  code: { borderRadius: 8, flexGrow: 0 },
   mono: { fontFamily: "Menlo", fontSize: 13, lineHeight: 18 },
-  table: { borderWidth: StyleSheet.hairlineWidth, borderRadius: 8 },
+  table: { borderWidth: StyleSheet.hairlineWidth, borderRadius: 8, flexGrow: 0 },
   tableRow: { flexDirection: "row" },
   cell: { fontSize: 15, lineHeight: 21, paddingHorizontal: 10, paddingVertical: 6, minWidth: 80, maxWidth: 260 },
 });

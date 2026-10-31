@@ -13,6 +13,7 @@ export interface Palette {
   fill: ColorValue;
   tint: ColorValue;
   userBubble: ColorValue;
+  botBubble: ColorValue;
   code: ColorValue;
   red: ColorValue;
   green: ColorValue;
@@ -36,6 +37,8 @@ export function usePalette(): Palette {
     tint: c("systemBlue"),
     // A neutral bubble for the user's messages, as on the desktop.
     userBubble: dark ? "#262626" : "#ececea",
+    // A bot's replies sit in a lighter one, so the two sides tell apart.
+    botBubble: dark ? "#1c1c1c" : "#f4f4f2",
     code: dark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.05)",
     red: c("systemRed"),
     green: c("systemGreen"),
