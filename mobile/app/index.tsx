@@ -5,6 +5,7 @@ import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, View } from "
 import { Avatar, GroupAvatar } from "../src/Avatar";
 import { stamp } from "../src/format";
 import { t } from "../src/i18n";
+import { plain } from "../src/markdown";
 import { chatTitle, User, type Chat } from "../src/model";
 import { reconnect, useStore } from "../src/store";
 import { usePalette } from "../src/theme";
@@ -79,7 +80,7 @@ function ChatRow({ chat }: { chat: Chat }) {
   const unread = useStore((s) => s.unread[chat.id] ?? 0);
   const busy = useStore((s) => s.busy[chat.id] ?? false);
   const title = chatTitle(chat, bots);
-  let line = preview?.Text ?? "";
+  let line = useMemo(() => plain(preview?.Text ?? ""), [preview?.Text]); // a reply's markdown reads as text
   if (preview && chat.kind === "group") {
     const who = preview.Author === User ? t("You") : bots[preview.Author]?.name;
     if (who) line = `${who}: ${line}`;

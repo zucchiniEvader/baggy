@@ -78,7 +78,16 @@ func previewText(m agent.Message, meta Meta) string {
 			b.WriteString(p.Text + " ")
 		}
 	}
-	text := strings.Join(strings.Fields(b.String()), " ")
+	// Lines are kept, so a client reads the markdown before it makes the
+	// text one line; spaces within a line and blank lines are squeezed.
+	var lines []string
+	for _, l := range strings.Split(b.String(), "\n") {
+		l = strings.Join(strings.Fields(l), " ")
+		if l != "" || (len(lines) > 0 && lines[len(lines)-1] != "") {
+			lines = append(lines, l)
+		}
+	}
+	text := strings.TrimSpace(strings.Join(lines, "\n"))
 	if text == "" {
 		var names []string
 		for _, f := range meta.Files {
@@ -86,8 +95,8 @@ func previewText(m agent.Message, meta Meta) string {
 		}
 		text = strings.Join(names, ", ")
 	}
-	if r := []rune(text); len(r) > 160 {
-		text = string(r[:159]) + "…"
+	if r := []rune(text); len(r) > 400 {
+		text = string(r[:399]) + "…"
 	}
 	return text
 }

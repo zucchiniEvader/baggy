@@ -296,7 +296,7 @@ function apply(e: Event) {
         }));
       }
       const text = textOf(en.msg);
-      if (text) set((s) => ({ previews: { ...s.previews, [chat]: { Author: en.author, Text: text.split("\n")[0].slice(0, 160), At: en.created } } }));
+      if (text) set((s) => ({ previews: { ...s.previews, [chat]: { Author: en.author, Text: text.slice(0, 400), At: en.created } } }));
       if (get().open === chat) void api("POST", `/v1/chats/${chat}/read`).catch(() => {});
       else if (en.author !== User && text) set((s) => ({ unread: { ...s.unread, [chat]: (s.unread[chat] ?? 0) + 1 } }));
       refreshSoon();

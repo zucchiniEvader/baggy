@@ -29,6 +29,10 @@ func TestPreviewsAndPins(t *testing.T) {
 	if p := ps[dm.ID]; p.Author != b.ID || p.Text != "Pasta, then cake." {
 		t.Fatalf("preview %+v", p)
 	}
+	s.Append(dm.ID, b.ID, "t3", Meta{}, text(agent.RoleAssistant, "Done:\n\n\n-  one   item\n  - two\n"))
+	if ps, _ = s.Previews(); ps[dm.ID].Text != "Done:\n\n- one item\n- two" {
+		t.Fatalf("lines preview %q", ps[dm.ID].Text)
+	}
 	s.Append(dm.ID, User, "", Meta{Files: []File{{Name: "a.pdf"}, {Name: "b.png"}}}, agent.Message{Role: agent.RoleUser})
 	if ps, _ = s.Previews(); ps[dm.ID].Text != "a.pdf, b.png" || ps[dm.ID].Author != User {
 		t.Fatalf("files preview %+v", ps[dm.ID])

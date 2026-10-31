@@ -36,7 +36,8 @@ export default function SettingsScreen() {
   );
 
   return (
-    <ScrollView style={{ backgroundColor: p.groupedBackground }} contentContainerStyle={{ padding: 16, gap: 24 }}>
+    // The sheet's header is native and over the content: the automatic inset keeps the first row below it.
+    <ScrollView contentInsetAdjustmentBehavior="automatic" style={{ backgroundColor: p.groupedBackground }} contentContainerStyle={{ padding: 16, gap: 24 }}>
       <View style={[styles.card, { backgroundColor: p.cell }]}>
         {row(t("Computer"), pairing.name)}
         {row(t("Address"), baseURL(pairing).replace("http://", ""))}

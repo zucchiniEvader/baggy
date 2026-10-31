@@ -16,7 +16,7 @@
 
 API keys sit in the providers table in plain text, as the app's config file would hold them, until a keychain is worth it.
 
-`Previews()` gives each chat's last words for a list, from its newest twelve user and assistant messages: the newest with text (collapsed to one line, at most 160 characters) or attached files (their names), past failed and stopped turns, notes for the bots and compaction summaries; a routine's run shows its name.
+`Previews()` gives each chat's last words for a list, from its newest twelve user and assistant messages: the newest with text (its lines kept for the markdown, spaces and blank lines squeezed, at most 400 characters; the desktop and the phone make it one line of plain text) or attached files (their names), past failed and stopped turns, notes for the bots and compaction summaries; a routine's run shows its name.
 
 ## Rules
 
